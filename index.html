@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.17</title>
+<title>GeoExplorer V4.18</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -425,6 +425,23 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 #drillRevealSub{font-size:12px;color:var(--muted);margin-bottom:10px;min-height:1.4em;}
 #drillRevealDetail{font-size:11px;color:var(--muted);line-height:1.6;text-align:left;}
 .pause-nav-btn{width:100%;text-align:left;margin-top:8px;font-size:12px;padding:12px 14px;}
+/* Les boutons secondaires des menus (pause, accueil, TP) étaient rendus en simples liens soulignés
+   par la classe .adv-reset : ils deviennent de vrais boutons, lisibles et assez grands pour le doigt. */
+.pause-nav-btn,#continueSavedBtn,#openTutorialBtn,#tpAddTargetBtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;margin:8px 0 0;padding:13px 14px;font-size:14px;color:var(--text);text-decoration:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;cursor:pointer;font-family:var(--sans);}
+.pause-nav-btn:hover,#continueSavedBtn:hover,#openTutorialBtn:hover,#tpAddTargetBtn:hover:not(:disabled){border-color:var(--ink);}
+#continueSavedBtn,#openTutorialBtn{justify-content:center;text-align:center;}
+#tpAddTargetBtn:disabled{opacity:.55;cursor:default;}
+.pause-nav-btn.danger{color:var(--red);}
+#pauseSummary{margin:12px 0 4px;}
+/* Notification passagère : refus d'une action (budget, matériel…) sans devoir ouvrir le journal */
+#toast{position:fixed;left:50%;top:calc(var(--header-h, 56px) + 10px);transform:translateX(-50%);z-index:1500;max-width:min(92vw,520px);padding:11px 16px;border-radius:10px;background:var(--ink);color:var(--on-ink);font-size:13px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.22);display:none;}
+#toast.show{display:block;}
+#confirmModal{position:fixed;inset:0;z-index:1320;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px;}
+#confirmModal.open{display:flex;}
+#confirmBox{background:var(--panel);border:1px solid var(--line);padding:24px;max-width:400px;width:100%;border-radius:12px;}
+#confirmTitle{font-family:var(--serif);font-size:17px;font-weight:600;margin-bottom:8px;}
+#confirmMsg{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:18px;}
+#confirmBtns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
 .pause-back-btn{margin-bottom:4px;}
 .glossary-term{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line);font-size:12px;line-height:1.6;}
 .glossary-term b{color:var(--amber);}
@@ -810,6 +827,15 @@ body.mobile-layout #priceSparkline{display:none;}
   <div class="bv-cap" id="bvCap"></div>
 </div>
 
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="confirmModal" role="alertdialog" aria-labelledby="confirmTitle">
+  <div id="confirmBox">
+    <div id="confirmTitle"></div>
+    <div id="confirmMsg"></div>
+    <div id="confirmBtns"><button class="cg-close" id="confirmNo">Annuler</button><button class="study-btn study-btn-compact" id="confirmYes">Confirmer</button></div>
+  </div>
+</div>
+
 <!-- Alerte de jeu (accident) : le temps est arrêté jusqu'à ce que le joueur reprenne -->
 <div id="alertModal" role="alertdialog" aria-labelledby="alertTitle">
   <div id="alertBox">
@@ -863,12 +889,13 @@ body.mobile-layout #priceSparkline{display:none;}
     <div class="menu-title" style="font-size:22px;"><span class="i18n" data-fr="PARTIE EN PAUSE" data-en="GAME PAUSED">PARTIE EN PAUSE</span></div>
 
     <div id="pauseMainView">
+      <div class="q-sum" id="pauseSummary"></div>
       <button class="start-btn" id="pauseResumeBtn">▶ <span class="i18n" data-fr="Reprendre la partie" data-en="Resume game">Reprendre la partie</span></button>
       <button class="adv-reset pause-nav-btn" id="pauseSaveBtn">💾 <span class="i18n" data-fr="Sauvegarder la partie" data-en="Save game">Sauvegarder la partie</span></button>
       <button class="adv-reset pause-nav-btn" data-pause-view="settings">⚙ Paramètres de confort</button>
       <button class="adv-reset pause-nav-btn" data-pause-view="glossary">📖 Glossaire</button>
       <button class="adv-reset pause-nav-btn" id="pauseTutorialBtn">🎓 Revoir le tutoriel</button>
-      <button class="adv-reset pause-nav-btn" id="pauseHomeBtn" style="color:var(--red);">🏠 Retour à l'accueil</button>
+      <button class="adv-reset pause-nav-btn danger" id="pauseHomeBtn">🏠 Retour à l'accueil</button>
     </div>
 
     <div id="pauseSettingsView" style="display:none;">
@@ -1001,6 +1028,7 @@ body.mobile-layout #priceSparkline{display:none;}
         <button class="btn" id="zoomOut" aria-label="Zoom arrière">−</button>
         <span id="zoomLbl" style="font-size:12px; color:var(--muted); min-width:40px; text-align:center; font-family:var(--mono);">100%</span>
         <button class="btn" id="zoomIn" aria-label="Zoom avant">+</button>
+        <button class="btn" id="zoomFit" aria-label="Vue d'ensemble" title="Vue d'ensemble : toute la carte à l'écran">⤢<span class="l-full"> <span class="i18n" data-fr="Tout voir" data-en="Fit">Tout voir</span></span></button>
       </div>
     </div>
     <div class="map-body">
@@ -2913,7 +2941,7 @@ function renderGisementsPanel(){
       const peak = (w.comps||[{q0:w.production}]).reduce((sum,c)=>sum+c.q0,0);
       body = `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;"><span style="color:var(--muted);">Production</span><span>${Math.round(w.production)} ${w.isGas?'Mcf':'barils'}/mois (${Math.round(w.production/peak*100)} % du débit initial)</span></div>
         <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Net/mois</span><span style="color:${econ.net>=0?'var(--green)':'var(--red)'};">${formatM(econ.net)}</span></div>
-        <div style="text-align:right;margin-top:6px;"><button class="cg-close" style="padding:2px 8px;" onclick="if(confirm('Fermer définitivement ce puits ?')) closeWell(${b.id})">🔧 Fermer</button></div>`;
+        <div style="text-align:right;margin-top:6px;"><button class="cg-close" style="padding:2px 8px;" onclick="confirmCloseWell(${b.id})">🔧 Fermer</button></div>`;
     } else {
       body = `<div style="font-size:11px;color:var(--muted);">${w.monthsActive} mois en production avant arrêt.</div>`;
     }
@@ -3006,7 +3034,7 @@ function renderFinancePanel(){
       html += `<div style="border:1px solid var(--line);background:var(--panel);padding:8px 10px;margin-bottom:6px;font-size:11px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <b>Bloc (${b.x},${b.y})${b.isOffshore?' 🌊':''}</b>
-          <button class="cg-close" style="padding:2px 8px;" onclick="if(confirm('Fermer définitivement ce puits ?')) closeWell(${b.id})">🔧 Fermer</button>
+          <button class="cg-close" style="padding:2px 8px;" onclick="confirmCloseWell(${b.id})">🔧 Fermer</button>
         </div>
         <div style="color:var(--muted);margin-top:3px;">
           ${Math.round(w.production)} ${w.isGas?'Mcf':'barils'}/mois · ${w.monthsActive} mois en production
@@ -3320,8 +3348,9 @@ function buildDebriefReport(){
 // =====================================================================
 // RENDU — CARTE
 // =====================================================================
-const CELL_SIZES=[16,22,28,36,44,54,68];
-let zoomIdx=4, selectedBlock=null;
+// 9, 11 et 14 px servent à la vue d'ensemble des grandes cartes (30×30 sur un téléphone)
+const CELL_SIZES=[9,11,14,16,22,28,36,44,54,68];
+let zoomIdx=7, selectedBlock=null;
 
 // Mise en page de la grille : une colonne et une ligne d'étiquettes (coordonnées) en plus des blocs.
 const AXIS_PX = 22;
@@ -4023,7 +4052,7 @@ function renderStudiesPanel(b){
     } else if(w.sidetrackDone){
       html+=`<div style="font-size:11px;color:var(--muted);margin-top:8px;">Side-track déjà tenté sur ce puits.</div>`;
     }
-    html+=`<button class="study-btn" style="margin-top:8px;background:var(--red);" onclick="if(confirm('Fermer définitivement ce puits ?')) closeWell(${b.id})">🔧 Fermer le puits</button>`;
+    html+=`<button class="study-btn" style="margin-top:8px;background:var(--red);" onclick="confirmCloseWell(${b.id})">🔧 Fermer le puits</button>`;
   } else if(b.dryHole){
     html+=`<div style="color:var(--red);font-size:12px;margin-top:12px;">✗ Puits sec.</div>`;
   } else if(G.drilling.some(d=>d.blockId===b.id)){
@@ -5060,7 +5089,31 @@ function guideDo(kind, id){
   }
 }
 
+// Notification passagère (4 s) pour les refus d'action qui, sinon, n'apparaissaient que dans le journal
+let _toastT = null;
+function toast(msg){
+  const el = document.getElementById('toast'); if(!el) return;
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(_toastT); _toastT = setTimeout(()=>el.classList.remove('show'), 4200);
+}
+const BLOCK_RE = /^(Budget insuffisant|Matériel insuffisant|Ce bloc est déjà foré|Réalisez au moins|Aucun puits actif|Aucun stock|Aucune partie)/;
+// Confirmation stylée à la place de confirm() natif (souvent bloqué ou peu lisible sur téléphone)
+function askConfirm(title, msg, yesLabel, onYes){
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMsg').textContent = msg || '';
+  document.getElementById('confirmYes').textContent = yesLabel || 'Confirmer';
+  const m = document.getElementById('confirmModal'); m.classList.add('open');
+  const close = () => m.classList.remove('open');
+  document.getElementById('confirmYes').onclick = () => { close(); onYes(); };
+  document.getElementById('confirmNo').onclick = close;
+}
+function confirmCloseWell(blockId){
+  const b = blocks[blockId];
+  askConfirm(T('Fermer ce puits ?','Close this well?'), T(`Le puits (${b.x},${b.y}) cessera définitivement de produire. Cette action est irréversible.`, `Well (${b.x},${b.y}) will stop producing for good. This cannot be undone.`), T('Fermer le puits','Close well'), ()=>closeWell(blockId));
+}
+document.addEventListener('keydown', e => { if(e.key==='Escape') document.getElementById('confirmModal')?.classList.remove('open'); });
 function addLog(msg, type=''){
+  if(type==='bad' && BLOCK_RE.test(msg)) toast(msg);
   const el=document.getElementById('logEntries');
   const div=document.createElement('div');
   div.className='log-entry'+(type?' '+type:'');
@@ -5212,6 +5265,16 @@ document.getElementById('toolSection').addEventListener('click',()=>setTool('sec
 document.getElementById('toolPlan').addEventListener('click',()=>setTool('plan'));
 
 // Zoom
+// Vue d'ensemble : plus grand zoom pour lequel la carte entière tient dans la fenêtre
+function fitMap(){
+  const wrap = document.getElementById('mapWrap');
+  if(!wrap || !blocks.length || wrap.clientWidth < 120) return;
+  const avail = Math.min(wrap.clientWidth, wrap.clientHeight) - 100; // marge pour les graduations
+  let idx = 0; CELL_SIZES.forEach((c,i)=>{ if(G.gridSize*c <= avail) idx = i; });
+  zoomIdx = idx; rerenderAllBlocks();
+  document.getElementById('zoomLbl').textContent = Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';
+}
+document.getElementById('zoomFit').addEventListener('click', fitMap);
 document.getElementById('zoomIn').addEventListener('click',()=>{ if(zoomIdx<CELL_SIZES.length-1){zoomIdx++;rerenderAllBlocks();document.getElementById('zoomLbl').textContent=Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';} });
 document.getElementById('zoomOut').addEventListener('click',()=>{ if(zoomIdx>0){zoomIdx--;rerenderAllBlocks();document.getElementById('zoomLbl').textContent=Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';} });
 
@@ -5295,6 +5358,8 @@ document.addEventListener('keydown', e=>{
 document.getElementById('btnMenu').addEventListener('click',()=>{
   G.speedBeforePause = G.speed>0 ? G.speed : (G.speedBeforePause||1);
   setSpeed(0);
+  const ps = document.getElementById('pauseSummary');
+  if(ps) ps.textContent = `${document.getElementById('hudDate').textContent} · ${document.getElementById('hudBudget').textContent} · ${G.wells.filter(w=>w.status==='producing').length} ${T('puits actifs','active wells')}`;
   showPauseView('main');
   document.getElementById('pauseMenu').classList.add('open');
 });
@@ -5409,6 +5474,10 @@ document.getElementById('pauseResumeBtn').addEventListener('click', ()=>{
 });
 document.getElementById('pauseSaveBtn').addEventListener('click', ()=>{
   saveGame();
+  // retour visuel dans le menu lui-même : la confirmation n'allait que dans le journal
+  const b = document.getElementById('pauseSaveBtn'), keep = b.innerHTML;
+  b.innerHTML = '✓ ' + T('Partie sauvegardée', 'Game saved');
+  setTimeout(()=>{ b.innerHTML = keep; }, 1800);
 });
 document.getElementById('pauseTutorialBtn').addEventListener('click', ()=>{
   document.getElementById('pauseMenu').classList.remove('open');
@@ -5700,7 +5769,7 @@ document.getElementById('phoneModePickerInGame')?.querySelectorAll('button').for
 // Libellés fixes du bandeau, de la barre d'outils et de la légende : traduits par dictionnaire sur
 // les nœuds texte (l'original est mémorisé pour pouvoir revenir au français).
 const EN_AUTO = {
-  'Date':'Date','Cash flow/mois':'Cash flow/month','Brut':'Crude','Puits':'Wells',
+  'Tout voir':'Fit','Date':'Date','Cash flow/mois':'Cash flow/month','Brut':'Crude','Puits':'Wells',
   'Sélection':'Select','Coupe A→B':'Section A→B','Planifier un forage':'Plan a well','Forage':'Drill',
   'Légende':'Legend','Relief structural · gravimétrie':'Structural relief · gravity','bas':'low','haut':'high',
   'Terre en ocre, mer en bleu. Un haut structural piège plus souvent les hydrocarbures.':'Land in ochre, sea in blue. A structural high traps hydrocarbons more often.',
@@ -5803,9 +5872,11 @@ function startGame(){
     setTimeout(()=>{
       _doStartGame();
       if(overlay) overlay.style.display = 'none';
+      requestAnimationFrame(()=>{ if(G.gridSize>=20) fitMap(); });
     }, 30);
   } else {
     _doStartGame();
+    requestAnimationFrame(()=>{ if(G.gridSize>=20) fitMap(); });
   }
 }
 
@@ -5827,7 +5898,7 @@ function saveGame(){
       G: { ...G },
       blocks: blocks.map(b => { const { el, ...rest } = b; return rest; }), // .el n'est pas sérialisable
       STRAT_PROVINCES, STRAT, GS,
-      menuConfig, selectedBlock, zoomIdx,
+      menuConfig, selectedBlock, zoomIdx, zoomCell: CELL_SIZES[zoomIdx],
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
     addLog('💾 Partie sauvegardée.', 'ev');
@@ -5872,7 +5943,11 @@ function loadGame(){
   STRAT_PROVINCES = payload.STRAT_PROVINCES; STRAT = payload.STRAT; GS = payload.GS;
   Object.assign(menuConfig, payload.menuConfig || {});
   selectedBlock = payload.selectedBlock ?? null;
-  zoomIdx = payload.zoomIdx ?? zoomIdx;
+  // zoomCell (taille de case en px) est indépendant de la liste des tailles ; les anciennes
+  // sauvegardes ne portaient qu'un indice dans [16,22,28,36,44,54,68]
+  const oldCell = [16,22,28,36,44,54,68][payload.zoomIdx];
+  const wantCell = payload.zoomCell ?? oldCell;
+  zoomIdx = wantCell ? Math.max(0, CELL_SIZES.indexOf(wantCell)) : zoomIdx;
 
   buildGrid();
   updateHud();
