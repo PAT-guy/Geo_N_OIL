@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.9</title>
+<title>GeoExplorer V4.10</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -316,8 +316,13 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .mode-stats span{color:var(--amber);}
 .menu-opt-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:12px;}
 .menu-opt-lbl{color:var(--muted);}
-.menu-tabs{display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid var(--line);}
-.menu-tab{background:none;border:none;font-family:var(--sans);font-size:11px;letter-spacing:1px;color:var(--muted);padding:8px 12px;cursor:pointer;border-bottom:2px solid transparent;}
+/* Bandeau d'onglets : une seule ligne qui défile (jamais de débordement de la carte),
+   collé en haut de la carte pendant le défilement, bords estompés pour signaler la suite. */
+.menu-tabs{display:flex;flex-wrap:nowrap;gap:2px;margin:0 -26px 14px;padding:0 26px;border-bottom:1px solid var(--line);
+  overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;
+  position:sticky;top:-1px;z-index:5;background:var(--panel2);}
+.menu-tabs::-webkit-scrollbar{display:none;}
+.menu-tab{flex:none;white-space:nowrap;scroll-snap-align:center;background:none;border:none;font-family:var(--sans);font-size:13px;color:var(--muted);padding:11px 13px;cursor:pointer;border-bottom:2px solid transparent;}
 .menu-tab:hover{color:var(--text);}
 .menu-tab.active{color:var(--text);font-weight:500;border-bottom-color:var(--ink);}
 .menu-section{display:none;}
@@ -337,6 +342,16 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .start-btn{width:100%;padding:15px;background:var(--ink);border:none;color:var(--on-ink);font-family:var(--sans);font-size:15px;cursor:pointer;margin-top:20px;font-weight:600;border-radius:10px;}
 .start-btn:hover{opacity:.9;}
 #menu.hidden{display:none;}
+@media (max-width:720px){
+  #menu{padding:14px 10px; justify-content:flex-start; align-items:stretch;}
+  .menu-title{font-size:34px; text-align:center;}
+  .menu-sub{text-align:center; margin-bottom:16px; font-size:10px;}
+  .menu-card{max-width:none; padding:0 16px 18px; border-radius:14px;}
+  .menu-card .menu-tabs{margin:0 -16px 14px; padding:0 16px; border-radius:14px 14px 0 0;}
+  .menu-card .start-btn{position:sticky; bottom:10px; z-index:4; box-shadow:0 6px 18px rgba(0,0,0,.18);}
+  .menu-opt-row{flex-wrap:wrap; gap:8px;}
+  .tg{justify-content:flex-start;}
+}
 
 /* ── FIN DE PARTIE ── */
 #pauseMenu{position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.4);display:none;align-items:flex-end;justify-content:center;padding:0;}
@@ -548,8 +563,8 @@ body.mobile-layout #priceSparkline{display:none;}
       <div class="menu-opt-row" style="border-top:1px solid var(--line);margin-top:10px;padding-top:14px;border-bottom:none;">
         <span class="menu-opt-lbl">Mode Finance<div style="font-size:10px;color:var(--muted);">Emprunts, stockage, hedging, EOR, accidents</div></span>
         <div class="tg" id="financePicker">
-          <button data-val="0" class="sel">Géologie pure</button>
-          <button data-val="1">+ Finance</button>
+          <button data-val="0">Géologie pure</button>
+          <button data-val="1" class="sel">+ Finance</button>
         </div>
       </div>
     </div>
@@ -1850,12 +1865,24 @@ const STUDIES = {
     doProfile(profileBlocks, rng){
       const err = 220 * uncertaintyMult();
       let cost = 0;
-      profileBlocks.forEach(({b}) => {
+      // L'erreur de pointé suit un réflecteur continu (modèle de vitesse, interprétation) :
+      // elle varie lentement le long du profil au lieu d'être indépendante d'un bloc à
+      // l'autre. Avant, chaque bloc recevait une erreur de ±220 m tirée seule, ce qui
+      // donnait des zigzags et de fausses failles sur la coupe. Série AR(1) de
+      // corrélation 0,85, de même écart-type que l'ancien tirage uniforme.
+      const rho = 0.85, sd = err/Math.sqrt(3);
+      let prevE = gauss(rng);
+      const eSeries = profileBlocks.map((_, i) => {
+        if(i > 0) prevE = rho*prevE + Math.sqrt(1-rho*rho)*gauss(rng);
+        return clamp(prevE*sd, -err*1.2, err*1.2);
+      });
+      profileBlocks.forEach(({b}, idx) => {
+        const e = eSeries[idx];
         if(b.studies.some(s => s.type==='seismic2d')) return; // déjà couvert
         const mult = b.isOffshore ? this.offMult : 1;
         cost += this.cost * mult;
         const result = {
-          topReservoirEst: clamp(b.topOfReservoir + (rng()-.5)*2*err, 200, 6000),
+          topReservoirEst: clamp(b.topOfReservoir + e, 200, 6000),
           topErr: err,
           faultPresent: Math.abs(b.faultThrow) > 80 && rng() < .72,
           // Profondeur de tous les horizons majeurs (les couches visibles en sismique)
@@ -1863,7 +1890,7 @@ const STUDIES = {
             .filter(h => h.thicknessLocal > 20 && h.role !== 'overburden')
             .map(h => ({
               name: h.name, col: h.col, role: h.role,
-              topEst: clamp(h.top + (rng()-.5)*2*err*.7, 100, 7000),
+              topEst: clamp(h.top + e*.7 + (rng()-.5)*err*.15, 100, 7000),
               err,
             })),
         };
@@ -3958,11 +3985,29 @@ function renderSection(){
   // diagonale de contact, ce qui remplit la bande sans vide ni recouvrement.
   // A = bloc de gauche, B = bloc de droite (x, top, base en pixels). L'inclinaison
   // de la diagonale alterne selon la couche pour éviter un motif parallèle.
+  // Le contact suit une courbe en S (lissage de type smoothstep) et non une
+  // droite : les deux lithologies s'arrondissent l'une dans l'autre. Les points
+  // intermédiaires ne portent que le contact (drapeaux skipTop / skipBase) : le
+  // toit et le mur de la bande, partagés avec les couches voisines, gardent
+  // exactement les mêmes points qu'avant, donc pas de recouvrement ni de vide.
+  const N_TR = 4, smooth01 = t => t*t*(3-2*t), lerpv = (a,b,t) => a+(b-a)*t;
   const interTrans = (li, A, B) => {
     const upper = li%2===0;
-    return upper
-      ? { endA:{x:B.x, yTop:B.top,  yBase:B.top},  startB:{x:A.x, yTop:A.base, yBase:A.base} }
-      : { endA:{x:B.x, yTop:B.base, yBase:B.base}, startB:{x:A.x, yTop:A.top,  yBase:A.top } };
+    const endA = [], startB = [];
+    for(let k=0;k<=N_TR+1;k++){
+      const t = k/(N_TR+1), x = lerpv(A.x,B.x,t), e = smooth01(t);
+      const T = lerpv(A.top,B.top,t), Bs = lerpv(A.base,B.base,t);
+      const D = upper ? lerpv(A.base,B.top,e) : lerpv(A.top,B.base,e);
+      if(k===0){
+        startB.push(upper ? {x, yTop:A.base, yBase:A.base} : {x, yTop:A.top, yBase:A.top});
+      } else if(k<=N_TR){
+        endA.push(upper ? {x, yTop:T, yBase:D, skipTop:true} : {x, yTop:D, yBase:Bs, skipBase:true});
+        startB.push(upper ? {x, yTop:D, yBase:Bs, skipBase:true} : {x, yTop:T, yBase:D, skipTop:true});
+      } else {
+        endA.push(upper ? {x:B.x, yTop:B.top, yBase:B.top} : {x:B.x, yTop:B.base, yBase:B.base});
+      }
+    }
+    return { endA, startB };
   };
 
   let svg = `<rect width="${W}" height="${H}" fill="var(--sec-paper)"/>`;
@@ -4036,7 +4081,7 @@ function renderSection(){
           const nb = dispData[firstIdx-1], nl = nb.layers?.[li], f = pts[0];
           if(nb.layers && nl && nl.thickness > 1){
             // autre lithologie (changement de province) : biseau opposé
-            pts.unshift(interTrans(li, asBand(nb,nl), {x:f.x, top:f.yTop, base:f.yBase}).startB);
+            pts.unshift(...interTrans(li, asBand(nb,nl), {x:f.x, top:f.yTop, base:f.yBase}).startB);
           } else if(nb.layers && nl){
             // la couche s'amincit jusqu'à zéro chez le voisin : biseau terminal
             const y = yOf(clamp(nl.top, dMin, dMax));
@@ -4050,7 +4095,7 @@ function renderSection(){
         if(lastIdx < dispData.length-1){
           const nb = dispData[lastIdx+1], nl = nb.layers?.[li], l = pts[pts.length-1];
           if(nb.layers && nl && nl.thickness > 1){
-            pts.push(interTrans(li, {x:l.x, top:l.yTop, base:l.yBase}, asBand(nb,nl)).endA);
+            pts.push(...interTrans(li, {x:l.x, top:l.yTop, base:l.yBase}, asBand(nb,nl)).endA);
           } else if(nb.layers && nl){
             const y = yOf(clamp(nl.top, dMin, dMax));
             pts.push({x:xOf(nb.t), yTop:y, yBase:y});
@@ -4061,8 +4106,8 @@ function renderSection(){
         if(pts.length < 2){ group=[]; return; }
 
         // Tracé : toit et mur en courbes lisses (plis arrondis), failles en droites
-        const topC  = pts.map(p=>({x:p.x, y:p.yTop}));
-        const baseC = pts.map(p=>({x:p.x, y:p.yBase})).reverse();
+        const topC  = pts.filter(p=>!p.skipTop).map(p=>({x:p.x, y:p.yTop}));
+        const baseC = pts.filter(p=>!p.skipBase).map(p=>({x:p.x, y:p.yBase})).reverse();
         const f1 = v => v.toFixed(1);
         const dTop  = secSmoothPath(topC, faultPx);
         const dBase = secSmoothPath(baseC, faultPx);
@@ -4080,8 +4125,9 @@ function renderSection(){
           stroke="${strokeCol}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round" ${dash}/>`;
         // Retenir ce fragment pour la passe de labellisation dédupliquée,
         // au lieu de poser le texte immédiatement ici.
-        let best = pts[0];
-        pts.forEach(p=>{ if((p.yBase-p.yTop) > (best.yBase-best.yTop)) best = p; });
+        const full = pts.filter(p=>!p.skipTop && !p.skipBase);
+        let best = full[0] || pts[0];
+        full.forEach(p=>{ if((p.yBase-p.yTop) > (best.yBase-best.yTop)) best = p; });
         fragments.push({ name: refLayer.name || '', isKey, best, bandH: best.yBase-best.yTop });
         group = [];
       };
@@ -4944,7 +4990,7 @@ function renderGlossary(){
 // =====================================================================
 // MENU D'ACCUEIL
 // =====================================================================
-let menuConfig={mode:'junior', gridSize:12, offshore:true, basinType:'random', financeMode:false, uncertainty:'medium', seed:null};
+let menuConfig={mode:'junior', gridSize:12, offshore:true, basinType:'random', financeMode:true, uncertainty:'medium', seed:null};
 
 // ── Onglets du menu ──
 document.querySelectorAll('.menu-tab').forEach(tab=>{
@@ -4953,6 +4999,8 @@ document.querySelectorAll('.menu-tab').forEach(tab=>{
     document.querySelectorAll('.menu-section').forEach(s=>s.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('tab-'+tab.dataset.tab)?.classList.add('active');
+    // l'onglet choisi vient se centrer dans le bandeau qui défile
+    try { tab.scrollIntoView({inline:'center', block:'nearest', behavior:'smooth'}); } catch(e){}
   });
 });
 
@@ -5052,7 +5100,16 @@ document.getElementById('advResetBtn')?.addEventListener('click', ()=>{
 
 document.querySelectorAll('.mode-card[data-mode]').forEach(c=>c.addEventListener('click',()=>{
   document.querySelectorAll('.mode-card[data-mode]').forEach(x=>x.classList.remove('sel'));
+  const prevMode = menuConfig.mode;
   c.classList.add('sel'); menuConfig.mode=c.dataset.mode;
+  // Le mode Finance (emprunts, accidents, couverture) est actif par défaut, mais il n'a pas de sens
+  // en TP (objectif géologique) ni en bac à sable : on le coupe en y entrant et on le rétablit en en sortant.
+  // Le choix manuel du joueur n'est touché que lors de ces passages.
+  const noFin = m => m==='tp' || m==='sandbox';
+  if(noFin(c.dataset.mode) !== noFin(prevMode)){
+    menuConfig.financeMode = !noFin(c.dataset.mode);
+    document.querySelectorAll('#financePicker button').forEach(b=>b.classList.toggle('sel', (b.dataset.val==='1')===menuConfig.financeMode));
+  }
   // Certains modes suggèrent une taille de carte adaptée (ex : Grande
   // Exploration → 30×30) : on la présélectionne, mais le joueur reste libre
   // de la changer ensuite dans l'onglet Monde.
