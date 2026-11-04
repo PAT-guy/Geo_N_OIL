@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.18</title>
+<title>GeoExplorer V4.19</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -5032,8 +5032,16 @@ function guideCompute(){
   }
   if(drillable.length && drillable[0].estimate.prob >= 0.30){
     const b = drillable[0];
+    // Coût du forage le moins cher possible pour ce bloc (matériel qui atteint la profondeur estimée) :
+    // le guide ne doit pas proposer un forage que le joueur n'a pas les moyens de lancer.
+    const depth = drillDepthEstimate(b);
+    const costs = Object.values(EQUIPMENT).filter(e=>depth<=e.maxDepth).map(e=>depth*e.costM*METHODS.vertical.costMult*(b.isOffshore?2.8:1));
+    const cheapest = costs.length ? Math.min(...costs) : null;
+    const canDrill = G.mode==='sandbox' || (cheapest!==null && G.budget>=cheapest);
+    const why = cheapest===null ? `Aucun matériel n'atteint la profondeur estimée (${Math.round(depth)} m).`
+      : `Budget insuffisant : forage estimé à ${formatM(cheapest)}, disponible ${formatM(G.budget)}.${G.financeMode?' Un emprunt (onglet Finance) peut combler l\'écart.':''}`;
     return {cur:4, text:`Bloc (${b.x}, ${b.y}) : probabilité estimée ${Math.round(b.estimate.prob*100)} %. Forer est le seul moyen de savoir : le puits sera productif ou sec.`,
-            act:{label:`Forer le bloc (${b.x}, ${b.y})`, call:`guideDo('drill',${b.id})`, ok:true}};
+            act:{label:`Forer le bloc (${b.x}, ${b.y})`, call:`guideDo('drill',${b.id})`, ok:canDrill, why}};
   }
   const best = drillable[0] ? `meilleure estimation ${Math.round(drillable[0].estimate.prob*100)} %` : 'aucun bloc étudié en 3D';
   return {cur:1, text:`Les blocs étudiés sont peu prometteurs (${best}). Cherchez ailleurs avec une nouvelle coupe.`,
