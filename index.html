@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.20</title>
+<title>GeoExplorer V4.21</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -3939,7 +3939,13 @@ function wellLogHtml(b){
     if(i>0 && porous && (2.71-g.rho[i])/1.71 - g.nphi[i] > 0.07 && xn > xd) s += `<rect x="${xd.toFixed(1)}" y="${ys(g.z[i]).toFixed(1)}" width="${(xn-xd).toFixed(1)}" height="${(dz+0.3).toFixed(1)}" fill="#f2c200" opacity="0.65"/>`;
   }
   // courbes
-  s += `<polyline fill="none" stroke="#2e8b57" stroke-width="0.9" points="${pts(g.gr, v=>lin(v,0,150,0))}"/>`;
+  // GR : au-delà de 150 API la courbe se replie à gauche, en pointillé (convention des logs). Avant, elle restait
+  // collée au bord droit de la piste, ce qui ressemblait à une saturation ou à une erreur (sel potassique : ~230 API).
+  { let run = null; const runs = [];
+    g.gr.forEach((v,i)=>{ const w = v>150, x = lin(w ? ((v-150)%150) : v, 0, 150, 0), y = ys(g.z[i]);
+      if(!run || run.w!==w){ run = {w, p:[]}; runs.push(run); }
+      run.p.push(`${x.toFixed(1)},${y.toFixed(1)}`); });
+    runs.forEach(r=>{ if(r.p.length>1) s += `<polyline fill="none" stroke="#2e8b57" stroke-width="0.9"${r.w?' stroke-dasharray="2,1.5"':''} points="${r.p.join(' ')}"/>`; }); }
   s += `<polyline fill="none" stroke="#2c6fbb" stroke-width="0.8" stroke-dasharray="2,1.5" points="${pts(g.rxo, v=>lg(v,0.2,2000,1))}"/>`;
   s += `<polyline fill="none" stroke="#c0392b" stroke-width="0.9" points="${pts(g.rt, v=>lg(v,0.2,2000,1))}"/>`;
   s += `<polyline fill="none" stroke="#c0392b" stroke-width="0.9" points="${pts(g.rho, v=>lin(v,1.95,2.95,2))}"/>`;
@@ -3947,6 +3953,7 @@ function wellLogHtml(b){
   s += `<polyline fill="none" stroke="#8e44ad" stroke-width="0.9" points="${pts(g.dt, v=>lin(v,140,40,3))}"/>`;
   s += `</svg>`;
   const legend = `<div class="wl-note"><span style="color:#2e8b57;">━ GR</span> · <span style="color:#c0392b;">━ résistivité profonde</span> · <span style="color:#2c6fbb;">┅ résistivité peu profonde</span> · <span style="color:#c0392b;">━ densité</span> · <span style="color:#2c6fbb;">┅ neutron</span> · <span style="color:#8e44ad;">━ sonique</span> · <span style="color:#d4a800;">▮ croisement densité-neutron</span></div>
+    ${g.gr.some(v=>v>150)?'<div class="wl-note">GR supérieur à 150 API : la courbe se replie à gauche, en pointillé. C\'est le cas du sel potassique, riche en potassium 40, le seul sel radioactif ; le sel gemme (halite) a au contraire un GR très bas.</div>':''}
     <div class="wl-note">Colonne de gauche : couches traversées (survol pour le nom). À vous d'interpréter : lithologie, porosité, nature du fluide.</div>`;
   const hasRes = g.firstRes >= 0;
   const bar = `<div style="margin:0 0 6px;display:flex;gap:6px;flex-wrap:wrap;">${hasRes?`<button class="study-btn study-btn-compact" onclick="wlToggleZoom()">${wlZoom?'↕ Colonne entière':'🔍 Zoom sur le réservoir'}</button>`:''}<button class="study-btn study-btn-compact" data-bv-open onclick="openBigView('log',${b.id})">⤢ Plein écran</button></div>`;
