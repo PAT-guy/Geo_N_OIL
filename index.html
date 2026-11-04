@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.21</title>
-<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<title>GeoExplorer V4.22</title>
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
 :root{
@@ -70,6 +71,9 @@ header{
   flex-shrink:0; flex-wrap:wrap;
   position:sticky; top:0; z-index:950; /* reste toujours au-dessus des volets plein écran mobile (z-index:850) */
 }
+.brand{display:flex; align-items:center; gap:11px;}
+.logo-mark{flex:none; display:block;}
+.menu-logo{margin:0 auto 10px;}
 .brand-name{font-family:var(--serif); font-size:22px; font-weight:600; color:var(--amber); letter-spacing:-.01em; line-height:1.1;}
 .brand-sub{font-size:11px; color:var(--muted); margin-top:3px; max-width:170px; line-height:1.3;}
 .hud{display:flex; gap:22px; align-items:center; flex-wrap:wrap; flex:1;}
@@ -306,7 +310,11 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .log-entry .le-date{color:var(--muted); font-size:10px;}
 
 /* ── MENU ── */
-#menu{position:fixed;inset:0;z-index:999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;overflow-y:auto;}
+#menu{position:fixed;inset:0;z-index:999;background:var(--bg);display:flex;flex-direction:column;align-items:center;padding:20px;overflow-y:auto;}
+/* Centrage vertical « sûr » : si le contenu dépasse la fenêtre, il part du haut et défile, au lieu de
+   rogner le haut (le logo) sans possibilité d'y remonter. */
+#menu > :first-child{margin-top:auto;}
+#menu > :last-child{margin-bottom:auto;}
 .menu-title{font-family:var(--serif);font-weight:600;font-size:clamp(30px,5vw,48px);color:var(--amber);letter-spacing:-.01em;margin-bottom:4px;}
 .menu-sub{font-size:11px;color:var(--muted);letter-spacing:.12em;margin-bottom:28px;}
 .menu-card{background:var(--panel2);border:1px solid var(--line);padding:26px;width:100%;max-width:520px;border-radius:14px;}
@@ -522,6 +530,7 @@ body.mobile-layout #mobileScreenBar{
 #btnSpeedCycle{display:none; min-width:46px; justify-content:center; font-family:var(--mono);}
 body.mobile-layout header{display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:8px 14px;}
 body.mobile-layout .brand{order:1;}
+body.mobile-layout .brand .logo-mark{width:30px;height:30px;}
 body.mobile-layout .brand-sub{display:none;}
 body.mobile-layout .brand-name{font-size:18px;}
 body.mobile-layout .hud{display:contents;}
@@ -597,8 +606,9 @@ body.mobile-layout #priceSparkline{display:none;}
 </div>
 
 <div id="menu">
+  <svg class="logo-mark menu-logo" width="96" height="96" role="img" aria-label="GeoExplorer"><use href="#logo-mark"/></svg>
   <div class="menu-title">GeoExplorer</div>
-  <div class="menu-sub"><span class="i18n" data-fr="SIMULATEUR D'EXPLORATION PÉTROLIÈRE" data-en="OIL EXPLORATION SIMULATOR">SIMULATEUR D'EXPLORATION PÉTROLIÈRE</span></div>
+  <div class="menu-sub"><span class="i18n" data-fr="LIRE LE SOUS-SOL AVANT DE FORER" data-en="READ THE GROUND BEFORE YOU DRILL">LIRE LE SOUS-SOL AVANT DE FORER</span></div>
   <div class="menu-card">
     <div class="menu-tabs">
       <button class="menu-tab active" data-tab="mode"><span class="i18n" data-fr="Mode" data-en="Mode">Mode</span></button>
@@ -827,7 +837,22 @@ body.mobile-layout #priceSparkline{display:none;}
   <div class="bv-cap" id="bvCap"></div>
 </div>
 
-<svg id="figDefs" width="0" height="0" style="position:absolute;left:-9999px;" aria-hidden="true"><defs></defs></svg>
+<svg id="figDefs" width="0" height="0" style="position:absolute;left:-9999px;" aria-hidden="true"><defs></defs>
+  <!-- Logo GeoExplorer : la couverture (encre) retient le réservoir (rouille) plié en anticlinal ; la goutte (or) est au sommet du pli ; le trait vertical est le forage. -->
+  <symbol id="logo-mark" viewBox="0 0 200 200">
+    <clipPath id="logoClip"><circle cx="100" cy="100" r="89"/></clipPath>
+    <circle cx="100" cy="100" r="89" fill="var(--panel)"/>
+    <g clip-path="url(#logoClip)">
+      <path d="M-4,146 Q100,96 204,146 L204,210 L-4,210Z" fill="#dcc79e"/>
+      <path d="M-4,121 Q100,71 204,121 L204,146 Q100,96 -4,146Z" fill="var(--amber)"/>
+      <path d="M-4,93 Q100,43 204,93 L204,121 Q100,71 -4,121Z" fill="var(--ink)"/>
+      <rect x="96.5" y="8" width="7" height="62" fill="var(--ink)"/>
+      <rect x="97.5" y="68" width="5" height="22" fill="var(--panel)"/>
+      <path d="M100,86 C100,86 88,99 88,106 a12,12 0 0 0 24,0 C112,99 100,86 100,86Z" fill="#f0b800"/>
+    </g>
+    <circle cx="100" cy="100" r="94" fill="none" stroke="var(--ink)" stroke-width="10"/>
+  </symbol>
+</svg>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="confirmModal" role="alertdialog" aria-labelledby="confirmTitle">
   <div id="confirmBox">
@@ -958,8 +983,11 @@ body.mobile-layout #priceSparkline{display:none;}
 <!-- HEADER -->
 <header>
   <div class="brand">
-    <div class="brand-name">GeoExplorer</div>
-    <div class="brand-sub" id="brandSub"></div>
+    <svg class="logo-mark" width="38" height="38" role="img" aria-label="GeoExplorer"><use href="#logo-mark"/></svg>
+    <div>
+      <div class="brand-name">GeoExplorer</div>
+      <div class="brand-sub" id="brandSub"></div>
+    </div>
   </div>
   <div class="sep"></div>
   <div class="hud">
