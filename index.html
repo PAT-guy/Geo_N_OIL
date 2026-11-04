@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.15</title>
+<title>GeoExplorer V4.16</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -329,6 +329,23 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .menu-tab:hover{color:var(--text);}
 .menu-tab.active{color:var(--text);font-weight:500;border-bottom-color:var(--ink);}
 .menu-section{display:none;}
+/* Accueil simple : un niveau, un bassin, un bouton. Le reste (carte, seed, difficulté, affichage,
+   mini-jeux) est derrière « Personnaliser ». */
+#menu.simple .menu-tabs{display:none;}
+#menuBackRow{display:none;padding:6px 0 0;}
+#menu:not(.simple) #menuBackRow{display:block;}
+.q-lbl{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:16px 0 8px;}
+.q-lbl:first-child{margin-top:4px;}
+.q-modes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.q-mode{display:flex;flex-direction:column;gap:4px;text-align:left;padding:12px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:10px;cursor:pointer;font-family:var(--sans);}
+.q-mode b{font-size:14px;}
+.q-mode span{font-size:11.5px;color:var(--muted);line-height:1.4;}
+.q-mode i{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--amber);margin-top:auto;}
+.q-mode.sel{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink);background:var(--panel2);}
+#quickBasin{width:100%;font-size:14px;padding:10px;}
+.q-brief{font-size:11.5px;color:var(--muted);line-height:1.55;margin:8px 0 0;}
+.q-sum{font-family:var(--mono);font-size:11.5px;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin:12px 0 4px;line-height:1.5;}
+@media (max-width:720px){ .q-modes{grid-template-columns:1fr;} .q-mode{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:2px 10px;} .q-mode span{flex-basis:100%;} .q-mode i{margin-top:0;} }
 .menu-section.active{display:block;}
 .adv-group{margin-bottom:16px;}
 .adv-group-title{font-size:11px;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--line);}
@@ -569,6 +586,22 @@ body.mobile-layout #priceSparkline{display:none;}
       <button class="menu-tab" data-tab="display">Affichage</button>
       <button class="menu-tab" data-tab="advanced">Avancé</button>
       <button class="menu-tab" data-tab="minigames">Mini-jeux</button>
+    </div>
+
+    <div id="menuBackRow"><button type="button" class="est-clear" id="menuSimpleBtn">← <span class="i18n" data-fr="Accueil simple" data-en="Simple home">Accueil simple</span></button></div>
+
+    <div class="menu-section" id="tab-quick">
+      <div class="q-lbl"><span class="i18n" data-fr="Votre niveau" data-en="Your level">Votre niveau</span></div>
+      <div class="q-modes" id="quickModes">
+        <button type="button" class="q-mode" data-mode="junior"><b>🟡 Junior</b><span class="i18n" data-fr="Budget confortable. Pour découvrir le jeu." data-en="Comfortable budget. To discover the game.">Budget confortable. Pour découvrir le jeu.</span><i>15 M$ · 25 ans</i></button>
+        <button type="button" class="q-mode" data-mode="expert"><b>🔴 Senior</b><span class="i18n" data-fr="Budget serré, marché volatile. Chaque forage compte." data-en="Tight budget, volatile market. Every well counts.">Budget serré, marché volatile. Chaque forage compte.</span><i>8 M$ · 20 ans</i></button>
+        <button type="button" class="q-mode" data-mode="tp"><b>🎓 TP</b><span class="i18n" data-fr="Objectif géologique : choisir et justifier 2 cibles." data-en="Geological goal: choose and justify 2 targets.">Objectif géologique : choisir et justifier 2 cibles.</span><i>20 M$ · seed partageable</i></button>
+      </div>
+      <div class="q-lbl"><span class="i18n" data-fr="Bassin" data-en="Basin">Bassin</span></div>
+      <select id="quickBasin" class="drill-select" aria-label="Bassin géologique"></select>
+      <div class="q-brief" id="quickBrief"></div>
+      <div class="q-sum" id="quickSummary"></div>
+      <button type="button" class="est-clear" id="menuCustomBtn">⚙ <span class="i18n" data-fr="Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)" data-en="Customize (map, seed, difficulty, display, mini-games)">Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)</span></button>
     </div>
 
     <div class="menu-section active" id="tab-mode">
@@ -5428,6 +5461,34 @@ document.querySelectorAll('.menu-tab').forEach(tab=>{
     try { tab.scrollIntoView({inline:'center', block:'nearest', behavior:'smooth'}); } catch(e){}
   });
 });
+
+// ── Accueil simple / personnalisé ──
+const QUICK_BASINS = [['random','🎲 Aléatoire (libre)'],['paris','Parisien · débutant'],['rift','Rift · intermédiaire'],['passive','Marge passive · intermédiaire'],['foreland','Avant-pays · intermédiaire'],['aquitaine','Aquitaine · intermédiaire'],['north_sea','Mer du Nord · avancé'],['gulf_coast','Gulf Coast · avancé']];
+(function initQuickHome(){
+  const sel = document.getElementById('quickBasin'); if(!sel) return;
+  sel.innerHTML = QUICK_BASINS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  sel.addEventListener('change', ()=>{ document.querySelector(`#basinPicker button[data-val="${sel.value}"]`)?.click(); quickRefresh(); });
+  document.querySelectorAll('#quickModes .q-mode').forEach(b=>b.addEventListener('click', ()=>{ document.querySelector(`.mode-card[data-mode="${b.dataset.mode}"]`)?.click(); quickRefresh(); }));
+  document.getElementById('menuCustomBtn').addEventListener('click', ()=>setMenuSimple(false));
+  document.getElementById('menuSimpleBtn').addEventListener('click', ()=>setMenuSimple(true));
+})();
+function quickRefresh(){
+  document.querySelectorAll('#quickModes .q-mode').forEach(b=>b.classList.toggle('sel', b.dataset.mode===menuConfig.mode));
+  const sel = document.getElementById('quickBasin'); if(sel) sel.value = menuConfig.basinType;
+  const br = document.getElementById('quickBrief'); if(br) br.textContent = BASIN_BRIEFS[menuConfig.basinType] || '';
+  const seed = document.getElementById('geoSeed')?.value.trim();
+  const sm = document.getElementById('quickSummary');
+  if(sm) sm.textContent = `${MODE_NAMES[menuConfig.mode]||menuConfig.mode} · ${BASIN_NAMES[menuConfig.basinType]||menuConfig.basinType} · ${menuConfig.financeMode?'Finance':'Géologie pure'} · ${menuConfig.gridSize}×${menuConfig.gridSize}${seed?' · seed '+seed:''}`;
+}
+function setMenuSimple(on){
+  const menu = document.getElementById('menu'); if(!menu) return;
+  menu.classList.toggle('simple', on);
+  document.querySelectorAll('.menu-section').forEach(x=>x.classList.remove('active'));
+  if(on){ document.getElementById('tab-quick').classList.add('active'); quickRefresh(); }
+  else { const t = document.querySelector('.menu-tab.active') || document.querySelector('.menu-tab'); document.getElementById('tab-'+t.dataset.tab)?.classList.add('active'); }
+  try { localStorage.setItem('geoexplorer_menu', on ? 'simple' : 'full'); } catch(e){}
+}
+(function(){ let m = 'simple'; try { m = localStorage.getItem('geoexplorer_menu') || 'simple'; } catch(e){} setMenuSimple(m!=='full'); })();
 
 // ── Paramètres avancés ── réglages fins du moteur géologique et des coûts,
 // dans l'esprit de l'onglet Avancé d'Oil Co. Les valeurs par défaut (mult:1,
