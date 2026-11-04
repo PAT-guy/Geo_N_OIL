@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.5</title>
+<title>GeoExplorer V4.6</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -3420,6 +3420,30 @@ function selectBlockFromSection(id){
   renderStudiesPanel(selectedBlock!==null ? b : null);
 }
 
+// Courbe lisse (Catmull-Rom converti en Bézier) à travers des points {x,y}.
+// Renvoie les commandes SVG qui suivent un 'M x0,y0' déjà posé. Deux garde-fous :
+// - les points de contrôle sont bornés verticalement entre les deux
+//   extrémités du segment, ce qui évite qu'une courbe déborde et croise la
+//   couche voisine (pas de dépassement) ;
+// - un saut vertical supérieur à `faultPx` entre deux points voisins est une
+//   faille, pas un pli : le segment reste droit et les tangentes s'y arrêtent.
+function secSmoothPath(pts, faultPx){
+  const n = pts.length; let d = '';
+  const f = v => v.toFixed(1);
+  const isFault = (a,b) => Math.abs(b.y-a.y) > faultPx;
+  for(let i=0;i<n-1;i++){
+    const p0 = pts[i], p1 = pts[i+1];
+    if(isFault(p0,p1)){ d += ` L${f(p1.x)},${f(p1.y)}`; continue; }
+    const pm = (i>0   && !isFault(pts[i-1],p0)) ? pts[i-1] : p0;
+    const pn = (i+2<n && !isFault(p1,pts[i+2])) ? pts[i+2] : p1;
+    const lo = Math.min(p0.y,p1.y), hi = Math.max(p0.y,p1.y);
+    const c1 = { x: p0.x + (p1.x-pm.x)/6, y: clamp(p0.y + (p1.y-pm.y)/6, lo, hi) };
+    const c2 = { x: p1.x - (pn.x-p0.x)/6, y: clamp(p1.y - (pn.y-p0.y)/6, lo, hi) };
+    d += ` C${f(c1.x)},${f(c1.y)} ${f(c2.x)},${f(c2.y)} ${f(p1.x)},${f(p1.y)}`;
+  }
+  return d;
+}
+
 function renderSection(){
   const svgEl    = document.getElementById('sectionSvg');
   const hint     = document.getElementById('sectionHint');
@@ -3494,13 +3518,49 @@ function renderSection(){
   const yOf = d => MARG.t + clamp((d-dMin)/(dMax-dMin), 0, 1)*PH;
   const xOf = t => MARG.l + t*PW;
 
-  // Un même passage entre deux blocs voisins doit tomber au même x qu'on le
-  // calcule depuis la couche de gauche ou celle de droite (les deux flush()
-  // sont indépendants) : fonction pure du couple de positions + de l'indice
-  // de couche, décalée légèrement par couche pour un effet d'escalier plutôt
-  // qu'une cassure alignée verticalement sur toutes les couches à la fois.
-  const boundaryFrac = li => Math.min(0.62, Math.max(0.38, 0.5 + (((li*37+11)%7)-3)*0.04));
-  const boundaryX = (tA, tB, li) => xOf(tA + (tB-tA)*boundaryFrac(li));
+  // Une faille se reconnaît à un saut de plus de 120 m entre deux blocs voisins
+  // (même seuil que le tracé des failles plus bas) ; en pixels pour le lissage.
+  const faultPx = 120/(dMax-dMin)*PH;
+
+  // Données d'AFFICHAGE : le générateur ajoute ~±30 m de bruit indépendant à
+  // chaque bloc, ce qui donnait des dents de scie sur toutes les couches. On
+  // lisse à l'affichage le décalage vertical de la colonne entière (c'est lui
+  // qui porte ce bruit), sur 5 blocs environ, sans toucher aux épaisseurs
+  // (les amincissements et biseaux restent intacts) et sans jamais lisser à
+  // travers une faille (saut > 120 m). Les failles, l'interprétation et les
+  // études continuent de lire les données brutes (blockData).
+  const dispData = blockData.map(bd => bd.layers ? { ...bd, layers: bd.layers.map(l=>({...l})) } : bd);
+  (function smoothColumnShift(){
+    const idxs = []; // blocs consécutifs avec données
+    dispData.forEach((bd,i)=>{ if(bd.layers && bd.layers[0]) idxs.push(i); });
+    if(idxs.length < 3) return;
+    let shift = idxs.map(i=>dispData[i].layers[0].top);
+    const orig = shift.slice();
+    const brk = (a,b) => (idxs[b]-idxs[a] !== 1) || Math.abs(orig[b]-orig[a]) > 120; // trou de données ou faille
+    for(let pass=0; pass<2; pass++){
+      shift = shift.map((v,k)=>{
+        const l = (k>0 && !brk(k-1,k)) ? shift[k-1] : v;
+        const r = (k<shift.length-1 && !brk(k,k+1)) ? shift[k+1] : v;
+        return (l + 2*v + r)/4;
+      });
+    }
+    idxs.forEach((i,k)=>{
+      const delta = shift[k] - orig[k];
+      dispData[i].layers.forEach(l=>{ l.top += delta; });
+    });
+  })();
+  // Transition entre deux lithologies voisines occupant la même position
+  // stratigraphique (changement de province) : un BISEAU, pas une coupure
+  // verticale. Les deux faciès s'amincissent en sens opposés le long d'une
+  // diagonale de contact, ce qui remplit la bande sans vide ni recouvrement.
+  // A = bloc de gauche, B = bloc de droite (x, top, base en pixels). L'inclinaison
+  // de la diagonale alterne selon la couche pour éviter un motif parallèle.
+  const interTrans = (li, A, B) => {
+    const upper = li%2===0;
+    return upper
+      ? { endA:{x:B.x, yTop:B.top,  yBase:B.top},  startB:{x:A.x, yTop:A.base, yBase:A.base} }
+      : { endA:{x:B.x, yTop:B.base, yBase:B.base}, startB:{x:A.x, yTop:A.top,  yBase:A.top } };
+  };
 
   let svg = `<rect width="${W}" height="${H}" fill="var(--sec-paper)"/>`;
 
@@ -3557,83 +3617,64 @@ function renderSection(){
       const flush = () => {
         if(group.length === 0) return;
         const refLayer = group[0].bd.layers[li];
-        let pts=[]; // {x, yTop, yBase} : un point par bloc du groupe
-
-        if(group.length === 1){
-          // Fragment isolé (un seul bloc dans cette lithologie précise, coincé
-          // entre deux voisins d'une autre province) : avant, ce cas était
-          // purement abandonné, ce qui créait un vide total sur la coupe,
-          // exactement le bug signalé. On dessine maintenant une bande fine
-          // qui s'étend à mi-chemin vers les blocs voisins, plutôt que rien.
-          const { bd, idx } = group[0];
+        const pts = []; // {x, yTop, yBase} : un point par bloc du groupe
+        group.forEach(({bd})=>{
           const ly = bd.layers[li];
-          if(!ly || ly.thickness < 2 || ly.top > dMax || ly.top + ly.thickness < dMin){ group=[]; return; }
-          const tHere = bd.t;
-          const tPrev = idx>0 ? blockData[idx-1].t : tHere - (blockData[idx+1] ? blockData[idx+1].t-tHere : 0.05);
-          const tNext = idx<blockData.length-1 ? blockData[idx+1].t : tHere + (tHere-tPrev);
-          const xLeft  = boundaryX(tPrev, tHere, li);
-          const xRight = boundaryX(tHere, tNext, li);
-          const yTop = yOf(ly.top), yBase = yOf(Math.min(ly.top+ly.thickness, dMax));
-          // Cassure nette : bande à pleine épaisseur, coupée à la verticale
-          // au passage vers le bloc voisin (au lieu de s'amincir en pointe).
-          pts = [{x:xLeft, yTop, yBase}, {x:xRight, yTop, yBase}];
-        } else {
-          group.forEach(({bd})=>{
-            const ly = bd.layers[li];
-            // Exclure les couches sans épaisseur réelle ou hors de la zone visible
-            if(!ly || ly.thickness < 2 || ly.top > dMax || ly.top + ly.thickness < dMin) return;
-            pts.push({
-              x: xOf(bd.t),
-              yTop: yOf(ly.top),
-              yBase: yOf(Math.min(ly.top+ly.thickness, dMax)),
-            });
-          });
-          // Cassure nette aux bords du groupe : quand le bloc voisin porte
-          // lui-même une bande pour cette couche (autre province, même
-          // rôle), on coupe à un x décalé (effet d'escalier) — les deux
-          // groupes visent le même point. Mais si le voisin n'a PAS de
-          // donnée pour cette couche précise (pincement complet, aucune
-          // bande ne prendra le relais), s'arrêter à mi-chemin laissait un
-          // vide jusqu'au bord : on étend alors la bande en pleine largeur
-          // jusqu'au voisin, comme un vrai amincissement jusqu'à zéro.
-          const hasLayerAt = i => {
-            const ly2 = blockData[i]?.layers?.[li];
-            return !!(ly2 && ly2.thickness>1 && ly2.top<=dMax && ly2.top+ly2.thickness>=dMin);
-          };
-          if(pts.length){
-            const firstIdx = group[0].idx, lastIdx = group[group.length-1].idx;
-            if(firstIdx > 0){
-              const tPrev = blockData[firstIdx-1].t;
-              const frac = hasLayerAt(firstIdx-1) ? boundaryFrac(li) : 0;
-              const xCut = xOf(tPrev + (group[0].bd.t-tPrev)*frac);
-              pts.unshift({x:xCut, yTop:pts[0].yTop, yBase:pts[0].yBase});
-            }
-            if(lastIdx < blockData.length-1){
-              const tNext = blockData[lastIdx+1].t;
-              const frac = hasLayerAt(lastIdx+1) ? boundaryFrac(li) : 1;
-              const last = pts[pts.length-1];
-              const xCut = xOf(group[group.length-1].bd.t + (tNext-group[group.length-1].bd.t)*frac);
-              pts.push({x:xCut, yTop:last.yTop, yBase:last.yBase});
-            }
+          // Exclure les couches sans épaisseur réelle ou hors de la zone visible
+          if(!ly || ly.thickness < 2 || ly.top > dMax || ly.top + ly.thickness < dMin) return;
+          pts.push({ x: xOf(bd.t), yTop: yOf(ly.top), yBase: yOf(Math.min(ly.top+ly.thickness, dMax)) });
+        });
+        if(!pts.length){ group=[]; return; }
+        const firstIdx = group[0].idx, lastIdx = group[group.length-1].idx;
+        const asBand = (b, ly) => ({ x:xOf(b.t), top:yOf(ly.top), base:yOf(Math.min(ly.top+ly.thickness, dMax)) });
+
+        // Bord gauche : trois cas selon ce que porte le bloc voisin à cette position.
+        if(firstIdx > 0){
+          const nb = dispData[firstIdx-1], nl = nb.layers?.[li], f = pts[0];
+          if(nb.layers && nl && nl.thickness > 1){
+            // autre lithologie (changement de province) : biseau opposé
+            pts.unshift(interTrans(li, asBand(nb,nl), {x:f.x, top:f.yTop, base:f.yBase}).startB);
+          } else if(nb.layers && nl){
+            // la couche s'amincit jusqu'à zéro chez le voisin : biseau terminal
+            const y = yOf(clamp(nl.top, dMin, dMax));
+            pts.unshift({x:xOf(nb.t), yTop:y, yBase:y});
+          } else {
+            // voisin sans donnée : la bande se prolonge à épaisseur constante
+            pts.unshift({x:xOf(nb.t), yTop:f.yTop, yBase:f.yBase});
+          }
+        }
+        // Bord droit : même logique en miroir.
+        if(lastIdx < dispData.length-1){
+          const nb = dispData[lastIdx+1], nl = nb.layers?.[li], l = pts[pts.length-1];
+          if(nb.layers && nl && nl.thickness > 1){
+            pts.push(interTrans(li, {x:l.x, top:l.yTop, base:l.yBase}, asBand(nb,nl)).endA);
+          } else if(nb.layers && nl){
+            const y = yOf(clamp(nl.top, dMin, dMax));
+            pts.push({x:xOf(nb.t), yTop:y, yBase:y});
+          } else {
+            pts.push({x:xOf(nb.t), yTop:l.yTop, yBase:l.yBase});
           }
         }
         if(pts.length < 2){ group=[]; return; }
-        const topPts  = pts.map(p=>`${p.x.toFixed(1)},${p.yTop.toFixed(1)}`);
-        const basePts = pts.map(p=>`${p.x.toFixed(1)},${p.yBase.toFixed(1)}`);
+
+        // Tracé : toit et mur en courbes lisses (plis arrondis), failles en droites
+        const topC  = pts.map(p=>({x:p.x, y:p.yTop}));
+        const baseC = pts.map(p=>({x:p.x, y:p.yBase})).reverse();
+        const f1 = v => v.toFixed(1);
+        const dTop  = secSmoothPath(topC, faultPx);
+        const dBase = secSmoothPath(baseC, faultPx);
+        const dPoly = `M${f1(topC[0].x)},${f1(topC[0].y)}${dTop} L${f1(baseC[0].x)},${f1(baseC[0].y)}${dBase} Z`;
         const avgConf = group.reduce((s,{bd})=>s+(bd.layers[li]?.confidence??0),0)/group.length;
         const opacity = 0.4 + avgConf*0.5; // plus opaque = plus certain
         const col = refLayer.col || '#555';
-        const poly = [...topPts, ...[...basePts].reverse()].join(' ');
-        svg += `<polygon points="${poly}" fill="${col}" fill-opacity="${opacity.toFixed(2)}" stroke="var(--sec-ink-edge)" stroke-width=".4" stroke-linejoin="round" class="sec-layer-poly" data-layer-name="${(refLayer.name||'').replace(/"/g,'&quot;')}" style="cursor:pointer;"/>`;
+        svg += `<path d="${dPoly}" fill="${col}" fill-opacity="${opacity.toFixed(2)}" stroke="var(--sec-ink-edge)" stroke-width=".4" stroke-linejoin="round" class="sec-layer-poly" data-layer-name="${(refLayer.name||'').replace(/"/g,'&quot;')}" style="cursor:pointer;"/>`;
         // Ligne de toit : plus marquée pour réservoir et roche-mère
         const isKey = refLayer.role==='reservoir' || refLayer.role==='source';
-        if(topPts.length>=2){
-          const strokeCol = avgConf >= 0.7 ? 'var(--sec-line-strong)' : 'var(--sec-line-soft)';
-          const sw = isKey ? (avgConf>=0.7?2:1.2) : (avgConf>=0.7?0.8:0.4);
-          const dash = avgConf < 0.5 ? 'stroke-dasharray="4,3"' : '';
-          svg += `<polyline points="${topPts.join(' ')}" fill="none"
-            stroke="${strokeCol}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round" ${dash}/>`;
-        }
+        const strokeCol = avgConf >= 0.7 ? 'var(--sec-line-strong)' : 'var(--sec-line-soft)';
+        const sw = isKey ? (avgConf>=0.7?2:1.2) : (avgConf>=0.7?0.8:0.4);
+        const dash = avgConf < 0.5 ? 'stroke-dasharray="4,3"' : '';
+        svg += `<path d="M${f1(topC[0].x)},${f1(topC[0].y)}${dTop}" fill="none"
+          stroke="${strokeCol}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round" ${dash}/>`;
         // Retenir ce fragment pour la passe de labellisation dédupliquée,
         // au lieu de poser le texte immédiatement ici.
         let best = pts[0];
@@ -3641,7 +3682,7 @@ function renderSection(){
         fragments.push({ name: refLayer.name || '', isKey, best, bandH: best.yBase-best.yTop });
         group = [];
       };
-      blockData.forEach((bd, idx)=>{
+      dispData.forEach((bd, idx)=>{
         const ly = bd.layers && bd.layers[li];
         if(ly && ly.thickness > 1){
           // Limite de province : la lithologie change entre le bloc
@@ -3764,7 +3805,7 @@ function renderSection(){
     }
 
     // ── Marqueurs de données par bloc ──
-    blockData.forEach(bd=>{
+    dispData.forEach(bd=>{
       if(!bd.layers) return;
       const resIdx = STRAT.findIndex(l=>l.role==='reservoir');
       const resLy  = bd.layers[resIdx];
