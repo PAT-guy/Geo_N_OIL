@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.12</title>
+<title>GeoExplorer V4.13</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -361,6 +361,12 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 @keyframes pauseSheetUp{from{transform:translateY(24px);opacity:.4;}to{transform:translateY(0);opacity:1;}}
 #drillRevealModal{position:fixed;inset:0;z-index:1300;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px;}
 #drillRevealModal.open{display:flex;}
+#alertModal{position:fixed;inset:0;z-index:1310;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px;}
+#alertModal.open{display:flex;}
+#alertBox{background:var(--panel);border:1px solid var(--line);padding:26px;max-width:420px;width:100%;text-align:center;border-radius:12px;}
+#alertIcon{font-size:38px;margin-bottom:8px;}
+#alertTitle{font-size:16px;font-weight:bold;letter-spacing:1px;margin-bottom:8px;color:var(--red);}
+#alertMsg{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:16px;}
 #drillRevealBox{background:var(--panel);border:1px solid var(--line);padding:28px;max-width:420px;width:100%;text-align:center;border-radius:12px;}
 #drillRevealIcon{font-size:42px;margin-bottom:10px;transition:transform .15s;}
 #drillRevealIcon.pulse{animation:drillPulse 0.6s ease-in-out infinite;}
@@ -426,7 +432,7 @@ body.mobile-layout #mapPanel.mscreen-active{
 }
 body.mobile-layout #rightPanel{display:none;}
 body.mobile-layout #rightPanel.mscreen-active{
-  display:flex; position:fixed; top:var(--header-h, 48px); left:0; right:0; bottom:0; z-index:850;
+  display:flex; position:fixed; top:calc(var(--header-h, 48px) + var(--guide-h, 0px)); left:0; right:0; bottom:0; z-index:850;
   width:100%; max-width:none; padding-bottom:52px; /* place pour la barre d'écrans */
 }
 body.mobile-layout main{grid-template-columns:1fr; padding-bottom:52px;}
@@ -614,6 +620,13 @@ body.mobile-layout #priceSparkline{display:none;}
           <button data-val="0">Non</button>
         </div>
       </div>
+      <div class="menu-opt-row">
+        <span class="menu-opt-lbl">Seed géologique<div style="font-size:10px;color:var(--muted);">Même seed = même carte pour tout un groupe</div></span>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="text" id="geoSeed" placeholder="ex: 42" style="background:var(--bg);border:1px solid var(--line);color:var(--text);font-family:var(--sans);font-size:11px;padding:5px 8px;width:80px;">
+          <button class="btn" id="randomSeedBtn" title="Générer un seed aléatoire">🎲</button>
+        </div>
+      </div>
     </div>
 
     <div class="menu-section" id="tab-studies">
@@ -623,13 +636,6 @@ body.mobile-layout #priceSparkline{display:none;}
           <button data-val="low">Faible</button>
           <button data-val="medium" class="sel">Réaliste</button>
           <button data-val="high">Élevée</button>
-        </div>
-      </div>
-      <div class="menu-opt-row">
-        <span class="menu-opt-lbl">Seed géologique<div style="font-size:10px;color:var(--muted);">Même seed = même carte pour tout un groupe</div></span>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <input type="text" id="geoSeed" placeholder="ex: 42" style="background:var(--bg);border:1px solid var(--line);color:var(--text);font-family:var(--sans);font-size:11px;padding:5px 8px;width:80px;">
-          <button class="btn" id="randomSeedBtn" title="Générer un seed aléatoire">🎲</button>
         </div>
       </div>
     </div>
@@ -711,6 +717,16 @@ body.mobile-layout #priceSparkline{display:none;}
     <div id="drillRevealSub"></div>
     <div id="drillRevealDetail"></div>
     <button class="cg-close" id="drillRevealCloseBtn" style="display:none;">✓ Continuer</button>
+  </div>
+</div>
+
+<!-- Alerte de jeu (accident) : le temps est arrêté jusqu'à ce que le joueur reprenne -->
+<div id="alertModal" role="alertdialog" aria-labelledby="alertTitle">
+  <div id="alertBox">
+    <div id="alertIcon">⚠</div>
+    <div id="alertTitle"></div>
+    <div id="alertMsg"></div>
+    <button class="cg-close" id="alertOkBtn">▶ Reprendre la partie</button>
   </div>
 </div>
 
@@ -1729,7 +1745,13 @@ function generateGeology(gridSize, basinType, offshore, seed){
       const saltFlank = (saltUplift>0 && !inSalt) ? .5 : 0;
       const trapFactor     = clamp(Math.max(anticlineTop, pinchTrap, saltFlank), .03, .97);
       const resFactor      = inSalt ? .01 : clamp(.2+resFaciesVal*.75, .05, .95);
-      const sealFactor     = clamp(.15+sealFaciesVal*.8, .08, .95);
+      // La lithologie de la couverture compte : sel et anhydrite scellent mieux qu'une argile, et
+      // une argile pure mieux qu'une siltite. Avant, le facteur ne dépendait que du faciès spatial.
+      const sealH = reservoirIdx>0 ? horizons.slice(0, reservoirIdx).reverse().find(h=>h.role==='seal') : null;
+      const sealLith = !sealH ? 1
+        : /anhydrit|gypse|halite|évaporit|\bsel\b/i.test(`${sealH.name} ${sealH.lith||''}`) ? 1.18
+        : clamp(1 + ((sealH.vshale ?? 77) - 77)/35*0.35, 0.78, 1.15);
+      const sealFactor     = clamp((.15+sealFaciesVal*.8)*sealLith, .08, .95);
       // Force de génération locale : quantité d'HC que CE point produirait s'il
       // était lui-même une kitchen (richesse en matière organique × maturité).
       // Ce n'est pas encore la charge du piège — voir la migration en 2e passe
@@ -1742,6 +1764,20 @@ function generateGeology(gridSize, basinType, offshore, seed){
       // la cimentation réduisent la porosité disponible en profondeur).
       const compactionFactor = Math.exp(-topOfReservoir/3500); // ≈0.76 à 1000m, ≈0.43 à 3000m, ≈0.24 à 5000m
       const trueQuality    = resThicknessLocal<5 ? 0 : clamp((resFaciesVal*80+10)*compactionFactor, 5, 95);
+      // Cohérence pétrophysique : la porosité et la perméabilité AFFICHÉES (diagraphies, carotte)
+      // découlent de la même compaction que la qualité de jeu. Avant, la porosité des logs était
+      // tirée au hasard par couche, sans lien avec la profondeur (r = 0,03) ni avec la perméabilité.
+      //  - réservoir principal : porosité (%) = 2 + 0,33 × qualité (qualité 5 à 95 -> 4 à 33 %) ;
+      //  - réservoir profond : porosité de couche × loi d'Athy à sa propre profondeur ;
+      //  - perméabilité : log10 k = 0,14 φ - 1,6 + dispersion propre à la couche (±0,6 décade).
+      horizons.forEach((h, hi) => {
+        if(h.role!=='reservoir') return;
+        const phi = hi===reservoirIdx ? clamp(2 + trueQuality*0.33, 2, 36)
+                                      : clamp(h.porosity*1.25*Math.exp(-h.top/3500), 2, 36);
+        const scatter = 0.4*(Math.log10(Math.max(1e-3, h.permeability)) - 0.5);
+        h.porosity = phi;
+        h.permeability = Math.pow(10, 0.14*phi - 1.6 + scatter);
+      });
 
       // Offshore
       const px = x-gridSize/2, py = y-gridSize/2;
@@ -2096,7 +2132,13 @@ const STUDIES = {
       // directement sur l'échantillon, contrairement à srcFactor qui inclut
       // déjà l'atténuation par distance à la kitchen la plus proche.
       const gs = b.genStrength ?? 0.1;
-      const toc = clamp(gs*4 + (rng()-.5)*0.4, 0.05, 6);
+      // Le TOC mesuré est celui de la roche-mère affichée dans les diagraphies (même couche), modulé
+      // par la richesse locale (±15 %) : avant, il était recalculé à part et contredisait le log.
+      const srcL = b.horizons.find(h=>h.role==='source');
+      const tocLayer = srcL && srcL.toc!=null ? parseFloat(srcL.toc) : null;
+      const richness = clamp((gs/Math.max(0.05, b.maturity||0.05) - 0.1)/0.85, 0, 1);
+      const toc = tocLayer!=null ? clamp(tocLayer*(0.85 + 0.3*richness)*(1 + (rng()-.5)*0.08), 0.05, 12)
+                                 : clamp(gs*4 + (rng()-.5)*0.4, 0.05, 6);
       const maturityTmax = {
         'Immature': 415 + rng()*15,
         'Fenêtre à huile': 435 + rng()*20,
@@ -2248,10 +2290,38 @@ function updateBlockEstimate(b){
 // FORAGE
 // =====================================================================
 // Production initiale d'un puits = qualité/100 × épaisseur utile × PROD_BASE × coefficient de
-// méthode. Valeurs relevées de 50 % après simulation de parties : à l'ancien
-// niveau (110 et 90), même un joueur parfaitement informé ne gagnait presque jamais.
-const PROD_BASE = 165;           // puits neuf (était 110)
-const PROD_BASE_SIDETRACK = 135; // side-track sur un 2e réservoir (était 90)
+// méthode. Avec le déclin hyperbolique (voir DECL ci-dessous), un puits produit environ trois
+// fois plus de barils sur sa vie qu'avec l'ancien déclin exponentiel à 35 %/an : le débit initial
+// a donc été ramené de 165 à 63, valeur retenue par simulation de parties (le joueur parfaitement
+// informé gagne environ une partie sur deux, le tireur au hasard presque jamais).
+const PROD_BASE = 63;            // puits neuf (était 165 avec l'ancien déclin)
+const PROD_BASE_SIDETRACK = 51;  // side-track sur un 2e réservoir (était 135)
+
+// Déclin de production : loi hyperbolique d'Arps, q(t) = q0 · (1 + b·Di·t)^(-1/b), t en mois.
+// Avant, le déclin était exponentiel à 3,5 %/mois, soit 35 %/an en continu : un profil de gaz de
+// schiste (60 à 70 % la première année), pas celui d'un gisement conventionnel (5 à 15 %/an). Ici
+// Di = 1,5 %/mois nominal et b = 0,5 donnent environ -16 % la 1re année, la moitié du débit initial
+// après 5 ans et le quart après 10 ans : une queue longue, comme sur un vrai gisement.
+const DECL = { Di: 0.015, b: 0.5 };
+const declineFactor = age => Math.pow(1 + DECL.b*DECL.Di*Math.max(0, age), -1/DECL.b);
+// Débit courant d'un puits = somme de ses venues (puits initial, puis side-tracks), chacune
+// avec sa propre courbe de déclin. `comps` est créé à la volée pour les anciennes sauvegardes.
+function wellRate(w){
+  if(!w.comps) w.comps = [{ q0: w.production, t0: w.monthsActive||0 }];
+  return w.comps.reduce((sum, c) => sum + c.q0*declineFactor((w.monthsActive||0) - c.t0), 0);
+}
+// Projection d'un puits neuf : cumul net sur `months` mois (arrêt si le net devient négatif) et
+// délai de remboursement du coût de forage. Mêmes coûts d'exploitation que wellEconomics().
+function projectWell(q0, price, offshore, gas, cost, months){
+  const fixed = offshore?30000:8000, varOp = (offshore?14:4)+6, pr = gas?price*.18:price;
+  let cum = 0, payback = null;
+  for(let m=0; m<(months||120); m++){
+    const q = q0*declineFactor(m), net = q*(pr-varOp) - fixed;
+    if(net<=0) break;
+    cum += net; if(payback===null && cum>=cost) payback = m+1;
+  }
+  return { payback, cum };
+}
 const EQUIPMENT = {
   leger:    {label:'Matériel léger',    costM:600, reliability:.78, maxDepth:2500},
   standard: {label:'Matériel standard', costM:900, reliability:.90, maxDepth:4200},
@@ -2343,7 +2413,7 @@ function resolveDrilling(d){
     const initProd = (b.trueQuality/100) * (res?.thicknessLocal||20) * PROD_BASE * me.prodMult;
     const well = {blockId:d.blockId, method:d.method, equip:d.equip, cost:d.cost,
                   studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month,
-                  production:initProd, monthsActive:0, status:'producing',
+                  production:initProd, comps:[{q0:initProd, t0:0}], monthsActive:0, status:'producing',
                   isGas:b.isGas, offshore:b.isOffshore, eorActive:false, eorMonthsLeft:0};
     G.wells.push(well);
     b.well = well;
@@ -2381,6 +2451,8 @@ function resolveSidetrack(d){
   const geoOk  = info && Math.random() < info.trueProbability2;
   if(info && w && geoOk && techOk){
     const addedProd = (info.trueQuality2/100) * (info.horizon.thicknessLocal||20) * PROD_BASE_SIDETRACK;
+    if(!w.comps) w.comps = [{ q0: w.production, t0: w.monthsActive||0 }];
+    w.comps.push({ q0: addedProd, t0: w.monthsActive||0 });
     w.production += addedProd;
     addLog(`✓ Side-track productif : bloc (${b.x},${b.y}), +${Math.round(addedProd)} ${w.isGas?'Mcf':'barils'}/mois depuis le 2e réservoir.`,'good');
   } else {
@@ -2434,14 +2506,14 @@ function getSecondReservoirInfo(b){
   // et couverture assurée par la roche-mère elle-même juste au-dessus (les
   // shales organiques sont de bonnes couvertures), approximée par une valeur
   // fixe plutôt que recalculée en détail.
-  const resFactor2  = clamp(.2 + (h2.porosity/40)*.75, .05, .95);
+  const resFactor2  = clamp(.2 + (h2.porosity/28)*.75, .05, .95);
   const sealFactor2 = 0.65;
   const combinedRisk2 = b.trapFactor * resFactor2 * sealFactor2 * b.srcFactor;
   const geomMean2   = Math.pow(combinedRisk2, 0.25);
   const bottleneck2 = Math.min(b.trapFactor, resFactor2, sealFactor2, b.srcFactor);
   const systemScore2 = geomMean2*0.4 + bottleneck2*0.6;
   const trueProbability2 = pCalibrate(clamp(0.03 + (1/(1+Math.exp(-6.5*(systemScore2-0.48))))*0.94, .02, .97));
-  const trueQuality2 = clamp((h2.porosity/35)*90+5, 5, 95);
+  const trueQuality2 = clamp((h2.porosity-2)/0.33, 5, 95);
   return { horizon:h2, trueProbability2, trueQuality2, depth:h2.top };
 }
 
@@ -2464,6 +2536,7 @@ function closeWell(blockId){
   renderBlock(b); updateHud();
   if(selectedBlock===blockId) renderStudiesPanel(b);
   if(G.financeMode) renderFinancePanel();
+  if(typeof renderGisementsPanel==='function') renderGisementsPanel();
 }
 
 function monthTick(){
@@ -2523,7 +2596,7 @@ function monthTick(){
       addLog(`⚠ Puits (${blocks[w.blockId].x},${blocks[w.blockId].y}) : les coûts d'exploitation dépassent maintenant les revenus (${formatM(econ.net)}/mois). Envisagez de le fermer depuis son panneau.`,'bad');
     }
 
-    w.production *= (1-.035);
+    w.production = wellRate(w);
     if(w.production<5){ w.status='depleted'; addLog(`Puits (${blocks[w.blockId].x},${blocks[w.blockId].y}) épuisé après ${w.monthsActive} mois.`); }
   });
 
@@ -2570,25 +2643,41 @@ function monthTick(){
   checkEndConditions();
 }
 
+let alertResumeSpeed = 1;
+function showGameAlert(icon, title, msg){
+  const bar = G.speed>0 ? G.speed : (G.speedBeforePause||1);
+  if(!document.getElementById('alertModal')?.classList.contains('open')) alertResumeSpeed = bar;
+  setSpeed(0);
+  const m = document.getElementById('alertModal'); if(!m) return;
+  document.getElementById('alertIcon').textContent = icon;
+  document.getElementById('alertTitle').textContent = title;
+  document.getElementById('alertMsg').innerHTML = msg;
+  m.classList.add('open');
+}
+document.getElementById('alertOkBtn')?.addEventListener('click', ()=>{
+  document.getElementById('alertModal').classList.remove('open');
+  setSpeed(alertResumeSpeed||1);
+});
+
 function triggerAccident(w, type){
   const b = blocks[w.blockId];
-  setSpeed(0); // pause automatique pour que le joueur lise
+  // Le jeu s'arrête et une fenêtre explique l'événement : le joueur reprend lui-même.
   if(type==='blowout'){
     const fine = 200000 + Math.random()*800000;
     G.budget -= fine;
     w.status = 'blowout';
     w.blowoutMonthsLeft = 2 + Math.floor(Math.random()*3);
     addLog(`💥 BLOWOUT : puits (${b.x},${b.y}) ! Fermeture ${w.blowoutMonthsLeft} mois. Amende env. : ${formatM(fine)}.`, 'bad');
-    setTimeout(()=>{ if(!G.paused) setSpeed(1); }, 3000);
+    showGameAlert('💥', 'ÉRUPTION INCONTRÔLÉE', `Puits (${b.x},${b.y}) : fermé ${w.blowoutMonthsLeft} mois, sans production. Amende : <b>${formatM(fine)}</b>. Les coûts fixes continuent.`);
   } else if(type==='greve'){
     G.strikeMonthsLeft = 2;
     addLog(`🪧 Grève : production arrêtée 2 mois. Les coûts fixes continuent.`, 'bad');
-    setTimeout(()=>{ if(!G.paused) setSpeed(1); }, 3000);
+    showGameAlert('🪧', 'GRÈVE', `La production de tous les puits est arrêtée pendant 2 mois. Les coûts fixes continuent d'être payés.`);
   } else {
     const fine = 50000 + Math.random()*200000;
     G.budget -= fine;
     addLog(`⚠ Incident environnemental : puits (${b.x},${b.y}). Amende : ${formatM(fine)}.`, 'bad');
-    setTimeout(()=>{ if(!G.paused) setSpeed(1); }, 3000);
+    showGameAlert('⚠', 'INCIDENT ENVIRONNEMENTAL', `Puits (${b.x},${b.y}) : fuite maîtrisée. Amende : <b>${formatM(fine)}</b>. La production n'est pas interrompue.`);
   }
 }
 
@@ -2667,13 +2756,17 @@ function renderGisementsPanel(){
   wells.slice().sort((a,z)=>(z.status==='producing')-(a.status==='producing')).forEach(w=>{
     const b = blocks[w.blockId];
     if(!b) return;
-    const label = statusLabel[w.status] || w.status;
-    const color = w.status==='producing' && w.isGas ? 'var(--blue)' : (statusColor[w.status]||'var(--muted)');
+    const econ0 = w.status==='producing' ? wellEconomics(w) : null;
+    const marginal = !!econ0 && econ0.net<0;
+    const label = marginal ? '▲ Marginal (net négatif)' : (statusLabel[w.status] || w.status);
+    const color = marginal ? 'var(--amber)' : (w.status==='producing' && w.isGas ? 'var(--blue)' : (statusColor[w.status]||'var(--muted)'));
     let body = '';
     if(w.status==='producing'){
-      const econ = wellEconomics(w);
-      body = `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;"><span style="color:var(--muted);">Production</span><span>${Math.round(w.production)} ${w.isGas?'Mcf':'barils'}/mois</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Net/mois</span><span style="color:${econ.net>=0?'var(--green)':'var(--red)'};">${formatM(econ.net)}</span></div>`;
+      const econ = econ0;
+      const peak = (w.comps||[{q0:w.production}]).reduce((sum,c)=>sum+c.q0,0);
+      body = `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;"><span style="color:var(--muted);">Production</span><span>${Math.round(w.production)} ${w.isGas?'Mcf':'barils'}/mois (${Math.round(w.production/peak*100)} % du débit initial)</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">Net/mois</span><span style="color:${econ.net>=0?'var(--green)':'var(--red)'};">${formatM(econ.net)}</span></div>
+        <div style="text-align:right;margin-top:6px;"><button class="cg-close" style="padding:2px 8px;" onclick="if(confirm('Fermer définitivement ce puits ?')) closeWell(${b.id})">🔧 Fermer</button></div>`;
     } else {
       body = `<div style="font-size:11px;color:var(--muted);">${w.monthsActive} mois en production avant arrêt.</div>`;
     }
@@ -2840,6 +2933,10 @@ function checkEndConditions(){
 
 function showEnd(reason){
   setSpeed(0);
+  // Une fenêtre de forage ou d'alerte encore ouverte ne doit pas rester par-dessus l'écran de fin.
+  drillRevealQueue.length = 0; drillRevealPlaying = false;
+  document.getElementById('drillRevealModal')?.classList.remove('open');
+  document.getElementById('alertModal')?.classList.remove('open');
   const icon  = {win:'🏆', bankrupt:'💀', time:'⏰', quit:'🚪'}[reason];
   const title = {win:'VICTOIRE', bankrupt:'FAILLITE', time:'FIN', quit:'PARTIE QUITTÉE : RÉCAP'}[reason];
   const color = {win:'var(--green)', bankrupt:'var(--red)', time:'var(--amber)', quit:'var(--muted)'}[reason];
@@ -3730,18 +3827,19 @@ function updateDrillSummary(blockId){
   // l'épaisseur nominale de la colonne de référence.
   const nomRes=STRAT.find(l=>l.role==='reservoir');
   const estProd=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult;
-  const fixOp=b.isOffshore?30000:8000;
-  const varOp=b.isOffshore?18:10;
-  const netMonth=estProd*G.price-fixOp-estProd*varOp;
-  const breakeven=netMonth>0?Math.ceil(cost/netMonth):null;
+  const proj=projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, G.mode==='sandbox'?0:cost, 120);
+  const netMonth=estProd*(b.estimate.isGas?G.price*.18:G.price)-(b.isOffshore?30000:8000)-estProd*((b.isOffshore?14:4)+6);
+  const breakeven=proj.payback;
   const beClass=breakeven===null?'ds-bad':breakeven<18?'ds-good':breakeven<36?'ds-warn':'ds-bad';
-  const beText=breakeven===null?'Déficitaire au cours actuel':`Rentabilisé en ~${breakeven} mois`;
+  const beText=breakeven===null?'Non rentabilisé en 10 ans au cours actuel, même si le puits produit':`Rentabilisé en ~${breakeven} mois si le puits produit (déclin inclus)`;
+  const evNet=probKnown?prob*eq.reliability*proj.cum-(G.mode==='sandbox'?0:cost):null;
 
   summary.innerHTML=`
     <div class="tr"><span class="tl">Coût forage estimé</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}${b.isOffshore?' (offshore)':''}</span></div>
     <div class="tr"><span class="tl">Probabilité de succès</span><span>${probKnown?`${(prob*100).toFixed(0)}% × ${(eq.reliability*100).toFixed(0)}% (fiabilité)`:'Inconnue : réalisez une sismique 3D pour l\'estimer'}</span></div>
     <div class="tr"><span class="tl">Production si succès</span><span>~${Math.round(estProd)} ${b.estimate.isGas?'Mcf':'barils'}/mois</span></div>
-    <div class="tr"><span class="tl">Profit mensuel net</span><span style="color:${netMonth>0?'var(--green)':'var(--red)'};">${formatM(netMonth)}/mois</span></div>
+    <div class="tr"><span class="tl">Profit mensuel net au départ</span><span style="color:${netMonth>0?'var(--green)':'var(--red)'};">${formatM(netMonth)}/mois</span></div>
+    ${evNet===null?'':`<div class="tr"><span class="tl">Gain net espéré sur 10 ans</span><span style="color:${evNet>0?'var(--green)':'var(--red)'};">${formatM(evNet)}</span></div>`}
     <div class="${beClass}" style="margin-top:4px;">${beText}${probKnown?'':' (projection à prendre avec prudence : la probabilité de succès n\'est pas encore estimée sur ce bloc)'}</div>
   `;
   if(drillBtn) drillBtn.disabled=!canAfford;
@@ -4576,7 +4674,7 @@ function updateHud(){
     // jauge vers l'objectif et libellé lisible sous le budget
     document.getElementById('hudGoalFill').style.width=pct+'%';
     const gt=document.getElementById('hudGoalTxt');
-    gt.style.display=''; gt.textContent='Objectif '+(m.winGoal/1e6).toFixed(0)+'\u00a0M$ · '+pct+'\u00a0%';
+    gt.style.display=''; gt.textContent=T('Objectif ','Goal ')+(m.winGoal/1e6).toFixed(0)+'\u00a0M$ · '+pct+'\u00a0%';
   } else {
     document.getElementById('hudGoalWrap').style.display='none';
     document.getElementById('hudGoalTxt').style.display='none';
@@ -4610,6 +4708,8 @@ function updateHud(){
 // coût, et dit toujours pourquoi une action est bloquée.
 // =====================================================================
 const GUIDE_STEPS = ['Cartographier','Tracer une coupe','Sismique 2D','Sismique 3D','Forer'];
+const GUIDE_STEPS_EN = ['Map','Draw a section','2D seismic','3D seismic','Drill'];
+const stepName = i => T(GUIDE_STEPS[i], GUIDE_STEPS_EN[i]);
 let guideHidden = false;
 try { guideHidden = localStorage.getItem('geoexplorer_guide') === '0'; } catch(e){}
 let _guideHtml = '';
@@ -4674,21 +4774,21 @@ function renderGuide(){
   bar.style.display='';
   let html;
   if(guideHidden){
-    html = `<button class="guide-hide" onclick="guideToggle()">Afficher le guide</button>`;
+    html = `<button class="guide-hide" onclick="guideToggle()">${T('Afficher le guide','Show guide')}</button>`;
     bar.className = 'collapsed';
   } else {
     bar.className = '';
     const steps = GUIDE_STEPS.map((n,i)=>{
       const st = i<g.cur ? 'done' : i===g.cur ? 'cur' : '';
-      return `<li class="${st}"><span class="gs-dot">${i<g.cur ? '<svg class="ico"><use href="#i-check"/></svg>' : i+1}</span>${n}</li>`;
+      return `<li class="${st}"><span class="gs-dot">${i<g.cur ? '<svg class="ico"><use href="#i-check"/></svg>' : i+1}</span>${stepName(i)}</li>`;
     }).join('');
     const bars = GUIDE_STEPS.map((_,i)=>`<i class="${i<=g.cur?'on':''}"></i>`).join('');
     const act = g.act ? `<button class="guide-act" onclick="${g.act.call}" ${g.act.ok?'':'disabled'}>${g.act.label}</button>` : '';
     const why = g.act && !g.act.ok && g.act.why ? `<div class="guide-why">${g.act.why}</div>` : '';
     html = `<ol class="guide-steps" aria-label="Étapes">${steps}</ol>
-      <div class="guide-mini"><span class="gm-bars">${bars}</span><span>Étape ${g.cur+1} sur 5 · ${GUIDE_STEPS[g.cur]}</span></div>
-      <div class="guide-text"><strong>Étape ${g.cur+1} :</strong> ${g.text}</div>${act}
-      <button class="guide-hide" onclick="guideToggle()">Masquer le guide</button>${why}`;
+      <div class="guide-mini"><span class="gm-bars">${bars}</span><span>${T('Étape','Step')} ${g.cur+1} ${T('sur','of')} 5 · ${stepName(g.cur)}</span></div>
+      <div class="guide-text"><strong>${T('Étape','Step')} ${g.cur+1} :</strong> ${g.text}</div>${act}
+      <button class="guide-hide" onclick="guideToggle()">${T('Masquer le guide','Hide guide')}</button>${why}`;
   }
   if(html !== _guideHtml){ bar.innerHTML = html; _guideHtml = html; }
   if(typeof updateGuideHeight==='function') updateGuideHeight();
@@ -4779,6 +4879,8 @@ function onBlockClick(id){
         G.sectionA=id; G.sectionB=null;
       } else {
         G.sectionB=id;
+        // Le profil est posé : l'outil revient à Sélection, sinon le clic suivant effaçait la coupe.
+        setTool('select');
         // Basculer sur l'écran coupe (carte -> volet, unifié en disposition mobile)
         showMobileScreen('section');
         renderSection();
@@ -4844,13 +4946,17 @@ document.querySelectorAll('.rtab').forEach(t=>t.addEventListener('click',()=>swi
 // =====================================================================
 // OUTILS CARTE
 // =====================================================================
+function updateToolLabel(){
+  const el = document.getElementById('toolLabel'); if(!el) return;
+  el.textContent = {
+    select:T('Mode : Sélection','Mode: Select'),
+    section:T('Mode : Coupe A→B : cliquez deux blocs','Mode: Section A→B: click two blocks'),
+    plan:T('Mode : Planifier forage','Mode: Plan a well'),
+  }[G.tool];
+}
 function setTool(name){
   G.tool=name;
-  document.getElementById('toolLabel').textContent={
-    select:'Mode : Sélection',
-    section:'Mode : Coupe A→B : cliquez deux blocs',
-    plan:'Mode : Planifier forage',
-  }[name];
+  updateToolLabel();
   ['toolSelect','toolSection','toolPlan'].forEach(id=>{
     document.getElementById(id).classList.toggle('active',
       id==='tool'+name.charAt(0).toUpperCase()+name.slice(1));
@@ -5310,6 +5416,33 @@ document.getElementById('phoneModePickerInGame')?.querySelectorAll('button').for
 // ── Langue ── traduction de l'interface de navigation (onglets, menus,
 // boutons principaux). Le contenu généré (journal, descriptions géologiques,
 // bilans) reste en français pour l'instant.
+// Libellés fixes du bandeau, de la barre d'outils et de la légende : traduits par dictionnaire sur
+// les nœuds texte (l'original est mémorisé pour pouvoir revenir au français).
+const EN_AUTO = {
+  'Date':'Date','Cash flow/mois':'Cash flow/month','Brut':'Crude','Puits':'Wells',
+  'Sélection':'Select','Coupe A→B':'Section A→B','Planifier un forage':'Plan a well','Forage':'Drill',
+  'Légende':'Legend','Relief structural · gravimétrie':'Structural relief · gravity','bas':'low','haut':'high',
+  'Terre en ocre, mer en bleu. Un haut structural piège plus souvent les hydrocarbures.':'Land in ochre, sea in blue. A structural high traps hydrocarbons more often.',
+  'Probabilité estimée · sismique 3D':'Estimated probability · 3D seismic',
+  "Le chiffre dans la case est l'estimation, en %. Il n'apparaît qu'après une sismique 3D.":'The number in the cell is the estimate, in %. It only appears after a 3D seismic survey.',
+  'Marqueurs':'Markers','Non exploré':'Unexplored','Bloc sélectionné':'Selected block','Extrémités de la coupe':'Section ends',
+  'Puits sec':'Dry hole','Puits productif':'Producing well','Terre':'Land','Mer':'Sea','Finance':'Finance','Journal':'Log','Études':'Studies','Gisements':'Fields',
+};
+const _txtOrig = new WeakMap();
+const T = (fr, en) => document.documentElement.lang==='en' ? en : fr;
+function applyAutoI18n(lang){
+  document.querySelectorAll('#mapLegend, #mapLegendMini, .hud, .hud-item, .map-toolbar, #mobileScreenBar, #tabFinanceBtn, #mobileFinanceBtn').forEach(root=>{
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let n;
+    while((n = w.nextNode())){
+      const raw = _txtOrig.has(n) ? _txtOrig.get(n) : n.nodeValue;
+      const key = raw.trim();
+      if(!key || !(key in EN_AUTO)) continue;
+      if(!_txtOrig.has(n)) _txtOrig.set(n, raw);
+      n.nodeValue = lang==='en' ? raw.replace(key, EN_AUTO[key]) : raw;
+    }
+  });
+}
 function applyLang(lang){
   document.documentElement.setAttribute('lang', lang);
   localStorage.setItem('geoexplorer_lang', lang);
@@ -5320,6 +5453,8 @@ function applyLang(lang){
   ['langPicker','langPickerInGame'].forEach(gid=>{
     document.getElementById(gid)?.querySelectorAll('button').forEach(b=>b.classList.toggle('sel', b.dataset.val===lang));
   });
+  applyAutoI18n(lang);
+  try { updateToolLabel(); _guideHtml=''; renderGuide(); if(G.month!==undefined) updateHud(); } catch(e){}
 }
 ['langPicker','langPickerInGame'].forEach(gid=>{
   document.getElementById(gid)?.querySelectorAll('button').forEach(btn=>{
