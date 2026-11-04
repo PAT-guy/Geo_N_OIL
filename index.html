@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.2</title>
+<title>GeoExplorer V4.3</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -356,7 +356,7 @@ body.mobile-layout #mobileScreenBar{
           </div>
           <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">Niveau 3 : avancé</div>
           <div class="tg">
-            <button data-val="north_sea" title="Offshore profond, failles normales, HP/HT : matériel et budget conséquents nécessaires">Mer du Nord</button>
+            <button data-val="north_sea" title="Sud de la mer du Nord : Rotliegend sous le sel du Zechstein, gaz, offshore profond : matériel et budget conséquents nécessaires">Mer du Nord</button>
             <button data-val="gulf_coast" title="Sel Louann, failles de croissance, subsidence continue (exhumation ×1) : le plus profond et le plus complexe">Gulf Coast</button>
           </div>
         </div>
@@ -740,7 +740,7 @@ const MODES = {
 // Briefs géologiques par bassin (mode TP / affichage menu)
 const BASIN_BRIEFS = {
   paris:     '📋 Bassin Parisien : anticlinaux peu profonds (600-1300m), exhumation post-hercynienne importante (×2.8), quasi pas d\'offshore. Roche-mère type Lias ou Trias. Bon cas pédagogique pour la paléo-maturation.',
-  north_sea: '📋 Mer du Nord : 90% offshore, failles normales majeures, réservoirs HP/HT (Brent, Chalk). Gradient géothermique élevé. Contexte Jurassique. Forage coûteux mais gisements importants.',
+  north_sea: '📋 Mer du Nord (sud) : système gazier classique. Grès éoliens du Rotliegend (Permien) scellés par le sel du Zechstein, charbons du Carbonifère comme roche-mère (gaz), halocinèse du sel, failles normales, 90% offshore. Gradient géothermique élevé. Forage coûteux mais gisements importants.',
   rift:      '📋 Bassin de rift : failles normales intenses, horsts et grabens, gradient thermique fort. Diversité structurale élevée. Bons réservoirs dans les flancs de horst.',
   passive:   '📋 Marge passive : séquences progradantes, coin sédimentaire, possibilité de sel (évaporites). Réservoirs turbiditiques ou carbonatés de plateforme.',
   foreland:  '📋 Bassin d\'avant-pays : plissement compressif, anticlinaux en chevrons, chevauchements. Structures souvent bien définies mais profondeur variable.',
@@ -789,6 +789,203 @@ const LITHO = {
     sandstone_tight:{name:'Grès compact',   lith:'Grès à ciment siliceux',role:'neutral',    col:'#A0784A', light:'#c09060'},
     basement:      {name:'Socle cristallin', lith:'Granite/Gneiss',       role:'basement',   col:'#2D1B00', light:'#4a3010'},
   }
+};
+
+
+// =====================================================================
+// COLONNES PAR BASSIN NOMMÉ (Paris, Mer du Nord, Aquitaine, Gulf Coast)
+// Chaque bassin réel a sa propre succession de rôles et ses propres
+// formations, au lieu de retomber sur la séquence générique 'random' avec
+// des lithologies tirées dans des listes communes. Les noms sont des
+// formations ou des ensembles réels, volontairement simplifiés : une
+// colonne de jeu garde UN réservoir principal et UNE roche-mère SOUS lui
+// (le moteur de charge suppose encore une kitchen plus profonde que le
+// piège). Une clé de la forme 'rôle#suffixe' (ex. 'neutral_top#2',
+// 'reservoir#deep') désigne une 2e couche du même rôle avec son propre
+// lot de lithologies. `mobileSalt` marque le sel capable de former des
+// diapirs. Les épaisseurs ('thick') sont calées sur la profondeur typique
+// du bassin pour que la pile au-dessus du réservoir reste cohérente.
+// =====================================================================
+const BASIN_COLUMNS = {
+  paris: {
+    sequence: ['overburden','neutral_top','seal','reservoir','neutral_mid','source','basement'],
+    deepResProb: 0.6, // grès du Trias sous le Lias : cas fréquent dans le Bassin parisien
+    thick: { overburden:[40,120], neutral_top:[80,220], seal:[50,120], reservoir:[20,100],
+             neutral_mid:[40,150], source:[30,70], 'reservoir#deep':[20,90] },
+    pools: {
+      overburden: [
+        {id:'par_quat', name:'Limons et alluvions quaternaires', lith:'Limons, sables et graviers de terrasse', col:'#8B7355', light:'#b09070'},
+        {id:'par_tert', name:'Calcaires et sables tertiaires',   lith:'Calcaire lutétien, sables de Fontainebleau', col:'#a89870', light:'#c8b890'},
+      ],
+      neutral_top: [
+        {id:'par_craie',  name:'Craie du Crétacé supérieur', lith:'Craie blanche à silex', col:'#E0DCC8', light:'#f0eedd'},
+        {id:'par_albien', name:'Argiles et sables du Crétacé inférieur', lith:'Argiles du Gault, sables verts albiens', col:'#5a6a4a', light:'#7a8a68'},
+      ],
+      seal: [
+        {id:'par_calloxf', name:'Argiles du Callovo-Oxfordien', lith:'Argilite compacte, très faible perméabilité', col:'#3a4a5a', light:'#5a6a7a'},
+        {id:'par_oxf',     name:'Marnes de l\'Oxfordien',       lith:'Marnes grises à ammonites', col:'#6a7a60', light:'#8a9a80'},
+      ],
+      reservoir: [
+        {id:'par_oolithe', name:'Oolithe blanche (Bathonien)', lith:'Grainstone oolitique, porosité interparticulaire', col:'#D4A853', light:'#e8c070'},
+        {id:'par_dolomie', name:'Dolomie du Dogger',           lith:'Dolomie cristalline, porosité intercristalline', col:'#B8904A', light:'#d0aa60'},
+        {id:'par_calc_frac', name:'Calcaire fracturé du Dogger', lith:'Calcaire micritique à fractures ouvertes', col:'#C0A060', light:'#daba70'},
+      ],
+      neutral_mid: [
+        {id:'par_bajocien', name:'Calcaires argileux du Bajocien', lith:'Wackestone à bioclastes, non réservoir', col:'#909060', light:'#b0b070'},
+        {id:'par_lias_marne', name:'Marnes du Lias', lith:'Marnes grises à faible porosité', col:'#787868', light:'#989880'},
+      ],
+      source: [
+        {id:'par_toarcien', name:'Schistes carton du Toarcien', lith:'Black shale marin, kérogène de type II', col:'#1a1a2e', light:'#2a2a4e'},
+        {id:'par_lias_org', name:'Marnes organiques du Lias',   lith:'Marne argileuse à kérogène de type II', col:'#2a3a20', light:'#3a4a30'},
+      ],
+      'reservoir#deep': [
+        {id:'par_trias_ss',  name:'Grès du Trias', lith:'Grès fluviatile du Trias supérieur', col:'#D0A868', light:'#e8c488'},
+        {id:'par_trias_ark', name:'Arkose du Trias', lith:'Grès feldspathique du Trias inférieur', col:'#B89058', light:'#d0a878'},
+      ],
+      basement: [
+        {id:'par_socle',  name:'Socle hercynien', lith:'Gneiss et schistes métamorphiques', col:'#332218', light:'#503828'},
+        {id:'par_granit', name:'Socle granitique hercynien', lith:'Granite, imperméable', col:'#2D1B00', light:'#4a3010'},
+      ],
+    },
+  },
+
+  // Sud de la mer du Nord : système gazier Rotliegend / Zechstein / Carbonifère.
+  // Source SOUS le réservoir et sel AU-DESSUS : colonne complète et classique.
+  north_sea: {
+    sequence: ['overburden','neutral_top','neutral_top#2','evaporite','reservoir','neutral_mid','source','basement'],
+    deepResProb: 0.25, // grès du Westphalien dans la série houillère
+    thick: { overburden:[300,900], neutral_top:[150,450], 'neutral_top#2':[100,300], evaporite:[150,450],
+             reservoir:[30,150], neutral_mid:[60,200], source:[40,150] },
+    pools: {
+      overburden: [
+        {id:'ns_cenozoic', name:'Sables et argiles cénozoïques', lith:'Séries deltaïques non consolidées', col:'#8B7355', light:'#b09070'},
+        {id:'ns_glacio',   name:'Argiles glacio-marines',        lith:'Argiles et sables glacio-marins', col:'#7a8290', light:'#9aa2b0'},
+      ],
+      neutral_top: [
+        {id:'ns_chalk',    name:'Craie du Crétacé supérieur', lith:'Craie blanche à silex', col:'#E0DCC8', light:'#f0eedd'},
+        {id:'ns_cret_marl',name:'Marnes du Crétacé inférieur', lith:'Marnes et calcaires argileux', col:'#C8C4A0', light:'#e0dcc0'},
+      ],
+      'neutral_top#2': [
+        {id:'ns_bunter',  name:'Grès rouges du Trias', lith:'Grès à ciment ferrugineux, litage oblique', col:'#A05030', light:'#c07040'},
+        {id:'ns_jur_mud', name:'Argilites du Jurassique', lith:'Argilites grises, faible perméabilité', col:'#4a5568', light:'#6a7590'},
+      ],
+      evaporite: [
+        {id:'ns_zech_halite', name:'Sel du Zechstein', lith:'Halite massive, intercalations d\'anhydrite', col:'#F0E8F8', light:'#f8f0ff', mobileSalt:true},
+        {id:'ns_zech_mix',    name:'Évaporites du Zechstein', lith:'Anhydrite, halite et dolomie alternées', col:'#E0C8E8', light:'#f0d8f8', mobileSalt:true},
+        {id:'ns_zech_potash', name:'Sels potassiques du Zechstein', lith:'Sylvite et carnallite', col:'#D8A8C8', light:'#f0c8e0', mobileSalt:true},
+      ],
+      reservoir: [
+        {id:'ns_rot_eol',  name:'Grès éoliens du Rotliegend', lith:'Grès éolien bien classé, dunes du Permien', col:'#C4863A', light:'#e0a04a'},
+        {id:'ns_rot_fluv', name:'Grès fluviatiles du Rotliegend', lith:'Grès fluvio-éolien à intercalations argileuses', col:'#B89058', light:'#d0a878'},
+      ],
+      neutral_mid: [
+        {id:'ns_carb_sup', name:'Grès et siltites du Carbonifère supérieur', lith:'Grès compact et siltites de plaine alluviale', col:'#A0784A', light:'#c09060'},
+        {id:'ns_stephanien', name:'Argilites rouges du Stéphanien', lith:'Argilites et siltites rouges', col:'#887050', light:'#a89060'},
+      ],
+      source: [
+        {id:'ns_coal',     name:'Charbons du Westphalien', lith:'Houille, kérogène de type III (gaz)', col:'#0d0d0d', light:'#2a2a2a'},
+        {id:'ns_namurien', name:'Schistes organiques du Namurien', lith:'Black shale marin, kérogène de type II/III', col:'#1a1a2e', light:'#2a2a4e'},
+      ],
+      'reservoir#deep': [
+        {id:'ns_westph_ss', name:'Grès du Westphalien', lith:'Grès de chenal du Carbonifère supérieur', col:'#B89058', light:'#d0a878'},
+      ],
+      basement: [
+        {id:'ns_socle', name:'Socle calédonien', lith:'Gneiss et granites consolidés', col:'#2D1B00', light:'#4a3010'},
+      ],
+    },
+  },
+
+  aquitaine: {
+    sequence: ['overburden','neutral_top','seal','reservoir','neutral_mid','source','evaporite','basement'],
+    deepResProb: 0.3,
+    thick: { overburden:[150,400], neutral_top:[200,500], seal:[100,300], reservoir:[25,120],
+             neutral_mid:[60,200], source:[60,180], evaporite:[100,300] },
+    pools: {
+      overburden: [
+        {id:'aq_landes', name:'Sables des Landes', lith:'Sables éoliens plio-quaternaires', col:'#c0a878', light:'#dcc498'},
+        {id:'aq_alluv',  name:'Alluvions quaternaires', lith:'Sables, graviers et argiles', col:'#8B7355', light:'#b09070'},
+      ],
+      neutral_top: [
+        {id:'aq_molasse', name:'Molasses tertiaires', lith:'Grès et argiles continentaux de l\'Éocène au Miocène', col:'#A05030', light:'#c07040'},
+        {id:'aq_calc_tert', name:'Calcaires tertiaires', lith:'Calcaire lacustre et marin de l\'Éocène', col:'#D0C8A8', light:'#e8e0c0'},
+      ],
+      seal: [
+        {id:'aq_marne_cret',  name:'Marnes du Crétacé supérieur', lith:'Marnes et flysch argileux', col:'#6a7a60', light:'#8a9a80'},
+        {id:'aq_argile_cret', name:'Argilites du Crétacé supérieur', lith:'Argilite compacte', col:'#3a4a5a', light:'#5a6a7a'},
+      ],
+      reservoir: [
+        {id:'aq_dolomie',   name:'Dolomie du Crétacé inférieur', lith:'Dolomie à porosité vacuolaire et karstique', col:'#B8904A', light:'#d0aa60'},
+        {id:'aq_calc_frac', name:'Calcaire fracturé du Jurassique supérieur', lith:'Calcaire micritique à fractures ouvertes', col:'#C0A060', light:'#daba70'},
+        {id:'aq_gres_cret', name:'Grès du Crétacé inférieur', lith:'Grès marin côtier', col:'#C4863A', light:'#e0a04a'},
+      ],
+      neutral_mid: [
+        {id:'aq_marne_neo', name:'Marnes du Crétacé inférieur', lith:'Marnes et calcaires argileux, non réservoir', col:'#909060', light:'#b0b070'},
+        {id:'aq_mud_jur',   name:'Calcaires argileux du Jurassique', lith:'Mudstone gris, très faible porosité', col:'#787868', light:'#989880'},
+      ],
+      source: [
+        {id:'aq_marne_org', name:'Marnes organiques du Crétacé inférieur', lith:'Marne argileuse riche en matière organique', col:'#2a3a20', light:'#3a4a30'},
+        {id:'aq_jur_src',   name:'Marnes noires du Jurassique', lith:'Marnes noires marines, kérogène de type II', col:'#1a1a2e', light:'#2a2a4e'},
+      ],
+      evaporite: [
+        {id:'aq_keuper',     name:'Sel du Keuper', lith:'Halite et anhydrite du Trias supérieur', col:'#F0E8F8', light:'#f8f0ff', mobileSalt:true},
+        {id:'aq_keuper_mix', name:'Évaporites du Keuper', lith:'Anhydrite, halite et argiles bariolées', col:'#E0C8E8', light:'#f0d8f8', mobileSalt:true},
+      ],
+      'reservoir#deep': [
+        {id:'aq_dolo_jur',   name:'Dolomie du Jurassique inférieur', lith:'Dolomie cristalline', col:'#B8904A', light:'#d0aa60'},
+        {id:'aq_gres_trias', name:'Grès du Trias', lith:'Grès fluviatile du Trias', col:'#D0A868', light:'#e8c488'},
+      ],
+      basement: [
+        {id:'aq_socle', name:'Socle hercynien', lith:'Granite et gneiss', col:'#2D1B00', light:'#4a3010'},
+      ],
+    },
+  },
+
+  // Gulf Coast : le sel Louann (Jurassique) est tout en bas, sous la roche-mère
+  // et le Norphlet, et c'est lui qui perce vers le haut (diapirs).
+  gulf_coast: {
+    sequence: ['overburden','neutral_top','seal','reservoir','neutral_mid','source','evaporite','basement'],
+    deepResProb: 0.35,
+    thick: { overburden:[800,1600], neutral_top:[300,800], seal:[150,400], reservoir:[40,160],
+             neutral_mid:[80,250], source:[60,200], evaporite:[150,450] },
+    pools: {
+      overburden: [
+        {id:'gc_pleisto', name:'Sables et argiles pléistocènes', lith:'Séries deltaïques non consolidées', col:'#8B7355', light:'#b09070'},
+        {id:'gc_holo',    name:'Argiles deltaïques récentes', lith:'Argiles plastiques et silts du delta', col:'#7a6a50', light:'#a08a60'},
+      ],
+      neutral_top: [
+        {id:'gc_plio', name:'Argiles et sables du Pliocène', lith:'Alternances sablo-argileuses deltaïques', col:'#9e8a60', light:'#c0aa70'},
+        {id:'gc_plio2',name:'Argiles vertes du Pliocène', lith:'Argiles glauconieuses de plateforme', col:'#5a6a4a', light:'#7a8a68'},
+      ],
+      seal: [
+        {id:'gc_mio_shale', name:'Argiles du Miocène', lith:'Argiles marines compactées, couverture régionale', col:'#4a5568', light:'#6a7590'},
+        {id:'gc_olig_shale',name:'Argiles de l\'Oligocène', lith:'Argilite marine compacte', col:'#3a4a5a', light:'#5a6a7a'},
+      ],
+      reservoir: [
+        {id:'gc_mio_sand', name:'Sables deltaïques du Miocène', lith:'Sables de chenal et de front deltaïque', col:'#C4863A', light:'#e0a04a'},
+        {id:'gc_frio',     name:'Grès du Frio (Oligocène)', lith:'Grès de plaine deltaïque côtière', col:'#D0A868', light:'#e8c488'},
+        {id:'gc_turb',     name:'Turbidites du Miocène', lith:'Grès fins à granoclassement, chenaux profonds', col:'#B89058', light:'#d0a878'},
+      ],
+      neutral_mid: [
+        {id:'gc_austin',   name:'Craie d\'Austin (Crétacé)', lith:'Craie argileuse, non réservoir conventionnel', col:'#C8C4A0', light:'#e0dcc0'},
+        {id:'gc_cret_marl',name:'Marnes du Crétacé', lith:'Marnes grises à faible porosité', col:'#787868', light:'#989880'},
+      ],
+      source: [
+        {id:'gc_smackover',  name:'Calcaires organiques du Smackover', lith:'Mudstone carbonaté laminé, riche en matière organique', col:'#2a3a20', light:'#3a4a30'},
+        {id:'gc_haynesville',name:'Schistes du Haynesville', lith:'Black shale marin du Jurassique supérieur', col:'#1a1a2e', light:'#2a2a4e'},
+        {id:'gc_eagleford',  name:'Schistes d\'Eagle Ford', lith:'Black shale calcaire du Crétacé supérieur', col:'#241a2a', light:'#3a2a44'},
+      ],
+      evaporite: [
+        {id:'gc_louann', name:'Sel Louann', lith:'Halite massive du Jurassique moyen', col:'#F0E8F8', light:'#f8f0ff', mobileSalt:true},
+      ],
+      'reservoir#deep': [
+        {id:'gc_norphlet', name:'Grès éoliens du Norphlet', lith:'Grès éolien profond du Jurassique supérieur', col:'#C4863A', light:'#e0a04a'},
+        {id:'gc_smack_ls', name:'Calcaire oolitique du Smackover', lith:'Grainstone oolitique profond', col:'#D4A853', light:'#e8c070'},
+      ],
+      basement: [
+        {id:'gc_socle', name:'Socle de rift', lith:'Granite et roches volcaniques', col:'#2D1B00', light:'#4a3010'},
+      ],
+    },
+  },
 };
 
 // Profil stratigraphique d'un bassin (du toit vers le bas). Génère nVariants
@@ -856,9 +1053,9 @@ function buildStratigraphy(basinType, rng, nVariants=1){
       {id:'anhydritic_mid',name:'Dolomie anhydritique',lith:'Dolomie à nodules d\'anhydrite, non réservoir',col:'#a89880',light:'#c8b8a0'},
     ],
     evaporite: [
-      {id:'halite',     name:'Sel gemme (Halite)',     lith:'Halite massive, intercalations anhydrite',col:'#F0E8F8',light:'#f8f0ff'},
-      {id:'evap_mix',   name:'Évaporites mixtes',      lith:'Anhydrite + Halite alternées',       col:'#E0C8E8', light:'#f0d8f8'},
-      {id:'potash',     name:'Sel potassique',         lith:'Sylvite et carnallite, intercalations argileuses',col:'#D8A8C8',light:'#f0c8e0'},
+      {id:'halite',     name:'Sel gemme (Halite)',     lith:'Halite massive, intercalations anhydrite',col:'#F0E8F8',light:'#f8f0ff', mobileSalt:true},
+      {id:'evap_mix',   name:'Évaporites mixtes',      lith:'Anhydrite + Halite alternées',       col:'#E0C8E8', light:'#f0d8f8', mobileSalt:true},
+      {id:'potash',     name:'Sel potassique',         lith:'Sylvite et carnallite, intercalations argileuses',col:'#D8A8C8',light:'#f0c8e0', mobileSalt:true},
       {id:'gypsum_evap',name:'Gypse laminé',           lith:'Gypse en bancs laminés, faciès de bordure',col:'#E8D0E0',light:'#f8eaf4'},
     ],
     basement: [
@@ -870,12 +1067,18 @@ function buildStratigraphy(basinType, rng, nVariants=1){
   };
 
   // Tirer une lithologie aléatoire dans chaque pool
+  // Colonne propre au bassin nommé (Paris, Mer du Nord, Aquitaine, Gulf
+  // Coast) : séquence, lithologies et épaisseurs spécifiques. Les 4 bassins
+  // génériques (random, rift, passive, foreland) gardent leurs listes communes.
+  const bc = BASIN_COLUMNS[basinType] || null;
+  const baseOf = (key) => key.split('#')[0]; // 'neutral_top#2' -> 'neutral_top'
   const pick = (poolName) => {
-    const p = pools[poolName];
+    const base = baseOf(poolName);
+    const p = bc?.pools?.[poolName] || pools[base];
     const item = p[Math.floor(rng()*p.length)];
-    return { ...item, role: poolName.startsWith('neutral') ? 'neutral' :
-             poolName==='evaporite' ? 'seal' :
-             poolName==='overburden' ? 'overburden' : poolName };
+    return { ...item, role: base.startsWith('neutral') ? 'neutral' :
+             base==='evaporite' ? 'seal' :
+             base==='overburden' ? 'overburden' : base };
   };
 
   // Séquence de rôles par bassin — le QUOI est fixe, le QUOI PRÉCISÉMENT est aléatoire
@@ -890,10 +1093,11 @@ function buildStratigraphy(basinType, rng, nVariants=1){
   // FOIS pour toute la partie (pas par variante) : la présence ou non d'un
   // piège stratigraphique profond est une caractéristique du bassin, pas
   // d'une province locale.
-  let seq = [...(sequences[basinType] || sequences.random)];
-  if(rng() < 0.35 && seq.includes('source')){
+  let seq = [...(bc?.sequence || sequences[basinType] || sequences.random)];
+  if(rng() < (bc?.deepResProb ?? 0.35) && seq.includes('source')){
     const srcIdx = seq.lastIndexOf('source');
-    seq.splice(srcIdx+1, 0, 'reservoir'); // réservoir sous la roche-mère (piège stratigraphique)
+    // réservoir sous la roche-mère (piège stratigraphique)
+    seq.splice(srcIdx+1, 0, bc?.pools?.['reservoir#deep'] ? 'reservoir#deep' : 'reservoir');
   }
 
   const thickRanges = {
@@ -903,7 +1107,7 @@ function buildStratigraphy(basinType, rng, nVariants=1){
 
   const buildColumn = () => seq.map(roleKey => {
     const item = pick(roleKey);
-    const [tMin, tMax] = thickRanges[roleKey] || [50,150];
+    const [tMin, tMax] = bc?.thick?.[roleKey] || thickRanges[baseOf(roleKey)] || [50,150];
     const thickness = R(tMin, tMax);
     const isRes  = item.role==='reservoir';
     const isSrc  = item.role==='source';
@@ -996,7 +1200,10 @@ function generateGeology(gridSize, basinType, offshore, seed){
   });
 
   // Diapirs de sel
-  const hasSalt = STRAT.some(l=>l.id==='salt'||l.id==='evaporite');
+  // Les ids 'salt'/'evaporite' n'existent plus dans les listes de lithologies
+  // depuis les provinces : le test ne trouvait jamais de sel et aucune carte
+  // n'avait de diapir. On repère maintenant le sel mobile par son drapeau.
+  const hasSalt = STRAT_PROVINCES.some(col => col.some(l=>l.mobileSalt));
   const saltDomes = hasSalt && rng()<bp.saltP ? Array.from({length:Math.round((1+Math.floor(rng()*bp.saltMax))*sizeScale)}, ()=>({
     x:rng()*gridSize, y:rng()*gridSize, r:0.8+rng()*0.8, uplift:400+rng()*600,
   })) : [];
