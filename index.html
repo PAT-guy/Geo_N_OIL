@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.6</title>
+<title>GeoExplorer V4.7</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -1487,7 +1487,34 @@ function generateGeology(gridSize, basinType, offshore, seed){
     };
   });
 
+  // Recalibrage des probabilités de succès. La formule d'origine donnait en
+  // moyenne 12 % et presque jamais plus de 15 % aux meilleurs blocs : à ce
+  // niveau, aucun forage n'est rentable (seuil vers 33 %), même en connaissant
+  // la vérité (2 % de parties gagnées par un joueur parfaitement informé). On
+  // étale donc les probabilités par RANG de bloc sur la carte : l'ordre des
+  // blocs, donc la géologie qui les distingue, est inchangé ; seule leur
+  // échelle change (moyenne ≈ 24 %, meilleurs blocs entre 60 et 85 %).
+  const order = [...blocks].sort((a,z)=>a.trueProbability-z.trueProbability);
+  order.forEach((b,i)=>{
+    b.pRaw = b.trueProbability; // probabilité brute avant recalibrage
+    b.trueProbability = PCAL.pmin + (PCAL.pmax-PCAL.pmin)*Math.pow(i/Math.max(1,order.length-1), PCAL.exp);
+  });
+
   return {anticlines, faults, saltDomes};
+}
+
+const PCAL = { pmin:0.03, pmax:0.85, exp:3 };
+// Applique à une probabilité brute (ex. 2e réservoir d'un side-track) la même
+// échelle que celle des blocs de la carte. Les sauvegardes anciennes n'ont pas
+// de pRaw : on garde alors la valeur telle quelle.
+let _pRawFor = null, _pRawSorted = null;
+function pCalibrate(raw){
+  if(!blocks.length || blocks[0].pRaw === undefined) return raw;
+  if(_pRawFor !== blocks){ _pRawSorted = blocks.map(b=>b.pRaw).sort((a,z)=>a-z); _pRawFor = blocks; }
+  let lo = 0, hi = _pRawSorted.length;
+  while(lo < hi){ const m = (lo+hi)>>1; if(_pRawSorted[m] < raw) lo = m+1; else hi = m; }
+  const q = clamp(lo/Math.max(1,_pRawSorted.length-1), 0, 1);
+  return PCAL.pmin + (PCAL.pmax-PCAL.pmin)*Math.pow(q, PCAL.exp);
 }
 
 function smoothField(size, coarse, rng){
@@ -1529,7 +1556,7 @@ const STUDIES = {
     name:'Levé gravimétrique régional',
     desc:'Campagne aéroportée ou terrestre couvrant toute la concession. Mesure les anomalies de Bouguer révélatrices des variations de densité : hauts structuraux (anomalie positive), sel/roches légères (anomalie négative), épaisseur crustale.',
     reveals:'Carte structurale approximative de toute la concession : position relative de TOUS les blocs',
-    cost: 280e3,     // coût de campagne régionale (une seule fois)
+    cost: 84e3,      // coût de campagne régionale (une seule fois)
     offMult: 1.8,
     level: 1,
     regional: true,  // s'applique à toute la carte
@@ -1568,7 +1595,7 @@ const STUDIES = {
     name:'Sismique 2D (profil)',
     desc:'Profil sismique réflexion le long d\'un transect entre deux blocs sélectionnés (A→B). Révèle la géométrie des réflecteurs (horizons stratiformes) et les discontinuités (failles). Résolution verticale ±150-250m.',
     reveals:'Profondeur des horizons sur tout le profil A→B, failles majeures, géométrie du piège',
-    cost: 220e3,     // coût par profil
+    cost: 66e3,      // coût par bloc du profil
     offMult: 3.2,
     level: 2,
     profileBased: true, // s'applique sur le profil A→B courant
@@ -1605,7 +1632,7 @@ const STUDIES = {
     name:'Sismique 3D (indicateurs directs d\'hydrocarbures)',
     desc:'Cube sismique 3D avec analyse AVO (Amplitude Versus Offset) : recherche d\'anomalies d\'amplitude (bright spots, flat spots) qui trahissent une possible présence de fluides. C\'est la meilleure information disponible SANS forer, mais une anomalie d\'amplitude n\'est pas une preuve : un sable aquifère, une lithologie particulière ou une très faible saturation en gaz peuvent donner un faux bright spot, et un vrai gisement peut rester discret. L\'incertitude affichée ne couvre pas ce risque de faux signal. Elle ne remplace pas un log de puits, qui nécessite un trou réel.',
     reveals:'Profondeur précise du réservoir, probabilité et qualité resserrées via indicateurs directs',
-    cost: 480e3,
+    cost: 144e3,
     offMult: 2.2,
     level: 3,
     requires: 2, // nécessite une sismique 2D préalable sur ce bloc
@@ -1643,7 +1670,7 @@ const STUDIES = {
     name:'Analyse de carotte',
     desc:'Carottage et analyses laboratoire : lames minces (pétrographie), porosimétrie au mercure (MICP), perméamètre, chromatographie des extraits. Fournit les vraies propriétés réservoir. Nécessite un échantillon physique de roche : uniquement possible sur un bloc déjà foré.',
     reveals:'Porosité/perméabilité précises, pétrographie détaillée, saturation en HC',
-    cost: 240e3,
+    cost: 72e3,
     offMult: 1.8,
     requiresDrilled: true, // nécessite un forage réel (échantillon physique), pas un niveau d'étude
     do(b, rng){
@@ -1675,7 +1702,7 @@ const STUDIES = {
     name:'Géochimie Rock-Eval (pyrolyse)',
     desc:'Pyrolyse programmée en température sur des échantillons de roche-mère : quantifie la matière organique restante (S1/S2), le carbone organique total (TOC) et l\'indice d\'hydrogène (HI), et estime la température de craquage (Tmax) comme indicateur de maturité indépendant du calcul de paléo-enfouissement. Nécessite des cuttings ou une carotte : uniquement possible sur un bloc déjà foré.',
     reveals:'TOC, indice d\'hydrogène (HI), Tmax, potentiel générateur de la roche-mère',
-    cost: 190e3,
+    cost: 57e3,
     offMult: 1.6,
     requiresDrilled: true, // nécessite un forage réel (cuttings ou carotte), pas un niveau d'étude
     do(b, rng){
@@ -1835,6 +1862,11 @@ function updateBlockEstimate(b){
 // =====================================================================
 // FORAGE
 // =====================================================================
+// Production initiale d'un puits = qualité/100 × épaisseur utile × PROD_BASE × coefficient de
+// méthode. Valeurs relevées de 50 % après simulation de parties : à l'ancien
+// niveau (110 et 90), même un joueur parfaitement informé ne gagnait presque jamais.
+const PROD_BASE = 165;           // puits neuf (était 110)
+const PROD_BASE_SIDETRACK = 135; // side-track sur un 2e réservoir (était 90)
 const EQUIPMENT = {
   leger:    {label:'Matériel léger',    costM:600, reliability:.78, maxDepth:2500},
   standard: {label:'Matériel standard', costM:900, reliability:.90, maxDepth:4200},
@@ -1845,11 +1877,33 @@ const METHODS = {
   horizontal: {label:'Horizontal', costMult:1.8, prodMult:1.7},
 };
 
+// Profondeur utilisée pour estimer et budgéter un forage. Avec une sismique
+// elle vient de l'estimation ; avec la seule gravimétrie, elle se déduit de la
+// position structurale relative du bloc et de l'étendue des profondeurs de la
+// carte (ce que la campagne régionale permet d'apprécier). Avant, elle
+// retombait sur la VRAIE profondeur (b.topOfReservoir), ce qui la révélait.
+let _depthStatsFor = null, _depthMin = 0, _depthRange = 1;
+function drillDepthEstimate(b){
+  if(b.estimate?.depth !== undefined) return b.estimate.depth;
+  if(_depthStatsFor !== blocks){
+    const ds = blocks.map(x=>x.topOfReservoir);
+    _depthMin = Math.min(...ds); _depthRange = (Math.max(...ds)-_depthMin) || 1;
+    _depthStatsFor = blocks;
+  }
+  const sp = b.estimate?.structPos;
+  // La gravimétrie donne une position relative, pas une profondeur : on y
+  // ajoute une incertitude fixe par bloc (±20 % de l'étendue des profondeurs),
+  // sinon l'estimation serait plus précise qu'une sismique 2D.
+  const jitter = ((((b.id+1)*2654435761)>>>0)%1000/1000 - 0.5) * 2 * 0.2 * _depthRange;
+  const est = sp===undefined ? _depthMin + _depthRange*0.5 + jitter : _depthMin + (0.5 - sp)*_depthRange + jitter;
+  return clamp(est, 300, 5500);
+}
+
 function drillBlock(blockId, method, equip){
   const b = blocks[blockId];
   if(b.well||b.dryHole){addLog('Ce bloc est déjà foré.','bad');return;}
   if(b.studyLevel<1){addLog('Réalisez au moins une étude (gravimétrie ou sismique) avant de forer.','bad');return;}
-  const depth = b.estimate?.depth ?? b.topOfReservoir;
+  const depth = drillDepthEstimate(b);
   const eq = EQUIPMENT[equip], me = METHODS[method];
   if(depth > eq.maxDepth){addLog(`Matériel insuffisant : profondeur estimée ${Math.round(depth)}m > max ${eq.maxDepth}m.`,'bad');return;}
   const offMult = b.isOffshore ? 2.8 : 1.0;
@@ -1880,14 +1934,28 @@ function resolveDrilling(d){
   b.el?.classList.remove('drilling');
   const eq = EQUIPMENT[d.equip], me = METHODS[d.method];
   const geoOk  = Math.random() < b.trueProbability;
-  const techOk = Math.random() < eq.reliability;
+  const techRoll = Math.random() < eq.reliability;
+  // Le coût payé au lancement repose sur la profondeur ESTIMÉE. Une fois le
+  // trou foré, on règle l'écart avec la profondeur réelle (dépassement ou
+  // économie), et un matériel trop faible pour la vraie profondeur échoue.
+  const trueDepth = b.topOfReservoir;
+  const settleDelta = (trueDepth - d.depth) * eq.costM * me.costMult * (b.isOffshore ? 2.8 : 1);
+  if(Math.abs(settleDelta) > 1000){
+    G.budget -= settleDelta; d.cost += settleDelta;
+    addLog(settleDelta>0
+      ? `💸 Dépassement de forage bloc (${b.x},${b.y}) : réservoir à ${Math.round(trueDepth)} m au lieu de ${Math.round(d.depth)} m estimés, +${formatM(settleDelta)}.`
+      : `💰 Économie de forage bloc (${b.x},${b.y}) : réservoir à ${Math.round(trueDepth)} m au lieu de ${Math.round(d.depth)} m estimés, ${formatM(-settleDelta)} récupérés.`, settleDelta>0?'bad':'good');
+  }
+  const tooDeep = trueDepth > eq.maxDepth;
+  if(tooDeep) addLog(`⚠ Matériel insuffisant : le réservoir est à ${Math.round(trueDepth)} m, au-delà de la limite de ${eq.maxDepth} m du matériel choisi.`, 'bad');
+  const techOk = techRoll && !tooDeep;
   // Facteur du système pétrolier le plus limitant sur CE bloc (vraie
   // géologie), pour pouvoir expliquer après coup pourquoi ça a marché ou non.
   const factors = {piège:b.trapFactor, réservoir:b.resFactor, couverture:b.sealFactor, charge:b.srcFactor};
   const limitingFactor = Object.entries(factors).sort((a,z)=>a[1]-z[1])[0][0];
   if(geoOk && techOk){
     const res = b.horizons.find(l=>l.role==='reservoir');
-    const initProd = (b.trueQuality/100) * (res?.thicknessLocal||20) * 110 * me.prodMult;
+    const initProd = (b.trueQuality/100) * (res?.thicknessLocal||20) * PROD_BASE * me.prodMult;
     const well = {blockId:d.blockId, method:d.method, equip:d.equip, cost:d.cost,
                   studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month,
                   production:initProd, monthsActive:0, status:'producing',
@@ -1927,7 +1995,7 @@ function resolveSidetrack(d){
   const techOk = Math.random() < EQUIPMENT.standard.reliability;
   const geoOk  = info && Math.random() < info.trueProbability2;
   if(info && w && geoOk && techOk){
-    const addedProd = (info.trueQuality2/100) * (info.horizon.thicknessLocal||20) * 90;
+    const addedProd = (info.trueQuality2/100) * (info.horizon.thicknessLocal||20) * PROD_BASE_SIDETRACK;
     w.production += addedProd;
     addLog(`✓ Side-track productif : bloc (${b.x},${b.y}), +${Math.round(addedProd)} ${w.isGas?'Mcf':'barils'}/mois depuis le 2e réservoir.`,'good');
   } else {
@@ -1987,7 +2055,7 @@ function getSecondReservoirInfo(b){
   const geomMean2   = Math.pow(combinedRisk2, 0.25);
   const bottleneck2 = Math.min(b.trapFactor, resFactor2, sealFactor2, b.srcFactor);
   const systemScore2 = geomMean2*0.4 + bottleneck2*0.6;
-  const trueProbability2 = clamp(0.03 + (1/(1+Math.exp(-6.5*(systemScore2-0.48))))*0.94, .02, .97);
+  const trueProbability2 = pCalibrate(clamp(0.03 + (1/(1+Math.exp(-6.5*(systemScore2-0.48))))*0.94, .02, .97));
   const trueQuality2 = clamp((h2.porosity/35)*90+5, 5, 95);
   return { horizon:h2, trueProbability2, trueQuality2, depth:h2.top };
 }
@@ -3172,7 +3240,7 @@ function updateDrillSummary(blockId){
   const method=document.getElementById('drillMethod')?.value||'vertical';
   const equip=document.getElementById('drillEquip')?.value||'standard';
   const eq=EQUIPMENT[equip], me=METHODS[method];
-  const depth=b.estimate.depth??b.topOfReservoir;
+  const depth=drillDepthEstimate(b);
   const offMult=b.isOffshore?2.8:1;
   const cost=depth*eq.costM*me.costMult*offMult;
   const deepOk=depth<=eq.maxDepth;
@@ -3188,8 +3256,11 @@ function updateDrillSummary(blockId){
   const probKnown = b.estimate.prob!==undefined;
   const prob=b.estimate.prob??0;
   const q=b.estimate.quality??50;
-  const res=b.horizons.find(l=>l.role==='reservoir');
-  const estProd=(q/100)*(res?.thicknessLocal||20)*110*me.prodMult;
+  // Épaisseur utile et nature du fluide ne sont connues qu'avec un log de
+  // puits : avant, on utilisait la vraie épaisseur et le vrai fluide. On prend
+  // l'épaisseur nominale de la colonne de référence.
+  const nomRes=STRAT.find(l=>l.role==='reservoir');
+  const estProd=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult;
   const fixOp=b.isOffshore?30000:8000;
   const varOp=b.isOffshore?18:10;
   const netMonth=estProd*G.price-fixOp-estProd*varOp;
@@ -3199,8 +3270,8 @@ function updateDrillSummary(blockId){
 
   summary.innerHTML=`
     <div class="tr"><span class="tl">Coût forage estimé</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}${b.isOffshore?' (offshore)':''}</span></div>
-    <div class="tr"><span class="tl">Probabilité de succès</span><span>${probKnown?`${(prob*100).toFixed(0)}% × ${(eq.reliability*100).toFixed(0)}% (fiabilité)`:'Inconnue : réalisez un log de puits pour l\'estimer'}</span></div>
-    <div class="tr"><span class="tl">Production si succès</span><span>~${Math.round(estProd)} ${b.isGas?'Mcf':'barils'}/mois</span></div>
+    <div class="tr"><span class="tl">Probabilité de succès</span><span>${probKnown?`${(prob*100).toFixed(0)}% × ${(eq.reliability*100).toFixed(0)}% (fiabilité)`:'Inconnue : réalisez une sismique 3D pour l\'estimer'}</span></div>
+    <div class="tr"><span class="tl">Production si succès</span><span>~${Math.round(estProd)} ${b.estimate.isGas?'Mcf':'barils'}/mois</span></div>
     <div class="tr"><span class="tl">Profit mensuel net</span><span style="color:${netMonth>0?'var(--green)':'var(--red)'};">${formatM(netMonth)}/mois</span></div>
     <div class="${beClass}" style="margin-top:4px;">${beText}${probKnown?'':' (projection à prendre avec prudence : la probabilité de succès n\'est pas encore estimée sur ce bloc)'}</div>
   `;
