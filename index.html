@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.10</title>
+<title>GeoExplorer V4.11</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -438,7 +438,7 @@ body.mobile-layout #mobileScreenBar{
   background:var(--panel); border-top:1px solid var(--line);
 }
 #mobileScreenBar button{
-  flex:1; padding:8px 4px 9px; background:none; border:none; color:var(--muted);
+  flex:1; min-width:0; padding:8px 2px 9px; background:none; border:none; color:var(--muted);
   font-family:var(--sans); font-size:10.5px; cursor:pointer;
   display:flex; flex-direction:column; align-items:center; gap:3px;
 }
@@ -505,7 +505,9 @@ body.mobile-layout #priceSparkline{display:none;}
   <button data-screen="geo"><svg class="ico"><use href="#i-layers"/></svg><span class="i18n" data-fr="Bloc" data-en="Block">Bloc</span></button>
   <button data-screen="section"><svg class="ico"><use href="#i-section"/></svg><span class="i18n" data-fr="Coupe" data-en="Section">Coupe</span></button>
   <button data-screen="studies"><svg class="ico"><use href="#i-flask"/></svg><span>Études</span></button>
+  <button data-screen="gisements"><svg class="ico"><use href="#i-drop"/></svg><span>Puits</span></button>
   <button data-screen="log"><svg class="ico"><use href="#i-doc"/></svg><span>Journal</span></button>
+  <button data-screen="finance" id="mobileFinanceBtn" style="display:none"><svg class="ico"><use href="#i-chart"/></svg><span>Finance</span></button>
 </div>
 
 
@@ -4451,7 +4453,7 @@ function updateHud(){
   document.getElementById('hudBudget').textContent=formatM(G.budget);
   document.getElementById('hudBudget').style.color=G.budget<2e6?'var(--red)':G.budget<5e6?'var(--amber)':'var(--text)';
   const brandSub=document.getElementById('brandSub');
-  if(brandSub) brandSub.textContent=(BASIN_NAMES[G.basinType]||'')+' · '+(MODE_NAMES[G.mode]||'');
+  if(brandSub) brandSub.textContent=(BASIN_NAMES[G.basinType]||'')+' · '+(MODE_NAMES[G.mode]||'')+(G.financeMode?' · Finance':'');
   const cf=document.getElementById('hudCF');
   cf.textContent=(G.lastCF>=0?'+':'')+formatM(G.lastCF||0);
   cf.style.color=(G.lastCF||0)>=0?'var(--green)':'var(--red)';
@@ -4685,6 +4687,15 @@ function onBlockClick(id){
 // =====================================================================
 // ONGLETS PANNEAU DROIT
 // =====================================================================
+// Finance : onglet du panneau (bureau), entrée de la barre du bas (mobile) et contenu.
+function setFinanceVisible(on){
+  const tab = document.getElementById('tabFinanceBtn');
+  const mob = document.getElementById('mobileFinanceBtn');
+  const content = document.getElementById('tab-finance');
+  if(tab)     tab.style.display     = on ? '' : 'none';
+  if(mob)     mob.style.display     = on ? '' : 'none';
+  if(content) content.style.display = on ? '' : 'none';
+}
 function switchTab(name){
   document.querySelectorAll('.rtab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
   document.querySelectorAll('.rpanel-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+name));
@@ -5345,10 +5356,8 @@ function loadGame(){
   addLog(`💾 Partie chargée (sauvegardée le ${new Date(payload.savedAt).toLocaleString()}).`);
   renderGeoPanel(selectedBlock!==null ? blocks[selectedBlock] : null);
   renderStudiesPanel(selectedBlock!==null ? blocks[selectedBlock] : null);
-  const tabFinBtn = document.getElementById('tabFinanceBtn');
-  const tabFinContent = document.getElementById('tab-finance');
-  if(tabFinBtn)     tabFinBtn.style.display    = G.financeMode ? '' : 'none';
-  if(tabFinContent) tabFinContent.style.display = G.financeMode ? '' : 'none';
+  setFinanceVisible(!!G.financeMode);
+  if(G.financeMode && typeof renderFinancePanel==='function') renderFinancePanel();
   const tpBtn = document.getElementById('tpTargetsBtn');
   if(tpBtn) tpBtn.style.display = G.mode==='tp' ? '' : 'none';
   setSpeed(G.paused ? 0 : (G.speed || 1));
@@ -5415,10 +5424,10 @@ function _doStartGame(){
   }
 
   // Onglet Finance : afficher/masquer selon le mode
-  const tabFinBtn = document.getElementById('tabFinanceBtn');
-  const tabFinContent = document.getElementById('tab-finance');
-  if(tabFinBtn)      tabFinBtn.style.display     = G.financeMode ? '' : 'none';
-  if(tabFinContent)  tabFinContent.style.display  = G.financeMode ? '' : 'none';
+  setFinanceVisible(!!G.financeMode);
+  // Le contenu du panneau n'était calculé qu'au premier tour de mois : avant, il
+  // affichait « Mode finance non activé » alors que le mode était bien actif.
+  if(G.financeMode && typeof renderFinancePanel==='function') renderFinancePanel();
 
   // Mode TP : réinitialiser les cibles et afficher le bouton dédié
   G.tpTargets = []; G.submittedTp = false;
@@ -5429,6 +5438,7 @@ function _doStartGame(){
   }
   document.getElementById('tpTargetsResult').innerHTML = '';
 
+  document.getElementById('logEntries').innerHTML='';
   // Brief bassin au démarrage
   if(BASIN_BRIEFS[menuConfig.basinType]){
     addLog(`🌍 ${BASIN_BRIEFS[menuConfig.basinType]}`, 'ev');
@@ -5441,7 +5451,6 @@ function _doStartGame(){
   updateHud();
   renderGeoPanel(null);
   renderStudiesPanel(null);
-  document.getElementById('logEntries').innerHTML='';
   addLog(`Partie démarrée : ${MODES[G.mode].budget/1e6}M$, bassin ${menuConfig.basinType}, ${menuConfig.gridSize}×${menuConfig.gridSize}.`);
 
   setSpeed(1);
