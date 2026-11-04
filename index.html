@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.19</title>
+<title>GeoExplorer V4.20</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -616,7 +616,7 @@ body.mobile-layout #priceSparkline{display:none;}
       <div class="q-modes" id="quickModes">
         <button type="button" class="q-mode" data-mode="junior"><b>🟡 Junior</b><span class="i18n" data-fr="Budget confortable. Pour découvrir le jeu." data-en="Comfortable budget. To discover the game.">Budget confortable. Pour découvrir le jeu.</span><i>15 M$ · 25 ans</i></button>
         <button type="button" class="q-mode" data-mode="expert"><b>🔴 Senior</b><span class="i18n" data-fr="Budget serré, marché volatile. Chaque forage compte." data-en="Tight budget, volatile market. Every well counts.">Budget serré, marché volatile. Chaque forage compte.</span><i>8 M$ · 20 ans</i></button>
-        <button type="button" class="q-mode" data-mode="tp"><b>🎓 TP</b><span class="i18n" data-fr="Objectif géologique : choisir et justifier 2 cibles." data-en="Geological goal: choose and justify 2 targets.">Objectif géologique : choisir et justifier 2 cibles.</span><i>20 M$ · seed partageable</i></button>
+        <button type="button" class="q-mode" data-mode="expedition"><b>🌍 Grande exploration</b><span class="i18n" data-fr="Carte 30×30, plusieurs provinces géologiques, budget étendu." data-en="30×30 map, several geological provinces, larger budget.">Carte 30×30, plusieurs provinces géologiques, budget étendu.</span><i>45 M$ · 35 ans</i></button>
       </div>
       <div class="q-lbl"><span class="i18n" data-fr="Bassin" data-en="Basin">Bassin</span></div>
       <select id="quickBasin" class="drill-select" aria-label="Bassin géologique"></select>
@@ -827,6 +827,7 @@ body.mobile-layout #priceSparkline{display:none;}
   <div class="bv-cap" id="bvCap"></div>
 </div>
 
+<svg id="figDefs" width="0" height="0" style="position:absolute;left:-9999px;" aria-hidden="true"><defs></defs></svg>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="confirmModal" role="alertdialog" aria-labelledby="confirmTitle">
   <div id="confirmBox">
@@ -1596,14 +1597,37 @@ function buildStratigraphy(basinType, rng, nVariants=1){
     seq.splice(at+1, 0, bc?.pools?.['reservoir#deep'] ? 'reservoir#deep' : 'reservoir');
   }
 
+  // Intercalaires : dans les bassins génériques, 0 à 3 couches neutres supplémentaires (grès compact,
+  // calcaire argileux, craie, siltite…) s'insèrent à des positions tirées au hasard dans la colonne. Avant, la
+  // colonne gardait toujours le même squelette de 7 à 9 couches (surface, couverture, réservoir, roche-mère,
+  // socle) et seules les lithologies changeaient : toutes les coupes se ressemblaient. On ne coupe jamais la paire
+  // couverture-réservoir : la couverture doit rester directement au contact du réservoir.
+  if(!bc){
+    const roll = rng();
+    const nExtra = roll < 0.2 ? 0 : roll < 0.5 ? 1 : roll < 0.8 ? 2 : 3;
+    for(let k=0; k<nExtra; k++){
+      const key = (rng() < 0.5 ? 'neutral_top' : 'neutral_mid') + '#x' + k;
+      const slots = [];
+      for(let i=1; i<seq.length; i++){            // jamais avant la surface, jamais sous le socle
+        const above = baseOf(seq[i-1]), below = baseOf(seq[i]);
+        if(above==='seal' && below==='reservoir') continue;
+        slots.push(i);
+      }
+      seq.splice(slots[Math.floor(rng()*slots.length)], 0, key);
+    }
+  }
+
   const thickRanges = {
     overburden:[30,180], neutral_top:[80,300], seal:[40,150], reservoir:[25,120],
     neutral_mid:[50,200], source:[60,200], evaporite:[100,400], basement:[500,999],
   };
 
-  const buildColumn = () => seq.map(roleKey => {
-    const item = pick(roleKey);
-    const [tMin, tMax] = bc?.thick?.[roleKey] || thickRanges[baseOf(roleKey)] || [50,150];
+  const buildColumn = () => seq.map((roleKey, idx, arr) => {
+    // pas deux fois la même lithologie de suite : un contact entre deux couches identiques ne se voit pas sur la coupe
+    let item = pick(roleKey);
+    for(let t=0; t<4 && idx>0 && item.id===buildColumn._last?.id; t++) item = pick(roleKey);
+    buildColumn._last = item;
+    const [tMin, tMax] = roleKey.includes('#x') ? [25,110] : (bc?.thick?.[roleKey] || thickRanges[baseOf(roleKey)] || [50,150]); // intercalaires : bancs minces
     const thickness = R(tMin, tMax);
     const isRes  = item.role==='reservoir';
     const isSrc  = item.role==='source';
@@ -1625,7 +1649,7 @@ function buildStratigraphy(basinType, rng, nVariants=1){
     // couche reste réservé dans la séquence, ce qui préserve la corrélation de la coupe.
     // Réservoir, roche-mère, couverture et évaporites ne sont jamais supprimés.
     if(i > 0) col.forEach((l, j)=>{
-      if(['neutral_top','neutral_top#2','neutral_mid'].includes(seq[j]) && rng() < 0.15){ l.thickness = 0; l.hiatus = true; }
+      if(baseOf(seq[j]).startsWith('neutral') && rng() < 0.15){ l.thickness = 0; l.hiatus = true; }
     });
     variants.push(col);
   }
@@ -3898,6 +3922,7 @@ function wellLogHtml(b){
     const th = h.thicknessLocal ?? h.thickness;
     const y1 = ys(h.top), y2 = ys(Math.min(g.z1, h.top+th));
     s += `<rect x="${left}" y="${y1.toFixed(1)}" width="${strip}" height="${Math.max(0.6,y2-y1).toFixed(1)}" fill="${h.col}" stroke="var(--line)" stroke-width="0.3"><title>${h.name} : ${Math.round(h.top)} à ${Math.round(h.top+th)} m</title></rect>`;
+    { const f = figureOf(h); if(f) s += `<rect x="${left}" y="${y1.toFixed(1)}" width="${strip}" height="${Math.max(0.6,y2-y1).toFixed(1)}" fill="url(#fig-${f}${figIsDark(h.col)?'-l':''})" opacity=".9" pointer-events="none"/>`; }
   });
   // croisement densité-neutron (jaune quand le neutron lit moins que la densité : signature du gaz)
   const dz = ys(g.z[1])-ys(g.z[0]);
@@ -4597,6 +4622,7 @@ function renderSection(){
         const opacity = 0.4 + avgConf*0.5; // plus opaque = plus certain
         const col = refLayer.col || '#555';
         svg += `<path d="${dPoly}" fill="${col}" fill-opacity="${opacity.toFixed(2)}" stroke="var(--sec-ink-edge)" stroke-width=".4" stroke-linejoin="round" class="sec-layer-poly" data-layer-name="${(refLayer.name||'').replace(/"/g,'&quot;')}" style="cursor:pointer;"/>`;
+        svg += figOverlay(refLayer, dPoly, 0.5 + avgConf*0.45);
         // Ligne de toit : plus marquée pour réservoir et roche-mère
         const isKey = refLayer.role==='reservoir' || refLayer.role==='source';
         const strokeCol = avgConf >= 0.7 ? 'var(--sec-line-strong)' : 'var(--sec-line-soft)';
@@ -4859,7 +4885,7 @@ function renderSection(){
     const roleLabel = {reservoir:'Réservoir',source:'Roche-mère',seal:'Couverture',
       overburden:'Overburden',neutral:'Neutre',basement:'Socle'}[layer.role]||'';
     legendHtml += `<div class="sl-item">
-      <div class="sl-swatch" style="background:${layer.col};"></div>
+      ${figSwatch(layer)}
       <span style="color:var(--muted);">${layer.name}<span style="color:var(--muted);font-size:9px;"> (${roleLabel})</span></span>
     </div>`;
   });
@@ -5120,6 +5146,69 @@ function confirmCloseWell(blockId){
   askConfirm(T('Fermer ce puits ?','Close this well?'), T(`Le puits (${b.x},${b.y}) cessera définitivement de produire. Cette action est irréversible.`, `Well (${b.x},${b.y}) will stop producing for good. This cannot be undone.`), T('Fermer le puits','Close well'), ()=>closeWell(blockId));
 }
 document.addEventListener('keydown', e => { if(e.key==='Escape') document.getElementById('confirmModal')?.classList.remove('open'); });
+// ── Figurés lithologiques ──
+// Trames conventionnelles superposées à la couleur de chaque couche (coupe, légende, log) : points pour
+// les grès, briques pour les calcaires, losanges pour les dolomies, tirets pour les argiles, cubes pour le sel,
+// croix pour le socle, etc. Chaque trame existe en deux versions (encre sombre ou claire) pour rester lisible
+// sur un fond clair comme sur un fond noir (schiste organique, charbon, socle).
+const FIG_RULES = [
+  [/charbon|houill|lignite/i, 'coal'],
+  [/halite|\bsel\b|salif|potass|sylvite/i, 'halite'],
+  [/dolomi/i, 'dolomite'],
+  [/anhydrit|gypse|évaporit|sulfate/i, 'anhydrite'],
+  [/socle|granit|gneiss|cristallin|basalt|métamorph/i, 'basement'],
+  [/conglom|galet|poudingue|brèche|rudite/i, 'conglomerate'],
+  [/volcan|tuf|cendre/i, 'volcanic'],
+  [/craie/i, 'chalk'],
+  [/marn/i, 'marl'],
+  [/calcair|carbonat|oolith|récif|grainstone|packstone|wackestone|micrit|boundstone|mudstone/i, 'limestone'],
+  [/limon|alluvion|loess|\btill\b|glaciaire|tourbe|éolien|dunes|quatern|meuble/i, 'alluvium'],
+  [/grès|sable|arénite|arkose|turbidit|siltite|silt/i, 'sandstone'],
+  [/argil|schist|shale|argilite|boue|claystone/i, 'shale'],
+];
+function figureOf(layer){
+  if(!layer) return null;
+  for(const field of [layer.name||'', layer.lith||'']){
+    for(const [re, key] of FIG_RULES) if(re.test(field)) return key;
+  }
+  return null;
+}
+const FIG_BODIES = {
+  sandstone:   [7, 7,  '<circle cx="1.6" cy="1.8" r=".55" fill="INK" stroke="none"/><circle cx="5.2" cy="4.8" r=".55" fill="INK" stroke="none"/><circle cx="3.4" cy="6.3" r=".35" fill="INK" stroke="none"/>'],
+  conglomerate:[13,11, '<circle cx="3.5" cy="3" r="2"/><circle cx="10" cy="7.5" r="1.7"/><circle cx="2" cy="9" r=".5" fill="INK" stroke="none"/><circle cx="8" cy="1.5" r=".5" fill="INK" stroke="none"/>'],
+  limestone:   [12,8,  '<path d="M0 0H12M0 4H12M3 0V4M9 4V8"/>'],
+  dolomite:    [12,8,  '<path d="M0 0H12M0 4H12M3 0V4M9 4V8"/><path d="M3 1.2l1 1.1-1 1.1-1-1.1z"/><path d="M9 5.2l1 1.1-1 1.1-1-1.1z"/>'],
+  chalk:       [10,6,  '<path d="M1 1.5h3.2M6 1.5h3M3.5 4.5h3.2M8.5 4.5h1.2M0 4.5h1"/>'],
+  shale:       [12,5,  '<path d="M0 1.2H6M8 1.2H12M3 3.7H9"/>'],
+  marl:        [12,7,  '<path d="M0 1.2H5M7 1.2H12M0 6H12"/><circle cx="3" cy="3.6" r=".45" fill="INK" stroke="none"/><circle cx="9" cy="3.6" r=".45" fill="INK" stroke="none"/>'],
+  halite:      [10,10, '<rect x="1" y="1" width="3.5" height="3.5"/><rect x="6" y="6" width="3.5" height="3.5"/>'],
+  anhydrite:   [9, 9,  '<path d="M0 9L9 0M-1 1L1 -1M8 10L10 8"/>'],
+  basement:    [14,14, '<path d="M4 2V6M2 4H6M11 9V13M9 11H13"/>'],
+  volcanic:    [10,8,  '<path d="M1 6L3 2L5 6M6 8L8 4L10 8"/>'],
+  alluvium:    [10,8,  '<circle cx="2" cy="2" r=".5" fill="INK" stroke="none"/><circle cx="7" cy="5" r=".5" fill="INK" stroke="none"/><path d="M4 6.5l1 1M0 5l1 1M8 1l1 1"/>'],
+  coal:        [4, 4,  '<path d="M0 2H4" stroke-width=".4"/>'],
+};
+const FIG_NAMES = {sandstone:'Grès', conglomerate:'Conglomérat', limestone:'Calcaire', dolomite:'Dolomie', chalk:'Craie', shale:'Argile, schiste', marl:'Marne', halite:'Sel (halite)', anhydrite:'Anhydrite, gypse', basement:'Socle', volcanic:'Roche volcanique', alluvium:'Alluvions, limons', coal:'Charbon'};
+function figDefsHtml(){
+  return Object.entries(FIG_BODIES).map(([id,[w,h,body]])=>
+    [['', 'var(--sec-ink-edge)'], ['-l', '#ffffff']].map(([suf,c])=>
+      `<pattern id="fig-${id}${suf}" width="${w}" height="${h}" patternUnits="userSpaceOnUse"><g fill="none" stroke="${c}" stroke-width=".55" stroke-linecap="round" opacity=".8">${body.replaceAll('INK', c)}</g></pattern>`).join('')).join('');
+}
+(function initFigDefs(){ const d = document.querySelector('#figDefs defs'); if(d) d.innerHTML = figDefsHtml(); })();
+// Fond sombre : trame claire
+function figIsDark(hex){
+  const m = /^#([0-9a-f]{6})$/i.exec(hex||''); if(!m) return false;
+  const n = parseInt(m[1],16), r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+  return (0.299*r + 0.587*g + 0.114*b)/255 < 0.38;
+}
+function figOverlay(layer, d, opacity){
+  const f = figureOf(layer); if(!f) return '';
+  return `<path d="${d}" fill="url(#fig-${f}${figIsDark(layer.col)?'-l':''})" opacity="${opacity.toFixed(2)}" pointer-events="none"/>`;
+}
+function figSwatch(layer){
+  const f = figureOf(layer), dark = figIsDark(layer?.col);
+  return `<svg class="sl-swatch" width="16" height="12" viewBox="0 0 16 12" style="border:1px solid var(--sec-line-soft);"><rect width="16" height="12" fill="${layer?.col||'#888'}"/>${f?`<rect width="16" height="12" fill="url(#fig-${f}${dark?'-l':''})"/>`:''}</svg>`;
+}
 function addLog(msg, type=''){
   if(type==='bad' && BLOCK_RE.test(msg)) toast(msg);
   const el=document.getElementById('logEntries');
