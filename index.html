@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.3</title>
+<title>GeoExplorer V4.4</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -1504,6 +1504,17 @@ function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 // =====================================================================
 // ÉTUDES GÉOLOGIQUES
 // =====================================================================
+// Réglage « Incertitude des études » du menu (faible / réaliste / élevée) :
+// il était enregistré dans G.uncertaintyLevel mais jamais lu, donc sans
+// effet. Il met maintenant à l'échelle toutes les erreurs des études.
+function uncertaintyMult(){
+  return ({low:0.5, medium:1, high:1.8})[G.uncertaintyLevel] ?? 1;
+}
+// Tirage normal centré réduit (Box-Muller) à partir du générateur fourni.
+function gauss(rng){
+  const u = Math.max(1e-9, rng()), v = rng();
+  return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
+}
 const STUDIES = {
   gravity: {
     name:'Levé gravimétrique régional',
@@ -1524,7 +1535,7 @@ const STUDIES = {
       const dMin = Math.min(...allDepths), dMax = Math.max(...allDepths);
       const dRange = (dMax - dMin) || 1;
       blocks.forEach(b => {
-        const noise = (rng()-.5) * 0.28;
+        const noise = (rng()-.5) * 0.28 * uncertaintyMult();
         // rel ∈ [0;1] : 1 = bloc le plus haut structuralement de la carte, 0 = le plus bas
         const rel = 1 - (b.topOfReservoir - dMin) / dRange;
         // structPos ∈ [-0.5 ; +0.5] : positif = haut structural (réservoir peu profond)
@@ -1553,7 +1564,7 @@ const STUDIES = {
     level: 2,
     profileBased: true, // s'applique sur le profil A→B courant
     doProfile(profileBlocks, rng){
-      const err = 220;
+      const err = 220 * uncertaintyMult();
       let cost = 0;
       profileBlocks.forEach(({b}) => {
         if(b.studies.some(s => s.type==='seismic2d')) return; // déjà couvert
@@ -1583,18 +1594,38 @@ const STUDIES = {
 
   seismic3d: {
     name:'Sismique 3D (indicateurs directs d\'hydrocarbures)',
-    desc:'Cube sismique 3D avec analyse AVO (Amplitude Versus Offset) : recherche d\'anomalies d\'amplitude (bright spots, flat spots) qui trahissent une possible présence de fluides. C\'est la meilleure information disponible SANS forer : elle resserre nettement l\'estimation, mais ne remplace pas un vrai log de puits, qui nécessite un trou réel.',
+    desc:'Cube sismique 3D avec analyse AVO (Amplitude Versus Offset) : recherche d\'anomalies d\'amplitude (bright spots, flat spots) qui trahissent une possible présence de fluides. C\'est la meilleure information disponible SANS forer, mais une anomalie d\'amplitude n\'est pas une preuve : un sable aquifère, une lithologie particulière ou une très faible saturation en gaz peuvent donner un faux bright spot, et un vrai gisement peut rester discret. L\'incertitude affichée ne couvre pas ce risque de faux signal. Elle ne remplace pas un log de puits, qui nécessite un trou réel.',
     reveals:'Profondeur précise du réservoir, probabilité et qualité resserrées via indicateurs directs',
     cost: 480e3,
     offMult: 2.2,
     level: 3,
     requires: 2, // nécessite une sismique 2D préalable sur ce bloc
     do(b, rng){
-      const errP = .08, errT = 35, errQ = 8;
+      const um = uncertaintyMult();
+      const errT = 35*um, errQ = 8*um;
+      // Probabilité : l'erreur d'une estimation de probabilité se fait en
+      // cotes (log-odds), pas en points absolus, sinon une erreur de ±8 points
+      // écrase une probabilité de 12 % ou ne change rien à une de 70 %.
+      const pTrue = clamp(b.trueProbability, 0.005, 0.995);
+      let logit = Math.log(pTrue/(1-pTrue)) + gauss(rng)*0.35*um;
+      // Faux signal d'amplitude (DHI trompeur) : une fraction des cubes
+      // 3D montre une anomalie sans rapport avec le contenu réel (faux
+      // positif plus fréquent que faux négatif).
+      const pFalse = clamp(0.18*um, 0, 0.45);
+      let dhiMisleading = false;
+      if(rng() < pFalse){
+        dhiMisleading = true;
+        logit += (rng()<0.6 ? 1 : -1) * (1.0 + rng()*0.8);
+      }
+      const probEst = clamp(1/(1+Math.exp(-logit)), 0.005, 0.95);
+      // Incertitude annoncée : l'erreur nominale seulement (celle du bruit),
+      // volontairement sans le risque de faux signal.
+      const probErr = clamp(probEst*(Math.exp(0.35*um)-1), 0.01, 0.25);
+      const amp = probEst > 0.25 ? 'forte anomalie d\'amplitude' : probEst > 0.10 ? 'anomalie d\'amplitude modérée' : 'pas d\'anomalie d\'amplitude nette';
       return {
         topReservoirEst: clamp(b.topOfReservoir+(rng()-.5)*2*errT, 200, 6000), topErr:errT,
-        probEst: clamp(b.trueProbability+(rng()-.5)*errP*2, 0, 1), probErr:errP,
-        qualityEst: clamp(b.trueQuality+(rng()-.5)*errQ*2, 0, 100), qualErr:errQ,
+        probEst, probErr, dhiMisleading, amplitude: amp,
+        qualityEst: clamp(b.trueQuality+(rng()-.5)*2*errQ, 0, 100), qualErr:errQ,
       };
     },
   },
@@ -1609,6 +1640,13 @@ const STUDIES = {
     do(b, rng){
       const res = b.horizons.find(h=>h.role==='reservoir');
       if(!res || res.thicknessLocal < 3) return { noReservoir:true };
+      // Ce que la carotte montre dépend du contenu RÉEL du bloc foré : des
+      // hydrocarbures sont présents si le puits produit, ou si la géologie
+      // était bonne mais le forage a échoué techniquement. Avant, les seuils
+      // comparaient une qualité sur 0-100 à des valeurs 0-1, si bien que des
+      // hydrocarbures s'affichaient presque toujours, même sur un puits sec.
+      const hcPresent = !!b.well || !!b.dryHoleInfo?.techFail;
+      const q = b.trueQuality; // 0-100
       return {
         porosity:    clamp(res.porosity + (rng()-.5)*1.5, 1, 40),
         permeability:res.permeability * (0.75 + rng()*.5),
@@ -1616,9 +1654,10 @@ const STUDIES = {
         grain:       rng()<.35?'Fin (0.1-0.25mm)':rng()<.65?'Moyen (0.25-0.5mm)':'Grossier (0.5-2mm)',
         cement:      rng()<.3?'Calcitique (réducteur φ)':rng()<.6?'Siliceux (diagenèse avancée)':'Argileux (kaolinite)',
         sorting:     rng()<.4?'Bien classé':rng()<.7?'Modérément classé':'Mal classé',
-        hcSaturation:b.trueQuality>.25 ? (15+b.trueQuality*.55+rng()*12).toFixed(0) : null,
-        odour:       b.trueProbability>.45 && rng()<.65 ? '⚠ Fluorescence UV : traces HC' : null,
-        rti:         b.trueQuality>.5 ? (rng()>.4 ? 'HC liquide, fluide mobile' : 'HC lourd, bitume') : null,
+        hcSaturation: hcPresent ? clamp(15 + q*.55 + rng()*12, 5, 90).toFixed(0) : null,
+        odour:       hcPresent ? (rng()<.8 ? '⚠ Fluorescence UV : indices d\'hydrocarbures' : null)
+                               : (b.srcFactor>.3 && rng()<.25 ? 'Faibles traces de fluorescence UV (migration passée, pas d\'accumulation)' : null),
+        rti:         hcPresent ? (b.isGas ? 'Gaz' : (rng()>.4 ? 'HC liquide, fluide mobile' : 'HC lourd, bitume')) : null,
       };
     },
   },
@@ -1763,6 +1802,7 @@ function updateBlockEstimate(b){
     est.depth = r.topReservoirEst; est.depthErr = r.topErr;
     est.prob = r.probEst; est.probErr = r.probErr;
     est.quality = r.qualityEst; est.qualErr = r.qualErr;
+    est.amplitude = r.amplitude;
     if(gravStudy) est.structPos = gravStudy.result.structPos;
   } else if(seisStudy){
     const r = seisStudy.result;
@@ -2706,6 +2746,7 @@ function renderGeoPanel(b){
     html+=infoRow('Probabilité de présence', `<strong>${pct}%</strong> ±${(e.probErr*100).toFixed(0)}%`);
     if(e.depth) html+=infoRow('Profondeur du réservoir', `${Math.round(e.depth)} m ±${Math.round(e.depthErr)} m`);
     if(e.quality!==undefined) html+=infoRow('Qualité réservoir', `${Math.round(e.quality)}/100 ±${Math.round(e.qualErr)}`);
+    if(e.amplitude) html+=infoRow('Indicateur direct (DHI)', e.amplitude);
     if(e.maturityClass) html+=infoRow('Maturité roche-mère', e.maturityClass);
     if(e.isGas) html+=`<div style="color:var(--amber);font-size:11px;margin-top:6px;">🔥 Cible probablement <strong>gazeuse</strong> (surmaturation)</div>`;
     if(e.tempAtRes) html+=infoRow('T° au réservoir',`${Math.round(e.tempAtRes)}°C`);
