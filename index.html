@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.16</title>
+<title>GeoExplorer V4.17</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -344,8 +344,12 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .q-mode.sel{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink);background:var(--panel2);}
 #quickBasin{width:100%;font-size:14px;padding:10px;}
 .q-brief{font-size:11.5px;color:var(--muted);line-height:1.55;margin:8px 0 0;}
+.q-train{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.q-train button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:10px 12px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:10px;cursor:pointer;font-family:var(--sans);font-size:13px;font-weight:500;}
+.q-train button i{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--muted);font-weight:400;}
+.q-train button i.rec{color:var(--green);}
 .q-sum{font-family:var(--mono);font-size:11.5px;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin:12px 0 4px;line-height:1.5;}
-@media (max-width:720px){ .q-modes{grid-template-columns:1fr;} .q-mode{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:2px 10px;} .q-mode span{flex-basis:100%;} .q-mode i{margin-top:0;} }
+@media (max-width:720px){ .q-train button{padding:8px 10px;font-size:12px;} .q-modes{grid-template-columns:1fr;} .q-mode{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:2px 10px;} .q-mode span{flex-basis:100%;} .q-mode i{margin-top:0;} }
 .menu-section.active{display:block;}
 .adv-group{margin-bottom:16px;}
 .adv-group-title{font-size:11px;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--line);}
@@ -601,7 +605,14 @@ body.mobile-layout #priceSparkline{display:none;}
       <select id="quickBasin" class="drill-select" aria-label="Bassin géologique"></select>
       <div class="q-brief" id="quickBrief"></div>
       <div class="q-sum" id="quickSummary"></div>
-      <button type="button" class="est-clear" id="menuCustomBtn">⚙ <span class="i18n" data-fr="Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)" data-en="Customize (map, seed, difficulty, display, mini-games)">Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)</span></button>
+      <div class="q-lbl"><span class="i18n" data-fr="S'entraîner" data-en="Practice">S'entraîner</span></div>
+      <div class="q-train" id="quickTrain">
+        <button type="button" data-open="cards">🃏 Assembler un prospect<i>~2 min</i></button>
+        <button type="button" data-quiz="lithofacies">🪨 Quiz lithofaciès<i data-best="lithofacies">8 questions</i></button>
+        <button type="button" data-quiz="maturation">🌡️ Quiz maturation<i data-best="maturation">8 questions</i></button>
+        <button type="button" data-quiz="rockeval">🧪 Quiz Rock-Eval<i data-best="rockeval">8 questions</i></button>
+      </div>
+      <button type="button" class="est-clear" id="menuCustomBtn" style="margin-top:14px;">⚙ <span class="i18n" data-fr="Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)" data-en="Customize (map, seed, difficulty, display, mini-games)">Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)</span></button>
     </div>
 
     <div class="menu-section active" id="tab-mode">
@@ -817,8 +828,8 @@ body.mobile-layout #priceSparkline{display:none;}
       <button class="cg-close" id="tutoCloseBtn">✕ Fermer</button>
     </div>
     <div id="tutoDots" style="display:flex;gap:6px;justify-content:center;margin:10px 0;"></div>
-    <div id="tutoSlideTitle" style="color:var(--amber);font-size:14px;margin-bottom:10px;"></div>
-    <div id="tutoSlideBody" style="font-size:12px;line-height:1.7;color:var(--text);min-height:220px;"></div>
+    <div id="tutoSlideTitle" style="color:var(--amber);font-size:15px;font-weight:600;margin-bottom:10px;"></div>
+    <div id="tutoSlideBody" style="font-size:13.5px;line-height:1.75;color:var(--text);min-height:260px;"></div>
     <div style="display:flex;justify-content:space-between;margin-top:16px;">
       <button class="cg-close" id="tutoPrevBtn">← Précédent</button>
       <button class="cg-close" id="tutoSkipBtn">Passer le tutoriel</button>
@@ -5471,11 +5482,20 @@ const QUICK_BASINS = [['random','🎲 Aléatoire (libre)'],['paris','Parisien ·
   document.querySelectorAll('#quickModes .q-mode').forEach(b=>b.addEventListener('click', ()=>{ document.querySelector(`.mode-card[data-mode="${b.dataset.mode}"]`)?.click(); quickRefresh(); }));
   document.getElementById('menuCustomBtn').addEventListener('click', ()=>setMenuSimple(false));
   document.getElementById('menuSimpleBtn').addEventListener('click', ()=>setMenuSimple(true));
+  document.querySelectorAll('#quickTrain button').forEach(b=>b.addEventListener('click', ()=>{
+    if(b.dataset.open==='cards') document.getElementById('cardGameOpenBtn')?.click();
+    else document.querySelector(`.mg-card[data-quiz="${b.dataset.quiz}"]`)?.click();
+  }));
 })();
 function quickRefresh(){
   document.querySelectorAll('#quickModes .q-mode').forEach(b=>b.classList.toggle('sel', b.dataset.mode===menuConfig.mode));
   const sel = document.getElementById('quickBasin'); if(sel) sel.value = menuConfig.basinType;
   const br = document.getElementById('quickBrief'); if(br) br.textContent = BASIN_BRIEFS[menuConfig.basinType] || '';
+  document.querySelectorAll('#quickTrain i[data-best]').forEach(i=>{
+    let best = null; try { best = JSON.parse(localStorage.getItem('geoexplorer_quiz_best_'+i.dataset.best)||'null'); } catch(e){}
+    i.textContent = best ? `meilleur score ${best.s}/${best.n}` : '8 questions';
+    i.classList.toggle('rec', !!best);
+  });
   const seed = document.getElementById('geoSeed')?.value.trim();
   const sm = document.getElementById('quickSummary');
   if(sm) sm.textContent = `${MODE_NAMES[menuConfig.mode]||menuConfig.mode} · ${BASIN_NAMES[menuConfig.basinType]||menuConfig.basinType} · ${menuConfig.financeMode?'Finance':'Géologie pure'} · ${menuConfig.gridSize}×${menuConfig.gridSize}${seed?' · seed '+seed:''}`;
@@ -6323,20 +6343,43 @@ function _doStartGame(){
         {q:'Deux échantillons du même bloc ont un TOC quasi identique (~2%), mais un Tmax de 410°C pour l\'un et 475°C pour l\'autre. Que suggère cet écart ?',
          choices:['Une erreur de laboratoire, à refaire systématiquement','Les deux échantillons ne viennent probablement pas de la même profondeur d\'enfouissement historique','Le TOC est plus fiable que le Tmax, on peut ignorer l\'écart'], correct:1,
          explain:'Le Tmax reflète la maturité thermique, pas la richesse organique : un tel écart signale des histoires d\'enfouissement différentes (roches de niveaux stratigraphiques différents, ou faille ayant juxtaposé deux blocs à des profondeurs de maturation distinctes).'},
+        {q:'TOC = 5 %, HI = 600 mg HC/g TOC, Tmax = 430 °C. Que dit cet échantillon ?',
+         choices:['Kérogène riche en hydrogène (type I/II), encore peu mature : très gros potentiel à huile','Kérogène de type III, déjà surmature','Matière organique inerte, sans potentiel'], correct:0,
+         explain:'Un HI voisin de 600 est typique d\'un kérogène de type I ou II. Un Tmax de 430 °C est en deçà de la fenêtre à huile (environ 435 à 455 °C) : la roche n\'a pas encore beaucoup généré mais le potentiel restant est excellent.'},
+        {q:'TOC = 2 %, HI = 60 mg HC/g TOC, Tmax = 438 °C. Que conclure du type de matière organique ?',
+         choices:['Kérogène de type III ou IV, pauvre en hydrogène : plutôt gaz, très peu d\'huile','Kérogène de type I, générateur d\'huile paraffinique','Roche sans aucun carbone organique'], correct:0,
+         explain:'Un HI inférieur à 150 mg HC/g TOC signale une matière organique continentale (type III) ou oxydée (type IV). Même mature, elle ne produira surtout que du gaz, et peu.'},
+        {q:'Parmi TOC, HI et Tmax, lequel renseigne le mieux sur la maturité thermique, indépendamment de la richesse ?',
+         choices:['Le Tmax','Le TOC','Aucun des trois'], correct:0,
+         explain:'Le Tmax est la température du maximum de pyrolyse du pic S2. Il augmente avec la maturité du kérogène. Le TOC mesure la quantité de carbone organique et le HI son type, pas son degré de cuisson.'},
+        {q:'Un échantillon présente un S1 très élevé devant S2 (indice de production S1/(S1+S2) supérieur à 0,4). Quelle lecture prudente ?',
+         choices:['Beaucoup d\'hydrocarbures libres : roche déjà en génération, ou imprégnée par des hydrocarbures migrés ou par la boue de forage','Roche immature à très fort potentiel restant','Roche sans matière organique'], correct:0,
+         explain:'S1 mesure les hydrocarbures déjà présents dans la roche. Un indice de production élevé se rencontre dans les roches matures, mais aussi dans les réservoirs imprégnés ou les échantillons contaminés : à croiser avec Tmax et le contexte.'},
+        {q:'TOC = 0,4 %, HI = 120 mg HC/g TOC, Tmax = 440 °C. Bonne roche-mère à huile ?',
+         choices:['Non : TOC faible et HI bas, au mieux un potentiel limité et plutôt gazeux','Oui : au-delà de 0,3 % de TOC toute roche est un excellent générateur','Impossible à dire sans sismique 3D'], correct:0,
+         explain:'Il faut en général plus de 1 % de TOC et un HI supérieur à 200 pour une bonne roche-mère à huile. Ici le TOC est faible et le HI bas : la quantité et la qualité sont toutes deux insuffisantes.'},
+        {q:'Deux roches ont le même TOC (3 %) et le même Tmax (445 °C). L\'une a HI = 520, l\'autre HI = 110. Laquelle génère le plus d\'huile ?',
+         choices:['Celle à HI = 520 : son kérogène est beaucoup plus riche en hydrogène','Celle à HI = 110 : un HI bas veut dire plus de carbone','Elles sont équivalentes puisque TOC et Tmax sont égaux'], correct:0,
+         explain:'À richesse et maturité égales, le HI décide de la nature des produits : au-dessus de 300, surtout de l\'huile, en dessous de 150, surtout du gaz et très peu de volume.'},
       ],
     },
   };
 
-  let qzBank = null, qzIdx = 0, qzScore = 0, qzAsked = 0;
+  let qzBank = null, qzKey = null, qzOrder = [], qzIdx = 0, qzScore = 0, qzAsked = 0;
+  const QZ_ROUND = 8; // questions par manche, tirées au hasard sans répétition
 
   function qzShuffled(arr){ return [...arr].sort(()=>Math.random()-.5); }
 
   function qzRenderQuestion(){
+    if(qzIdx >= qzOrder.length){ qzFinish(); return; }
     const qs = qzBank.questions;
-    const q = qs[qzIdx % qs.length];
+    const q = qs[qzOrder[qzIdx]];
     document.getElementById('qzQuestion').textContent = q.q;
     document.getElementById('qzFeedback').classList.remove('show');
-    document.getElementById('qzNextBtn').style.display = 'none';
+    const nb = document.getElementById('qzNextBtn');
+    nb.style.display = 'none';
+    nb.textContent = qzIdx===qzOrder.length-1 ? 'Voir le résultat →' : 'Question suivante →';
+    document.getElementById('qzScore').textContent = `Question ${qzIdx+1}/${qzOrder.length} · score ${qzScore}/${qzAsked}`;
 
     // Mélanger les choix tout en gardant la trace du bon indice
     const order = q.choices.map((c,i)=>i);
@@ -6355,7 +6398,7 @@ function _doStartGame(){
         qzAsked++;
         if(chosen===q.correct){ qzScore++; }
         else { btn.classList.add('wrong'); }
-        document.getElementById('qzScore').textContent = `Score : ${qzScore}/${qzAsked}`;
+        document.getElementById('qzScore').textContent = `Question ${qzIdx+1}/${qzOrder.length} · score ${qzScore}/${qzAsked}`;
         const fb = document.getElementById('qzFeedback');
         fb.textContent = (chosen===q.correct ? '✓ Correct. ' : '✗ Pas tout à fait. ') + q.explain;
         fb.classList.add('show');
@@ -6364,11 +6407,31 @@ function _doStartGame(){
     });
   }
 
+  function qzFinish(){
+    const n = qzOrder.length, key = 'geoexplorer_quiz_best_'+qzKey;
+    let prev = null; try { prev = JSON.parse(localStorage.getItem(key)||'null'); } catch(e){}
+    const record = qzScore>0 && (!prev || qzScore/n > prev.s/prev.n);
+    if(record){ try { localStorage.setItem(key, JSON.stringify({s:qzScore, n})); } catch(e){} }
+    const best = record ? {s:qzScore, n} : prev;
+    const ratio = qzScore/n;
+    const verdict = ratio>=0.85 ? 'Solide. Les bassins avancés sont à votre portée.'
+                  : ratio>=0.6  ? 'Correct. Relisez les explications des questions ratées.'
+                  : 'À retravailler. Le glossaire (menu pause) et le tutoriel couvrent ces notions.';
+    document.getElementById('qzQuestion').innerHTML = `<b style="font-size:16px;">Manche terminée : ${qzScore}/${n}</b><br><br>${verdict}<br><br>Meilleur score : <b>${best ? best.s+'/'+best.n : 'aucun pour l\'instant'}</b>${record?' (nouveau record)':''}`;
+    document.getElementById('qzChoices').innerHTML = `<button class="qz-choice" id="qzAgainBtn">↻ Rejouer une manche (questions mélangées)</button>`;
+    document.getElementById('qzAgainBtn').addEventListener('click', ()=>qzOpen(qzKey));
+    document.getElementById('qzFeedback').classList.remove('show');
+    document.getElementById('qzNextBtn').style.display = 'none';
+    document.getElementById('qzScore').textContent = `Score final ${qzScore}/${n}`;
+    if(typeof quickRefresh==='function') quickRefresh();
+  }
+
   function qzOpen(key){
-    qzBank = QUIZ_BANKS[key];
+    qzBank = QUIZ_BANKS[key]; qzKey = key;
+    qzOrder = qzShuffled(qzBank.questions.map((_,i)=>i)).slice(0, QZ_ROUND);
     qzIdx = 0; qzScore = 0; qzAsked = 0;
     document.getElementById('qzTitle').textContent = qzBank.title;
-    document.getElementById('qzScore').textContent = 'Score : 0/0';
+    document.getElementById('qzScore').textContent = `Question 1/${qzOrder.length} · score 0/0`;
     document.getElementById('quizModal').classList.add('open');
     qzRenderQuestion();
   }
@@ -6396,57 +6459,71 @@ function _doStartGame(){
     {
       title: 'Bienvenue',
       body: `Vous êtes géologue explorateur. L'objectif : trouver des gisements de pétrole en étudiant le
-        sous-sol AVANT de forer, pas en forant au hasard. Chaque forage coûte cher, chaque étude réduit le
-        risque, mais aucune étude ne donne jamais une certitude absolue.`,
+        sous-sol AVANT de forer, pas en forant au hasard. Un forage coûte cher, une étude réduit le risque,
+        mais aucune étude ne donne jamais une certitude.<br><br>
+        Une partie dure de 20 à 35 ans de jeu, que le temps fait défiler pendant que vous décidez. Vous pouvez
+        le mettre en pause à tout moment.`,
     },
     {
-      title: 'Le système pétrolier : 4 facteurs',
-      body: `Un gisement exploitable a besoin des 4 facteurs à la fois, un seul manquant et il n'y a rien à
-        forer :<br><br>
+      title: 'Les quatre ingrédients',
+      body: `Un gisement exploitable a besoin des quatre à la fois. Un seul manquant et il n'y a rien à forer :<br><br>
         <b style="color:var(--amber);">Piège</b> : une géométrie qui retient les hydrocarbures (anticlinal,
         faille scellante, biseau, flanc de sel).<br>
-        <b style="color:var(--amber);">Réservoir</b> : une roche poreuse et perméable pour stocker et
-        laisser circuler (grès, calcaire fracturé).<br>
-        <b style="color:var(--amber);">Couverture</b> : une roche imperméable au-dessus qui empêche la
-        fuite verticale (argile épaisse, évaporite).<br>
-        <b style="color:var(--amber);">Charge</b> : des hydrocarbures qui ont migré depuis une roche-mère
-        mature (kitchen) jusqu'au piège.`,
+        <b style="color:var(--amber);">Réservoir</b> : une roche poreuse et perméable (grès, calcaire).<br>
+        <b style="color:var(--amber);">Couverture</b> : une roche imperméable au-dessus (argile épaisse, sel, anhydrite).<br>
+        <b style="color:var(--amber);">Charge</b> : des hydrocarbures venus d'une roche-mère mature, qui ont
+        migré jusqu'au piège.`,
     },
     {
-      title: 'Étudier avant de forer',
-      body: `Trois études sont possibles SANS jamais forer :<br><br>
-        <b>Gravimétrie</b> : une campagne pour toute la carte, révèle les hauts et bas structuraux. Le
-        premier réflexe presque toujours rentable.<br>
-        <b>Sismique 2D</b> : un profil A→B, révèle la géométrie des couches et les failles le long de ce
-        profil. Se lance depuis l'outil 📐 et l'onglet Coupe.<br>
-        <b>Sismique 3D</b> : la meilleure information possible sans forer, recherche des indicateurs directs
-        d'hydrocarbures (anomalies d'amplitude). Resserre nettement l'estimation.<br><br>
-        En revanche, impossible de loguer ou caroter sans un vrai trou : ces informations ne viennent
-        maintenant QUE du forage lui-même.`,
+      title: 'Les cinq gestes',
+      body: `Le bandeau <b>Guide</b>, en haut de l'écran, propose toujours la prochaine étape et dit pourquoi une
+        action est bloquée :<br><br>
+        <b>1. Cartographier</b> : la gravimétrie couvre toute la carte et révèle les hauts structuraux.<br>
+        <b>2. Tracer une coupe</b> : outil <i>Coupe A→B</i>, deux clics sur la carte.<br>
+        <b>3. Sismique 2D</b> : précise la profondeur des couches et les failles le long de la coupe.<br>
+        <b>4. Sismique 3D</b> : la meilleure information sans forer, avec une probabilité de succès estimée.<br>
+        <b>5. Forer</b> : le seul moyen de savoir.<br><br>
+        Le log et la carotte ne s'obtiennent qu'en forant.`,
     },
     {
-      title: 'Lire la carte',
-      body: `La couleur de chaque case reflète l'information disponible : position structurale si vous n'avez
-        que la gravimétrie, probabilité de succès une fois plus étudiée. Cliquez une case pour voir son détail
-        dans l'onglet Géologie, et l'onglet Études pour lancer une étude ou un forage dessus.<br><br>
-        La coupe (onglet Coupe, outil 📐) montre une tranche verticale entre deux blocs : c'est là que
-        les failles, les biseaux et les dômes de sel deviennent visibles.`,
+      title: 'Lire la carte et la coupe',
+      body: `Chaque case change de couleur avec l'information disponible : relief structural après la gravimétrie,
+        probabilité estimée (en %) après une sismique 3D. Cliquez une case : l'onglet <b>Bloc</b> détaille ce
+        qu'on sait, l'onglet <b>Études</b> propose la suite.<br><br>
+        La <b>coupe</b> montre une tranche verticale entre deux blocs. Le bouton <i>Agrandir la coupe</i> l'ouvre en
+        pleine page (sur téléphone, <i>Pivoter</i> la couche à l'horizontale). Seule la profondeur est chiffrée :
+        la distance n'est pas à l'échelle.`,
     },
     {
-      title: 'Forer',
-      body: `Le forage coûte cher et dépend de la profondeur et du matériel choisi. Résultat binaire : puits
-        productif ou puits sec, révélé après un court suspense. Dans les deux cas, le forage donne
-        automatiquement le log complet du bloc, avec le facteur qui a le plus joué.<br><br>
-        Ensuite, un puits producteur peut coûter plus qu'il ne rapporte en vieillissant : fermez-le depuis son
-        panneau si besoin. Si un second réservoir existe plus profond, un side-track permet de l'exploiter
-        sans forer un nouveau trou.`,
+      title: 'Estimer avant de forer',
+      body: `Dans la fiche de forage, vous pouvez annoncer une <b>probabilité de succès</b> et une <b>classe de
+        production</b>. C'est facultatif, et ça rapporte de l'argent si vous êtes bien calibré.<br><br>
+        La règle récompense l'honnêteté : annoncer sa vraie croyance rapporte le plus en moyenne. Annoncer 95 %
+        à chaque fois coûte environ 130 k$ par puits sec. Attention, les estimations 3D élevées sont plus
+        souvent trop optimistes que prudentes : un 80 % annoncé vaut en réalité autour de 70 %.`,
+    },
+    {
+      title: 'Forer et produire',
+      body: `Le résultat est binaire : puits productif ou sec, révélé après un court suspense, avec le facteur
+        qui a le plus joué. Un puits décline ensuite : environ -16 % la première année, la moitié du débit
+        après 5 ans. Fermez les puits marginaux depuis l'onglet <b>Gisements</b> quand ils coûtent plus
+        qu'ils ne rapportent.<br><br>
+        Si un second réservoir existe plus profond, un side-track l'exploite sans forer un nouveau trou.`,
+    },
+    {
+      title: 'Argent et imprévus',
+      body: `Avec le mode Finance (activé par défaut), vous pouvez emprunter (7 % par an), stocker la production,
+        couvrir un prix et relancer un puits par récupération assistée (EOR).<br><br>
+        Des accidents sont possibles : éruption, grève, incident environnemental. Le jeu s'arrête alors et une
+        fenêtre explique les conséquences, vous reprenez quand vous voulez. Le mode TP coupe la finance : seul
+        compte le choix de vos deux meilleures cibles.`,
     },
     {
       title: 'Prêt à jouer',
-      body: `C'est tout pour la base. Le glossaire (menu pause, en jeu) reste disponible à tout moment pour
-        revoir un terme précis. Les mini-jeux du menu (cartes, quiz) permettent de s'entraîner sur un point
-        précis sans lancer toute une partie.<br><br>
-        Bonne exploration.`,
+      body: `C'est tout pour la base. Le glossaire (menu pause) reste disponible à tout moment. Sur l'accueil,
+        la section <b>S'entraîner</b> propose un jeu de cartes et trois quiz (lithofaciès, maturation, Rock-Eval)
+        pour travailler un point précis sans lancer une partie.<br><br>
+        Conseil pour une première partie : bassin Parisien, niveau Junior. Bonne exploration.`,
     },
   ];
 
@@ -6454,7 +6531,7 @@ function _doStartGame(){
 
   function tutoRender(){
     const s = SLIDES[tutoIdx];
-    document.getElementById('tutoSlideTitle').textContent = s.title;
+    document.getElementById('tutoSlideTitle').textContent = `${tutoIdx+1}/${SLIDES.length} · ${s.title}`;
     document.getElementById('tutoSlideBody').innerHTML = s.body;
     document.getElementById('tutoDots').innerHTML = SLIDES.map((_,i)=>
       `<span style="width:7px;height:7px;border-radius:50%;background:${i===tutoIdx?'var(--amber)':'var(--line)'};"></span>`
