@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.13</title>
+<title>GeoExplorer V4.14</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -291,6 +291,9 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .drill-card{background:var(--panel2); border:1px solid var(--line); padding:12px; margin-bottom:8px; border-radius:8px;}
 .drill-select{width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text); font-family:var(--sans); font-size:12px; padding:6px; margin-bottom:6px; border-radius:6px;}
 .drill-summary{font-size:11px; color:var(--muted); line-height:1.7; margin:8px 0;}
+.drill-summary .tr{display:flex;justify-content:space-between;align-items:baseline;gap:12px;}
+.drill-summary .tr .tl{color:var(--muted);}
+.drill-summary .tr span:last-child{color:var(--text);text-align:right;}
 .drill-summary .ds-good{color:var(--green);}
 .drill-summary .ds-warn{color:var(--amber);}
 .drill-summary .ds-bad{color:var(--red);}
@@ -361,6 +364,15 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 @keyframes pauseSheetUp{from{transform:translateY(24px);opacity:.4;}to{transform:translateY(0);opacity:1;}}
 #drillRevealModal{position:fixed;inset:0;z-index:1300;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px;}
 #drillRevealModal.open{display:flex;}
+.est-card{border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:10px 12px;margin:8px 0;}
+.est-row{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;gap:8px;}
+.est-row b{font-family:var(--mono);font-weight:600;color:var(--amber);}
+.est-card input[type=range]{width:100%;margin:8px 0 4px;accent-color:var(--amber);}
+.est-buckets{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0;}
+.est-buckets button{flex:1 1 auto;min-width:0;padding:7px 6px;font-family:var(--mono);font-size:11px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:7px;cursor:pointer;}
+.est-buckets button.sel{background:var(--ink);color:var(--on-ink);border-color:var(--ink);}
+.est-hint{font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:4px;}
+.est-clear{background:none;border:none;color:var(--muted);text-decoration:underline;font-size:11px;cursor:pointer;padding:0;font-family:var(--sans);}
 #alertModal{position:fixed;inset:0;z-index:1310;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px;}
 #alertModal.open{display:flex;}
 #alertBox{background:var(--panel);border:1px solid var(--line);padding:26px;max-width:420px;width:100%;text-align:center;border-radius:12px;}
@@ -2354,7 +2366,59 @@ function drillDepthEstimate(b){
   return clamp(est, 300, 5500);
 }
 
-function drillBlock(blockId, method, equip){
+// Calibration : avant de forer, le joueur peut annoncer une probabilité de succès et une classe de
+// production initiale. Au résultat du forage :
+//  - probabilité : règle de score quadratique (de Brier) relative à une prévision de référence r = 25 %
+//    (le taux de succès moyen de la carte). Paiement = K × [(r-o)² - (p-o)²], o valant 1 si la géologie
+//    est bonne et 0 sinon. La règle est propre : annoncer sa vraie croyance maximise le gain espéré, et
+//    on ne gagne rien à toujours annoncer 5 % ou 95 %. Aucun écrêtage : les bornes CALIB.cap et CALIB.floor sont les extrêmes naturels de la règle, ce qui garde la propriété.
+//  - classe de production : bonus fixe si la classe annoncée contient le débit initial réel.
+// Sans estimation, aucun bonus ni malus. Les robots de simulation n'estiment pas : équilibre inchangé.
+const CALIB = { ref:0.25, K:160000, range:40000 };
+CALIB.cap   =  CALIB.K*(1-CALIB.ref)**2;        // meilleur cas : succès annoncé à 100 % (+90 k$)
+CALIB.floor = -CALIB.K*(1-CALIB.ref**2);        // pire cas : succès annoncé à 100 %, puits sec (-150 k$)
+const PROD_BUCKETS = [
+  {max:500,      label:'< 500'},
+  {max:1500,     label:'500 à 1 500'},
+  {max:3000,     label:'1 500 à 3 000'},
+  {max:6000,     label:'3 000 à 6 000'},
+  {max:Infinity, label:'> 6 000'},
+];
+const bucketOf = q => PROD_BUCKETS.findIndex(bk => q < bk.max);
+function ensureEst(b){ if(!b.playerEst) b.playerEst = {p:null, bucket:null}; return b.playerEst; }
+function estRefresh(blockId){
+  const b = blocks[blockId], e = ensureEst(b);
+  const v = document.getElementById('estPVal'); if(v) v.textContent = e.p===null ? 'non estimé' : Math.round(e.p*100)+' %';
+  document.querySelectorAll('#estBuckets button').forEach(btn => btn.classList.toggle('sel', +btn.dataset.i === e.bucket));
+}
+function estSetP(blockId, val){ ensureEst(blocks[blockId]).p = Math.round(+val)/100; estRefresh(blockId); }
+function estSetBucket(blockId, i){ const e = ensureEst(blocks[blockId]); e.bucket = e.bucket===i ? null : i; estRefresh(blockId); }
+function estClear(blockId){ const b = blocks[blockId]; b.playerEst = {p:null, bucket:null}; const r = document.getElementById('estP'); if(r) r.value = 25; estRefresh(blockId); }
+function applyCalibration(est, geoOk, initProd, b){
+  const o = geoOk ? 1 : 0, lines = [];
+  let pay = 0;
+  if(est.p!==null && est.p!==undefined){
+    const raw = CALIB.K*((CALIB.ref-o)**2 - (est.p-o)**2);
+    const part = raw;
+    pay += part;
+    lines.push(`Probabilité annoncée ${Math.round(est.p*100)} % : ${geoOk?'la géologie était bonne':'pas d\'hydrocarbures'} (${part>=0?'+':''}${formatM(part)}).`);
+  }
+  if(est.bucket!==null && est.bucket!==undefined){
+    if(initProd!==null){
+      const hit = bucketOf(initProd) === est.bucket;
+      if(hit) pay += CALIB.range;
+      lines.push(`Production annoncée ${PROD_BUCKETS[est.bucket].label} : réel ${Math.round(initProd)} par mois (${hit?'dans la classe, +'+formatM(CALIB.range):'hors classe'}).`);
+    } else lines.push('Classe de production annoncée : sans objet, le puits est sec.');
+  }
+  if(G.mode==='sandbox') pay = 0;
+  G.budget += pay;
+  G.calib = G.calib || {n:0, net:0};
+  G.calib.n++; G.calib.net += pay;
+  addLog(`🎯 Calibration bloc (${b.x},${b.y}) : ${pay>=0?'+':''}${formatM(pay)}.`, pay>=0?'good':'bad');
+  return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><b>Vos estimations</b> : ${lines.join(' ')} Total : <b>${pay>=0?'+':''}${formatM(pay)}</b>.</div>`;
+}
+
+function drillBlock(blockId, method, equip, est){
   const b = blocks[blockId];
   if(b.well||b.dryHole){addLog('Ce bloc est déjà foré.','bad');return;}
   if(b.studyLevel<1){addLog('Réalisez au moins une étude (gravimétrie ou sismique) avant de forer.','bad');return;}
@@ -2368,7 +2432,8 @@ function drillBlock(blockId, method, equip){
   b.planned = false;
 
   const drillingMonths = Math.max(2, Math.round(depth/600));
-  G.drilling.push({blockId, method, equip, cost, depth, startMonth:G.month, endMonth:G.month+drillingMonths});
+  G.drilling.push({blockId, method, equip, cost, depth, startMonth:G.month, endMonth:G.month+drillingMonths,
+                   est: est && (est.p!==null || est.bucket!==null) ? {p:est.p, bucket:est.bucket} : null});
   b.el?.classList.add('drilling');
   addLog(`⏳ Forage lancé : bloc (${b.x},${b.y}), prof. estimée ${Math.round(depth)}m, ${drillingMonths} mois.`,'ev');
 
@@ -2408,6 +2473,7 @@ function resolveDrilling(d){
   // géologie), pour pouvoir expliquer après coup pourquoi ça a marché ou non.
   const factors = {piège:b.trapFactor, réservoir:b.resFactor, couverture:b.sealFactor, charge:b.srcFactor};
   const limitingFactor = Object.entries(factors).sort((a,z)=>a[1]-z[1])[0][0];
+  let prodOut = null;
   if(geoOk && techOk){
     const res = b.horizons.find(l=>l.role==='reservoir');
     const initProd = (b.trueQuality/100) * (res?.thicknessLocal||20) * PROD_BASE * me.prodMult;
@@ -2416,6 +2482,7 @@ function resolveDrilling(d){
                   production:initProd, comps:[{q0:initProd, t0:0}], monthsActive:0, status:'producing',
                   isGas:b.isGas, offshore:b.isOffshore, eorActive:false, eorMonthsLeft:0};
     G.wells.push(well);
+    prodOut = initProd;
     b.well = well;
     b.el?.classList.add('has-well');
     injectWellLog(b); // le forage donne toujours le log complet, succès ou non
@@ -2430,11 +2497,12 @@ function resolveDrilling(d){
     const why = !geoOk ? 'aucun HC (puits sec)' : 'échec technique';
     addLog(`✗ Forage infructueux : bloc (${b.x},${b.y}), ${why}.`,'bad');
   }
+  const calibHtml = d.est ? applyCalibration(d.est, geoOk, prodOut, b) : '';
   renderBlock(b);
   updateHud();
   if(selectedBlock===d.blockId){ renderGeoPanel(b); renderStudiesPanel(b); }
 
-  showDrillReveal(b, geoOk, techOk, limitingFactor);
+  showDrillReveal(b, geoOk, techOk, limitingFactor, calibHtml);
 }
 
 // Side-track : forer latéralement depuis le puits existant pour atteindre un
@@ -2951,6 +3019,7 @@ function showEnd(reason){
     <div><span class="end-lbl">Puits forés</span><br><strong>${G.wells.length} (${G.wells.filter(w=>w.status==='producing').length} encore actifs)</strong></div>
     <div><span class="end-lbl">Cours final</span><br><strong>$${G.price.toFixed(1)}/bbl</strong></div>
     <div><span class="end-lbl">Revenus cumulés</span><br><strong>${formatM(totalProd)}</strong></div>
+    ${G.calib?.n?`<div><span class="end-lbl">Calibration (${G.calib.n} ${G.calib.n>1?"estimations":"estimation"})</span><br><strong>${G.calib.net>=0?'+':''}${formatM(G.calib.net)}</strong></div>`:''}
   `;
   buildDebriefReport();
   document.getElementById('endScreen').style.display='flex';
@@ -2997,8 +3066,8 @@ const SUSPENSE_LINES = [
   'Mesure de pression...', 'Interprétation des logs...',
 ];
 
-function showDrillReveal(b, geoOk, techOk, limitingFactor){
-  drillRevealQueue.push({b, geoOk, techOk, limitingFactor});
+function showDrillReveal(b, geoOk, techOk, limitingFactor, calibHtml){
+  drillRevealQueue.push({b, geoOk, techOk, limitingFactor, calibHtml});
   if(!drillRevealPlaying) playNextDrillReveal();
 }
 
@@ -3006,7 +3075,7 @@ function playNextDrillReveal(){
   const next = drillRevealQueue.shift();
   if(!next){ drillRevealPlaying=false; return; }
   drillRevealPlaying = true;
-  const {b, geoOk, techOk, limitingFactor} = next;
+  const {b, geoOk, techOk, limitingFactor, calibHtml} = next;
   const modal = document.getElementById('drillRevealModal');
   const icon = document.getElementById('drillRevealIcon');
   const title = document.getElementById('drillRevealTitle');
@@ -3051,6 +3120,7 @@ function playNextDrillReveal(){
       sub.textContent = 'Aucun hydrocarbure exploitable';
       detail.innerHTML = `Facteur limitant : <b>${FACTOR_LABEL[limitingFactor]}</b> : ${FACTOR_EXPLAIN_BAD[limitingFactor]}.`;
     }
+    if(calibHtml) detail.innerHTML += calibHtml;
     closeBtn.style.display = '';
   }, 1500);
 }
@@ -3752,6 +3822,13 @@ function renderStudiesPanel(b){
         ${Object.entries(EQUIPMENT).map(([k,e])=>`<option value="${k}" ${k==='standard'?'selected':''}>${e.label} (max ${e.maxDepth}m, fiab. ${(e.reliability*100).toFixed(0)}%)</option>`).join('')}
       </select>
       <div class="drill-summary" id="drillSummary"></div>
+      <div class="est-card">
+        <div class="est-row"><span>Votre estimation de succès</span><b id="estPVal">${ensureEst(b).p===null?'non estimé':Math.round(ensureEst(b).p*100)+' %'}</b></div>
+        <input type="range" id="estP" min="0" max="100" step="5" value="${ensureEst(b).p===null?25:Math.round(ensureEst(b).p*100)}" oninput="estSetP(${b.id}, this.value)" aria-label="Probabilité de succès estimée, en pourcentage">
+        <div class="est-row" style="margin-top:6px;"><span>Production initiale attendue (par mois)</span></div>
+        <div class="est-buckets" id="estBuckets">${PROD_BUCKETS.map((bk,i)=>`<button type="button" data-i="${i}" class="${ensureEst(b).bucket===i?'sel':''}" onclick="estSetBucket(${b.id},${i})">${bk.label}</button>`).join('')}</div>
+        <div class="est-hint">Facultatif. Une probabilité juste rapporte jusqu'à +${formatM(CALIB.cap)}, une estimation très fausse coûte jusqu'à ${formatM(-CALIB.floor)}. Bonne classe de production : +${formatM(CALIB.range)}. <button type="button" class="est-clear" onclick="estClear(${b.id})">Effacer</button></div>
+      </div>
       <button class="study-btn study-btn-compact" id="drillBtn" onclick="launchDrill(${b.id})">⛏ Forer</button>
     </div>`;
     setTimeout(()=>updateDrillSummary(b.id),0);
@@ -3848,7 +3925,7 @@ function updateDrillSummary(blockId){
 function launchDrill(blockId){
   const method=document.getElementById('drillMethod')?.value||'vertical';
   const equip=document.getElementById('drillEquip')?.value||'standard';
-  drillBlock(blockId, method, equip);
+  drillBlock(blockId, method, equip, blocks[blockId].playerEst);
   renderStudiesPanel(blocks[blockId]);
 }
 
