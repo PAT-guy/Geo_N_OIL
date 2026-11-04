@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.8</title>
+<title>GeoExplorer V4.9</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -16,6 +16,12 @@
   --text:#1C170E; --muted:#5C5238;
   --amber:#8F4D15; --green:#245C30; --red:#8F2A21; --blue:#254F6B;
   --ink:#1C170E; --on-ink:#F4EFE1; /* action principale : encre pleine */
+  /* États des cases de la carte : terre (ocre) et mer (bleu), relief, probabilité */
+  --c-land-a:#EFE6CC; --c-land-b:#E5DABC; --c-sea-a:#E1ECF1; --c-sea-b:#D3E2EA;
+  --c-r0:#E9DFC4; --c-r1:#DCC79C; --c-r2:#C9A96A;
+  --c-s0:#D4E2EA; --c-s1:#B6CCD9; --c-s2:#9DB8CB;
+  --c-p1:#EFD9B8; --c-p2:#D59B66; --c-p3:#8F4D15; --c-p3-text:#FFF6E8;
+  --c-well:#DDE8D6; --c-dry:#EDE5CF; --c-salt:rgba(150,100,180,.28);
   --serif:'Source Serif 4', Georgia, 'Times New Roman', serif;
   --sans:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono:'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -33,6 +39,11 @@ html[data-theme="dark"]{
   --line:#3A3327; --line-strong:#5A5040; --text:#EDE6D3; --muted:#A99F86;
   --amber:#E09A5A; --green:#7DC38F; --red:#E07A6E; --blue:#7FB0CC;
   --ink:#EDE6D3; --on-ink:#14110C;
+  --c-land-a:#231E17; --c-land-b:#2A241C; --c-sea-a:#1B2A32; --c-sea-b:#22343D;
+  --c-r0:#2E281F; --c-r1:#4A3F2B; --c-r2:#6B5530;
+  --c-s0:#1E2F38; --c-s1:#2A4350; --c-s2:#3A5A6B;
+  --c-p1:#5A4630; --c-p2:#8A5A32; --c-p3:#E09A5A; --c-p3-text:#1A130B;
+  --c-well:#25382B; --c-dry:#2A2620; --c-salt:rgba(190,140,220,.30);
   --sec-paper:#14110C; --sec-text-strong:#ffffff; --sec-text-soft:rgba(255,255,255,.85);
   --sec-line-strong:rgba(255,255,255,.6); --sec-line-soft:rgba(255,255,255,.2);
   --sec-surface-line:rgba(255,255,255,.3); --sec-ink-edge:rgba(255,255,255,.45);
@@ -92,22 +103,82 @@ main{flex:1; display:grid; grid-template-columns:1fr var(--right-w, 380px); over
 #mapPanel{display:flex; flex-direction:column; overflow:hidden;}
 .map-toolbar{display:flex; gap:12px; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; flex-shrink:0; background:var(--panel2);}
 .map-toolbar > span{font-size:12.5px; color:var(--muted);}
-#mapWrap{flex:1; min-height:0; overflow:auto; position:relative; padding:10px;}
+#mapWrap{flex:1; min-height:0; overflow:auto; position:relative; padding:14px 14px 14px 18px;}
 .grid{display:grid; gap:2px; width:fit-content;}
+.axl{font-family:var(--mono); font-size:10px; color:var(--muted); display:flex; align-items:center; justify-content:center;}
 .block{
-  width:44px; height:44px; border:1px solid var(--line); cursor:pointer;
+  width:44px; height:44px; border:1px solid var(--line-strong); cursor:pointer;
   position:relative; display:flex; align-items:center; justify-content:center; border-radius:6px;
-  font-size:10px; transition:border-color .1s;
+  font-size:10px; transition:border-color .1s; color:var(--text);
 }
-.block.offshore{border-color:#2a4a6a;}
-.block:hover{border-color:var(--amber);}
-.block.selected{box-shadow:inset 0 0 0 3px var(--amber);}
-.block.section-a{box-shadow:inset 0 0 0 3px var(--green);}
-.block.section-b{box-shadow:inset 0 0 0 3px var(--blue);}
-.block .badge{position:absolute; bottom:1px; right:2px; font-size:9px;}
-.block.has-well .badge::after{content:'⛽';}
-.block.dry-hole .badge::after{content:'✗'; color:var(--red);}
-.block.drilling .badge::after{content:'⏳';}
+/* États : non exploré (hachuré), relief gravimétrique, probabilité estimée, puits */
+.block.unexplored{background-image:repeating-linear-gradient(135deg,var(--c-land-a) 0 4px,var(--c-land-b) 4px 8px);}
+.block.unexplored.sea{background-image:repeating-linear-gradient(135deg,var(--c-sea-a) 0 4px,var(--c-sea-b) 4px 8px);}
+.block.relief-0{background:var(--c-r0);} .block.relief-1{background:var(--c-r1);} .block.relief-2{background:var(--c-r2);}
+.block.sea.relief-0{background:var(--c-s0);} .block.sea.relief-1{background:var(--c-s1);} .block.sea.relief-2{background:var(--c-s2);}
+.block.prob-1{background:var(--c-p1);} .block.prob-2{background:var(--c-p2);} .block.prob-3{background:var(--c-p3); color:var(--c-p3-text);}
+.block.has-well{background:var(--c-well); border-color:var(--green);}
+.block.dry-hole{background:var(--c-dry);}
+.block.salt::before{content:''; position:absolute; inset:0; border-radius:5px; pointer-events:none;
+  background-image:repeating-linear-gradient(45deg,var(--c-salt) 0 2px,transparent 2px 6px);}
+.block:hover{border-color:var(--ink);}
+.block.selected{box-shadow:0 0 0 2px var(--panel2),0 0 0 4px var(--ink); z-index:2; border-color:var(--ink);}
+.block.section-a, .block.section-b{outline:2px solid var(--ink); outline-offset:-3px;}
+.block .pv{font-family:var(--mono); font-size:11.5px; font-weight:500;}
+.block .bi{display:flex; align-items:center; justify-content:center;}
+.block .bi .ico{width:17px; height:17px; vertical-align:0;}
+.block .mk{position:absolute; top:-6px; left:-6px; width:16px; height:16px; border-radius:50%; background:var(--ink); color:var(--on-ink);
+  font-size:9px; font-weight:600; display:flex; align-items:center; justify-content:center; z-index:3; font-family:var(--sans);}
+.block.drilling{animation:blkPulse 1.3s ease-in-out infinite;}
+@keyframes blkPulse{0%,100%{opacity:1;}50%{opacity:.55;}}
+/* Guide : fil d'étapes et action recommandée */
+#guideBar{display:flex; align-items:center; gap:18px; padding:10px 20px; border-bottom:1px solid var(--line); background:var(--bg); flex-wrap:wrap; flex-shrink:0;}
+#guideBar.collapsed{padding:4px 20px; justify-content:flex-end;}
+.guide-steps{display:flex; align-items:center; gap:0; list-style:none; padding:0; margin:0; flex-wrap:wrap;}
+.guide-steps li{display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted);}
+.guide-steps li + li::before{content:''; width:22px; height:1px; background:var(--line-strong); margin:0 8px;}
+.gs-dot{width:22px; height:22px; border-radius:50%; border:1px solid var(--line-strong); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex:none;}
+.guide-steps li.done .gs-dot{background:var(--green); border-color:var(--green); color:#fff;}
+.guide-steps li.done .gs-dot .ico{width:13px; height:13px; stroke-width:2.6; vertical-align:0;}
+.guide-steps li.cur{color:var(--text); font-weight:600;}
+.guide-steps li.cur .gs-dot{background:var(--ink); border-color:var(--ink); color:var(--on-ink);}
+.guide-text{flex:1; min-width:240px; font-size:12.5px; line-height:1.45; color:var(--text);}
+.guide-act{background:var(--ink); color:var(--on-ink); border:none; border-radius:8px; padding:10px 16px; font-family:var(--sans); font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap;}
+.guide-act:hover{opacity:.9;}
+.guide-act:disabled{background:var(--line); color:var(--muted); cursor:not-allowed;}
+.guide-why{font-size:11px; color:var(--red); width:100%;}
+.guide-hide{background:none; border:none; color:var(--muted); text-decoration:underline; font-family:var(--sans); font-size:12px; cursor:pointer;}
+.guide-mini{display:none;}
+body.mobile-layout #guideBar{padding:10px 14px; gap:8px; margin:10px 12px 0; border:1px solid var(--line); border-radius:12px; background:var(--panel2);}
+body.mobile-layout .guide-steps, body.mobile-layout .guide-hide{display:none;}
+body.mobile-layout .guide-mini{display:flex; align-items:center; gap:10px; width:100%; font-size:12px; color:var(--muted);}
+.guide-mini .gm-bars{display:flex; gap:4px;}
+.guide-mini .gm-bars i{width:26px; height:4px; border-radius:2px; background:var(--line);}
+.guide-mini .gm-bars i.on{background:var(--ink);}
+body.mobile-layout .guide-text{min-width:0; flex-basis:100%;}
+body.mobile-layout .guide-act{width:100%; padding:13px 14px; font-size:14px;}
+/* Légende de la carte */
+.map-body{flex:1; min-height:0; display:flex;}
+#mapLegend{width:250px; flex-shrink:0; overflow-y:auto; padding:14px 16px 14px 6px; font-size:12px;}
+#mapLegend h3{font-family:var(--serif); font-size:18px; font-weight:600; margin-bottom:10px;}
+#mapLegend .lg-t{font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:14px 0 7px;}
+#mapLegend .lg-row{display:flex; gap:4px; margin-bottom:4px;}
+#mapLegend .lg-sw{flex:1; height:20px; border-radius:4px; border:1px solid var(--line-strong);}
+.l-short{display:none;}
+body.mobile-layout .l-full{display:none;} body.mobile-layout .l-short{display:inline;}
+body.mobile-layout .map-toolbar{gap:8px; padding:8px 12px;}
+body.mobile-layout .map-toolbar .seg .btn{padding:7px 10px; font-size:12.5px;}
+body.mobile-layout .map-toolbar .btn .ico{margin-right:4px;}
+#mapLegend .lg-ends{display:flex; justify-content:space-between; font-size:10.5px; color:var(--muted);}
+#mapLegend p{font-size:11.5px; color:var(--muted); line-height:1.45; margin-top:6px;}
+#mapLegend .lg-mk{display:flex; align-items:center; gap:9px; margin:7px 0; font-size:12px;}
+#mapLegend .lg-box{width:22px; height:22px; border-radius:5px; border:1px solid var(--line-strong); display:flex; align-items:center; justify-content:center; flex:none; font-size:10px; position:relative;}
+#mapLegendMini{display:none; gap:14px; flex-wrap:wrap; padding:6px 14px 8px; font-size:11px; color:var(--muted); align-items:center;}
+#mapLegendMini span{display:inline-flex; align-items:center; gap:5px;}
+#mapLegendMini i{width:14px; height:14px; border-radius:3px; border:1px solid var(--line-strong); display:inline-block;}
+@media (max-width:1280px){ #mapLegend{display:none;} }
+body.mobile-layout #mapLegend{display:none;}
+body.mobile-layout #mapLegendMini{display:flex;}
 /* Tooltip */
 #tip{position:fixed; background:var(--panel2); border:1px solid var(--line); padding:8px 12px;
   font-size:11px; pointer-events:none; display:none; z-index:900; min-width:180px; line-height:1.7; border-radius:8px;}
@@ -126,6 +197,56 @@ main{flex:1; display:grid; grid-template-columns:1fr var(--right-w, 380px); over
 .rpanel-content{flex:1; overflow-y:auto; padding:12px; display:none;}
 .rpanel-content.active{display:block;}
 
+/* ── PANNEAU COULISSANT MOBILE ── */
+.msheet{display:none;}
+body.mobile-layout .msheet.show{display:block; position:fixed; left:0; right:0; bottom:52px; z-index:880; background:var(--panel2);
+  border-top:1px solid var(--line); border-radius:16px 16px 0 0; padding:6px 16px 12px; box-shadow:0 -6px 20px rgba(0,0,0,.14);}
+.msheet::before{content:''; display:block; width:38px; height:4px; border-radius:2px; background:var(--line-strong); margin:0 auto 10px;}
+.msheet .ms-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+.msheet .ms-title{font-family:var(--serif); font-size:19px; font-weight:600;}
+.msheet .ms-more{margin-left:auto; background:none; border:none; font-family:var(--sans); font-size:13px; font-weight:500; text-decoration:underline; color:var(--text); cursor:pointer; padding:6px 0;}
+.msheet .ms-sum{font-size:12.5px; color:var(--muted); margin-top:6px; line-height:1.4;}
+body.mobile-layout #mapPanel.has-sheet #mapWrap{padding-bottom:150px;}
+/* ── PANNEAU BLOC ── */
+.blk-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;}
+.blk-title{font-family:var(--serif); font-size:24px; font-weight:600; line-height:1.1; margin-right:4px;}
+.chip{display:inline-flex; align-items:center; font-size:11.5px; padding:3px 9px; border-radius:999px; border:1px solid var(--line-strong); background:var(--panel2); color:var(--text); white-space:nowrap;}
+.chip.acc{border-color:var(--amber); color:var(--amber);}
+.chip.ok{background:var(--c-well); border-color:var(--green); color:var(--green);}
+.chip.ko{border-color:var(--red); color:var(--red);}
+.pcard{background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:6px;}
+.pc-top{display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:13px;}
+.pc-val{font-family:var(--mono); font-size:26px; font-weight:500; color:var(--amber); line-height:1;}
+.pc-val small{font-size:14px;}
+.pc-bar{position:relative; height:6px; border-radius:3px; background:var(--line); margin:12px 0 8px;}
+.pc-band{position:absolute; top:0; bottom:0; border-radius:3px; background:var(--amber); opacity:.55;}
+.pc-tick{position:absolute; top:-4px; width:2px; height:14px; background:var(--ink); margin-left:-1px;}
+.pc-note{font-size:12px; color:var(--muted); line-height:1.45;}
+.kgrid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:6px;}
+.kcard{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:5px;}
+.kcard .k-top{display:flex; justify-content:space-between; align-items:center; gap:6px;}
+.kcard .k-name{font-weight:600; font-size:13.5px;}
+.kcard .k-txt{font-size:11.5px; color:var(--muted); line-height:1.4;}
+.kst{font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:999px; white-space:nowrap;}
+.kst.conf{background:var(--c-well); color:var(--green);}
+.kst.ind{background:var(--c-p1); color:var(--c-p3);}
+.kst.inc{background:var(--line); color:var(--muted);}
+.stl-rec{display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--panel2); border:1.5px solid var(--ink); border-radius:10px; padding:12px 14px; margin-bottom:8px;}
+.stl-rec .r-name{font-weight:600; font-size:14px;}
+.stl-rec .r-tag{font-size:10px; letter-spacing:.06em; text-transform:uppercase; margin-left:6px; color:var(--muted); font-weight:500;}
+.stl-rec .r-desc{font-size:12px; color:var(--muted); margin-top:2px;}
+.pbtn{background:var(--ink); color:var(--on-ink); border:none; border-radius:8px; padding:9px 13px; font-family:var(--mono); font-size:13px; font-weight:500; cursor:pointer; white-space:nowrap;}
+.pbtn:disabled{background:var(--line); color:var(--muted); cursor:not-allowed;}
+.pbtn.sec{background:var(--panel2); color:var(--text); border:1px solid var(--line-strong); font-family:var(--sans);}
+.stl-row{display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid var(--line); font-size:13px;}
+.stl-row .sr-ico{width:15px; height:15px; flex:none; color:var(--muted);}
+.stl-row.done .sr-ico{color:var(--green);}
+.stl-row .sr-n{flex:1;}
+.stl-row .sr-s{font-size:12px; color:var(--muted);}
+.warn-banner{display:flex; align-items:center; gap:12px; border:1px solid var(--red); background:rgba(143,42,33,.07); border-radius:10px; padding:11px 14px; margin-top:14px; font-size:12.5px; line-height:1.4;}
+.warn-banner .ico{color:var(--red); width:18px; height:18px; flex:none;}
+.warn-banner span{flex:1;}
+.warn-banner button{background:var(--panel2); color:var(--red); border:1px solid var(--red); border-radius:8px; padding:8px 12px; font-family:var(--sans); font-size:12.5px; cursor:pointer; white-space:nowrap;}
 /* ── SYSTÈME PÉTROLIER ── */
 .ps-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;}
 .ps-card{background:var(--panel2); border:1px solid var(--line); padding:10px; border-radius:8px;}
@@ -286,7 +407,7 @@ html.phone-mode .grid{gap:3px;}
 */
 body.mobile-layout #mapPanel{display:none;}
 body.mobile-layout #mapPanel.mscreen-active{
-  display:flex; flex-direction:column; min-height:0; position:fixed; top:var(--header-h, 48px); left:0; right:0; bottom:52px; z-index:850; background:var(--bg);
+  display:flex; flex-direction:column; min-height:0; position:fixed; top:calc(var(--header-h, 48px) + var(--guide-h, 0px)); left:0; right:0; bottom:52px; z-index:850; background:var(--bg);
 }
 body.mobile-layout #rightPanel{display:none;}
 body.mobile-layout #rightPanel.mscreen-active{
@@ -307,13 +428,32 @@ body.mobile-layout #mobileScreenBar{
   display:flex; flex-direction:column; align-items:center; gap:3px;
 }
 #mobileScreenBar button.active{color:var(--text); font-weight:600;}
-/* En-tête compact sur mobile : marque et budget sur une ligne, le reste dessous */
-body.mobile-layout header{gap:10px 14px; padding:8px 14px;}
+/* En-tête compact sur mobile : marque, budget, vitesse et menu sur une ligne ;
+   date, cours et puits sur la suivante. .hud passe en display:contents pour que
+   ses éléments se placent directement dans la grille du bandeau. */
+#btnSpeedCycle{display:none; min-width:46px; justify-content:center; font-family:var(--mono);}
+body.mobile-layout header{display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:8px 14px;}
+body.mobile-layout .brand{order:1;}
 body.mobile-layout .brand-sub{display:none;}
 body.mobile-layout .brand-name{font-size:18px;}
-body.mobile-layout .hud{gap:12px 16px;}
-body.mobile-layout #hudBudget{font-size:19px;}
-body.mobile-layout .hud-budget{min-width:0;}
+body.mobile-layout .hud{display:contents;}
+body.mobile-layout .hud-budget{order:2; flex:1; min-width:0;}
+body.mobile-layout #btnSpeedCycle{display:inline-flex; order:3;}
+body.mobile-layout #speedSeg{display:none;}
+body.mobile-layout #btnMenu{order:4; padding:7px 10px;}
+body.mobile-layout #btnMenu .mtxt{display:none;}
+body.mobile-layout #btnMenu .ico{margin-right:0;}
+body.mobile-layout #tpTargetsBtn{order:4;}
+.hbreak{display:none;}
+body.mobile-layout .hbreak{display:block; order:5; flex-basis:100%; height:0;}
+body.mobile-layout .hud-item{order:6; flex-direction:row; align-items:baseline; gap:4px;}
+body.mobile-layout .hud-goal-txt{white-space:nowrap; font-size:10.5px;}
+body.mobile-layout .hud-item + .hud-item{margin-left:10px;}
+body.mobile-layout .hud-item .hud-lbl{display:none;}
+body.mobile-layout .hud-item .hud-val{font-size:13px;}
+body.mobile-layout #hudWells::after{content:' puits'; font-family:var(--sans); font-size:11px; color:var(--muted); font-weight:400;}
+body.mobile-layout #hudBudget{font-size:20px;}
+body.mobile-layout .hud-budget-top .hud-lbl{display:none;}
 body.mobile-layout .hud-item:has(#hudCF){display:none;}
 body.mobile-layout header .sep{display:none;}
 body.mobile-layout #priceSparkline{display:none;}
@@ -339,18 +479,23 @@ body.mobile-layout #priceSparkline{display:none;}
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
 </svg>
 
 <!-- Barre d'écrans mobile : navigue entre la carte et les volets, un seul visible à la fois -->
 <div id="mobileScreenBar">
   <button data-screen="map" class="active"><svg class="ico"><use href="#i-map"/></svg><span class="i18n" data-fr="Carte" data-en="Map">Carte</span></button>
-  <button data-screen="geo"><svg class="ico"><use href="#i-layers"/></svg><span class="i18n" data-fr="Géo" data-en="Geo">Géo</span></button>
+  <button data-screen="geo"><svg class="ico"><use href="#i-layers"/></svg><span class="i18n" data-fr="Bloc" data-en="Block">Bloc</span></button>
   <button data-screen="section"><svg class="ico"><use href="#i-section"/></svg><span class="i18n" data-fr="Coupe" data-en="Section">Coupe</span></button>
   <button data-screen="studies"><svg class="ico"><use href="#i-flask"/></svg><span>Études</span></button>
   <button data-screen="log"><svg class="ico"><use href="#i-doc"/></svg><span>Journal</span></button>
 </div>
 
+
+<!-- Panneau coulissant du bloc sélectionné (mobile) -->
+<div id="mobileSheet" class="msheet" aria-live="polite"></div>
 
 <!-- Tooltip -->
 <div id="tip"></div>
@@ -710,8 +855,13 @@ body.mobile-layout #priceSparkline{display:none;}
     <button class="btn" id="btnX2">×2</button>
     <button class="btn" id="btnX4">×4</button>
   </div>
-  <button class="btn" id="btnMenu"><svg class="ico"><use href="#i-menu"/></svg> Menu</button>
+  <button class="btn" id="btnSpeedCycle" aria-label="Changer la vitesse du temps">×1</button>
+  <button class="btn" id="btnMenu" aria-label="Menu"><svg class="ico"><use href="#i-menu"/></svg><span class="mtxt">Menu</span></button>
+  <div class="hbreak"></div>
 </header>
+
+<!-- Guide : étape courante et action recommandée -->
+<div id="guideBar" style="display:none" aria-live="polite"></div>
 
 <!-- MAIN -->
 <main>
@@ -721,7 +871,7 @@ body.mobile-layout #priceSparkline{display:none;}
       <div class="seg" role="group" aria-label="Outil de carte">
         <button class="btn active" id="toolSelect"><svg class="ico"><use href="#i-pointer"/></svg> Sélection</button>
         <button class="btn" id="toolSection"><svg class="ico"><use href="#i-route"/></svg> Coupe A→B</button>
-        <button class="btn" id="toolPlan"><svg class="ico"><use href="#i-target"/></svg> Planifier un forage</button>
+        <button class="btn" id="toolPlan"><svg class="ico"><use href="#i-target"/></svg><span class="l-full">Planifier un forage</span><span class="l-short">Forage</span></button>
       </div>
       <span id="toolLabel">Mode : Sélection</span>
       <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
@@ -730,16 +880,37 @@ body.mobile-layout #priceSparkline{display:none;}
         <button class="btn" id="zoomIn" aria-label="Zoom avant">+</button>
       </div>
     </div>
-    <div id="mapWrap">
-      <div class="grid" id="grid"></div>
+    <div class="map-body">
+      <div id="mapWrap">
+        <div class="grid" id="grid"></div>
+      </div>
+      <aside id="mapLegend" aria-label="Légende de la carte">
+        <h3>Légende</h3>
+        <div class="lg-t">Relief structural · gravimétrie</div>
+        <div class="lg-row"><span class="lg-sw" style="background:var(--c-r0)"></span><span class="lg-sw" style="background:var(--c-r1)"></span><span class="lg-sw" style="background:var(--c-r2)"></span></div>
+        <div class="lg-row"><span class="lg-sw" style="background:var(--c-s0)"></span><span class="lg-sw" style="background:var(--c-s1)"></span><span class="lg-sw" style="background:var(--c-s2)"></span></div>
+        <div class="lg-ends"><span>bas</span><span>haut</span></div>
+        <p>Terre en ocre, mer en bleu. Un haut structural piège plus souvent les hydrocarbures.</p>
+        <div class="lg-t">Probabilité estimée · sismique 3D</div>
+        <div class="lg-row"><span class="lg-sw" style="background:var(--c-p1)"></span><span class="lg-sw" style="background:var(--c-p2)"></span><span class="lg-sw" style="background:var(--c-p3)"></span></div>
+        <div class="lg-ends"><span>&lt; 25</span><span>25–45</span><span>&gt; 45</span></div>
+        <p>Le chiffre dans la case est l'estimation, en %. Il n'apparaît qu'après une sismique 3D.</p>
+        <div class="lg-t">Marqueurs</div>
+        <div class="lg-mk"><span class="lg-box" style="background-image:repeating-linear-gradient(135deg,var(--c-land-a) 0 4px,var(--c-land-b) 4px 8px)"></span>Non exploré</div>
+        <div class="lg-mk"><span class="lg-box" style="background:var(--c-r1);box-shadow:0 0 0 2px var(--panel2),0 0 0 4px var(--ink)"></span>Bloc sélectionné</div>
+        <div class="lg-mk"><span class="lg-box" style="border-radius:50%;background:var(--ink);color:var(--on-ink);font-weight:600">A</span>Extrémités de la coupe</div>
+        <div class="lg-mk"><span class="lg-box" style="background:var(--c-dry);color:var(--red)"><svg class="ico"><use href="#i-x"/></svg></span>Puits sec</div>
+        <div class="lg-mk"><span class="lg-box" style="background:var(--c-well);border-color:var(--green);color:var(--green)"><svg class="ico" style="fill:currentColor"><use href="#i-drop"/></svg></span>Puits productif</div>
+      </aside>
     </div>
+    <div id="mapLegendMini"><span><i style="background-image:repeating-linear-gradient(135deg,var(--c-land-a) 0 4px,var(--c-land-b) 4px 8px)"></i>Terre</span><span><i style="background-image:repeating-linear-gradient(135deg,var(--c-sea-a) 0 4px,var(--c-sea-b) 4px 8px)"></i>Mer</span><span>Hachuré = non exploré</span></div>
   </div>
 
   <!-- PANNEAU DROIT -->
   <div id="rightPanel">
     <div id="rpResizeHandle" title="Glisser pour redimensionner"></div>
     <div class="rpanel-tabs">
-      <button class="rtab active" data-tab="geo"><svg class="ico"><use href="#i-layers"/></svg><span class="i18n" data-fr="Géologie" data-en="Geology">Géologie</span></button>
+      <button class="rtab active" data-tab="geo"><svg class="ico"><use href="#i-layers"/></svg><span class="i18n" data-fr="Bloc" data-en="Block">Bloc</span></button>
       <button class="rtab" data-tab="section"><svg class="ico"><use href="#i-section"/></svg><span class="i18n" data-fr="Coupe" data-en="Section">Coupe</span></button>
       <button class="rtab" data-tab="studies"><svg class="ico"><use href="#i-flask"/></svg><span class="i18n" data-fr="Études" data-en="Studies">Études</span></button>
       <button class="rtab" data-tab="gisements"><svg class="ico"><use href="#i-drop"/></svg><span class="i18n" data-fr="Gisements" data-en="Fields">Gisements</span></button>
@@ -752,7 +923,7 @@ body.mobile-layout #priceSparkline{display:none;}
     <div class="rpanel-content active" id="tab-geo">
       <div id="geoContent">
         <div style="color:var(--muted); font-size:12px; padding:16px 0;">
-          Sélectionnez un bloc sur la carte pour afficher sa géologie.
+          Cliquez un bloc sur la carte pour voir ce que vous savez de lui.
         </div>
       </div>
     </div>
@@ -2769,81 +2940,88 @@ function buildDebriefReport(){
 const CELL_SIZES=[16,22,28,36,44,54,68];
 let zoomIdx=4, selectedBlock=null;
 
+// Mise en page de la grille : une colonne et une ligne d'étiquettes (coordonnées) en plus des blocs.
+const AXIS_PX = 22;
+function applyGridTemplate(){
+  const gridEl = document.getElementById('grid');
+  const cs = CELL_SIZES[zoomIdx];
+  gridEl.style.gridTemplateColumns=`${AXIS_PX}px repeat(${GS}, ${cs}px)`;
+  gridEl.style.gridTemplateRows=`${AXIS_PX}px repeat(${GS}, ${cs}px)`;
+}
 function buildGrid(){
   const gridEl = document.getElementById('grid');
   gridEl.innerHTML='';
-  gridEl.style.gridTemplateColumns=`repeat(${GS}, ${CELL_SIZES[zoomIdx]}px)`;
-  gridEl.style.gridAutoRows=`${CELL_SIZES[zoomIdx]}px`;
-  blocks.forEach(b=>{
-    const div=document.createElement('div');
-    div.className='block';
-    div.dataset.id=b.id;
-    div.addEventListener('click',()=>onBlockClick(b.id));
-    div.addEventListener('mouseenter',e=>showTip(b,e));
-    div.addEventListener('mousemove',e=>moveTip(e));
-    div.addEventListener('mouseleave',hideTip);
-    gridEl.appendChild(div);
-    b.el=div;
-    renderBlock(b);
-  });
+  applyGridTemplate();
+  const axis = txt => { const d=document.createElement('div'); d.className='axl'; d.textContent=txt; return d; };
+  gridEl.appendChild(axis(''));
+  for(let x=0;x<GS;x++) gridEl.appendChild(axis(x));
+  for(let y=0;y<GS;y++){
+    gridEl.appendChild(axis(y));
+    for(let x=0;x<GS;x++){
+      const b = blocks[y*GS+x];
+      const div=document.createElement('div');
+      div.className='block';
+      div.dataset.id=b.id;
+      div.addEventListener('click',()=>onBlockClick(b.id));
+      div.addEventListener('mouseenter',e=>showTip(b,e));
+      div.addEventListener('mousemove',e=>moveTip(e));
+      div.addEventListener('mouseleave',hideTip);
+      gridEl.appendChild(div);
+      b.el=div;
+      renderBlock(b);
+    }
+  }
 }
 
 function renderBlock(b){
   const div = b.el; if(!div) return;
   div.className='block';
-  const cs = CELL_SIZES[zoomIdx];
+  div.style.cssText='';
+  div.style.width=div.style.height=CELL_SIZES[zoomIdx]+'px';
+  div.innerHTML='';
+  const est = b.estimate;
+  const icon = (id, extra='') => `<span class="bi"><svg class="ico" style="${extra}"><use href="#i-${id}"/></svg></span>`;
 
-  // Couleur de fond = profondeur structurale du toit du réservoir
-  // bleu profond → rouge hauts structuraux
-  const allDepths = blocks.map(b2=>b2.topOfReservoir);
-  const dmin=Math.min(...allDepths), dmax=Math.max(...allDepths), drange=dmax-dmin||1;
-  const t=1-(b.topOfReservoir-dmin)/drange; // 1=haut structural, 0=bas
   if(G.revealFieldsMode){
     // Fin de partie : couleur heatmap saturée basée sur la VRAIE probabilité
     // (pas l'estimation du joueur), volontairement plus contrastée que la
-    // palette habituelle de la carte (pensée pour rester discrète pendant le
-    // jeu) — ici l'objectif est l'inverse, se voir de loin sans ambiguïté.
+    // palette habituelle de la carte : ici l'objectif est l'inverse, se voir
+    // de loin sans ambiguïté. Le pourcentage est écrit en clair pour ne pas
+    // dépendre de la perception des couleurs.
     const p = b.trueProbability;
     div.style.background = `hsl(${Math.round(p*120)},70%,45%)`;
-    div.style.outline = p > 0.4 ? '3px solid #ffd75e' : 'none';
-    div.style.outlineOffset = '-3px';
+    if(p > 0.4){ div.style.outline = '3px solid #ffd75e'; div.style.outlineOffset = '-3px'; }
+    div.innerHTML = `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.8);">${Math.round(p*100)}%</span>`;
   } else {
-    div.style.background = structColor(t, b.estimate, b.isOffshore, b.inSalt);
-    div.style.outline = 'none';
+    // État visuel d'après ce que le joueur SAIT, jamais d'après la vraie géologie
+    if(b.well)         div.classList.add('has-well');
+    else if(b.dryHole) div.classList.add('dry-hole');
+    else if(est?.prob !== undefined){
+      const p = est.prob;
+      div.classList.add(p < 0.25 ? 'prob-1' : p < 0.45 ? 'prob-2' : 'prob-3');
+    }
+    else if(est?.structPos !== undefined){
+      const sp = est.structPos;
+      div.classList.add(sp < -0.2 ? 'relief-0' : sp < 0.2 ? 'relief-1' : 'relief-2');
+    }
+    else if(est?.depth !== undefined) div.classList.add('relief-1');
+    else div.classList.add('unexplored');
+    // Corps salifère : seulement si la gravimétrie l'a signalé, ou une fois foré
+    // (avant, la teinte révélait gratuitement la position des diapirs).
+    if(est?.saltHint || (b.inSalt && (b.well || b.dryHole))) div.classList.add('salt');
+    if(b.planned) div.style.outline='2px solid var(--green)';
   }
-  div.style.width=div.style.height=cs+'px';
+  if(b.isOffshore) div.classList.add('offshore','sea');
 
-  // Icônes
-  const badge=document.createElement('span');
-  badge.className='badge';
-  div.innerHTML='';
-  if(G.revealFieldsMode){
-    // Pourcentage affiché en clair : ne dépend d'aucune perception de
-    // couleur, lisible même en cas de daltonisme ou d'écran mal calibré.
-    const pctSpan=document.createElement('span');
-    pctSpan.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.8);';
-    pctSpan.textContent = Math.round(b.trueProbability*100)+'%';
-    div.appendChild(pctSpan);
-  }
-  if(b.studyLevel>0){
-    const dots=['','·','··','···','★'][Math.min(4,b.studyLevel)];
-    const dotSpan=document.createElement('span');
-    const dark = document.documentElement.getAttribute('data-theme')==='dark';
-    dotSpan.style.cssText=`position:absolute;top:1px;left:2px;font-size:9px;color:${dark?'rgba(255,255,255,.6)':'rgba(36,31,20,.7)'};`;
-    dotSpan.textContent=dots;
-    div.appendChild(dotSpan);
-  }
-  div.appendChild(badge);
-
-  if(b.well)    {div.classList.add('has-well');   badge.textContent='⛽';}
-  if(b.dryHole) {div.classList.add('dry-hole');    badge.textContent='✗';}
-  if(G.drilling.some(d=>d.blockId===b.id)) {div.classList.add('drilling'); badge.textContent='⏳';}
-  if(b.planned)  {div.style.outline='2px solid var(--green)';}
-  if(b.isOffshore) div.classList.add('offshore');
+  const drilling = G.drilling.some(d=>d.blockId===b.id);
+  if(drilling)        { div.classList.add('drilling'); div.insertAdjacentHTML('beforeend', icon('clock')); }
+  else if(b.well)     { div.insertAdjacentHTML('beforeend', icon('drop','fill:currentColor;color:var(--green);')); }
+  else if(b.dryHole)  { div.insertAdjacentHTML('beforeend', icon('x','color:var(--red);stroke-width:2.4;')); }
+  else if(!G.revealFieldsMode && est?.prob !== undefined) div.insertAdjacentHTML('beforeend', `<span class="pv">${Math.round(est.prob*100)}</span>`);
 
   if(selectedBlock===b.id) div.classList.add('selected');
-  if(G.sectionA===b.id)   div.classList.add('section-a');
-  if(G.sectionB===b.id)   div.classList.add('section-b');
+  if(G.sectionA===b.id){ div.classList.add('section-a'); div.insertAdjacentHTML('beforeend','<span class="mk">A</span>'); }
+  if(G.sectionB===b.id){ div.classList.add('section-b'); div.insertAdjacentHTML('beforeend','<span class="mk">B</span>'); }
 }
 
 function structColor(t, est, offshore, inSalt){
@@ -2868,59 +3046,136 @@ function structColor(t, est, offshore, inSalt){
 }
 
 function rerenderAllBlocks(){
-  const gridEl=document.getElementById('grid');
-  gridEl.style.gridTemplateColumns=`repeat(${GS}, ${CELL_SIZES[zoomIdx]}px)`;
-  gridEl.style.gridAutoRows=`${CELL_SIZES[zoomIdx]}px`;
+  applyGridTemplate();
   blocks.forEach(renderBlock);
+  if(typeof renderGuide==='function') renderGuide();
 }
 
 // =====================================================================
 // RENDU — PANNEAU GÉOLOGIQUE
 // =====================================================================
+// Ce que le joueur SAIT de chaque facteur du système pétrolier : Confirmé (mesuré
+// par un forage), Indice (déduit d'une étude) ou Inconnu. Les règles suivent
+// ce que les études donnent réellement dans le jeu ; aucun facteur n'est
+// estimé avant le forage.
+function blockKnowledge(b){
+  const e = b.estimate, drilled = !!(b.well || b.dryHole);
+  const f = v => Math.round(v*100)+' %';
+  if(drilled || G.revealFieldsMode || MODES[G.mode]?.revealAll){
+    return [
+      {n:'Piège',      st:'conf', t:`Facteur réel : ${f(b.trapFactor)}.`},
+      {n:'Réservoir',  st:'conf', t:`Facteur réel : ${f(b.resFactor)}.`},
+      {n:'Couverture', st:'conf', t:`Facteur réel : ${f(b.sealFactor)}.`},
+      {n:'Roche-mère', st:'conf', t:`Charge : ${f(b.srcFactor)}${b.maturityClass ? ', '+b.maturityClass.toLowerCase() : ''}.`},
+    ];
+  }
+  const out = [];
+  // Piège
+  if(e?.structPos !== undefined){
+    const pos = e.structPos > 0.2 ? 'Haut structural sur la gravimétrie.' : e.structPos < -0.2 ? 'Bas structural : piège peu probable.' : 'Position structurale intermédiaire.';
+    const seis = b.studies.find(x=>x.type==='seismic2d');
+    out.push({n:'Piège', st:'ind', t: pos + (seis ? (seis.result.faultPresent ? ' Faille détectée près du bloc.' : ' Pas de faille majeure en sismique 2D.') : '')});
+  } else out.push({n:'Piège', st:'inc', t:'Levé gravimétrique requis.'});
+  // Réservoir
+  if(e?.depth !== undefined){
+    out.push({n:'Réservoir', st:'ind', t:`Horizon vers ${Math.round(e.depth)} m ± ${Math.round(e.depthErr)} m.` + (e.quality!==undefined ? ` Qualité ${Math.round(e.quality)}/100 ± ${Math.round(e.qualErr)}.` : '')});
+  } else out.push({n:'Réservoir', st:'inc', t:'Précisé par la sismique 2D.'});
+  out.push({n:'Couverture', st:'inc', t:'Connue seulement après un forage.'});
+  out.push({n:'Roche-mère', st:'inc', t:'Rock-Eval, après un forage.'});
+  return out;
+}
+
+// Liste compacte des études applicables à ce bloc, avec la prochaine étape recommandée.
+function blockStudiesHtml(b){
+  const drilled = !!(b.well || b.dryHole);
+  const sbx = G.mode==='sandbox';
+  const gravDone = blocks.some(x=>x.studies.some(st=>st.type==='gravity'));
+  const has = k => b.studies.some(st=>st.type===k);
+  const cost = k => sbx ? 0 : STUDIES[k].cost*((k==='gravity' ? G.offshore : b.isOffshore) ? STUDIES[k].offMult : 1);
+  const price = c => sbx ? 'Gratuit' : formatM(c);
+  const items = [
+    {k:'gravity',   n:'Gravimétrie régionale', done:gravDone, locked:null,
+      act:`performStudy(null,'gravity')`, label:price(cost('gravity')), c:cost('gravity')},
+    {k:'seismic2d', n:'Sismique 2D (profil A→B)', done:has('seismic2d'), locked:!gravDone ? 'Après la gravimétrie' : drilled ? 'Avant un forage' : null,
+      act:`setTool('section')`, label:'Tracer une coupe', c:0, nopay:true},
+    {k:'seismic3d', n:'Sismique 3D', done:has('seismic3d'), locked:!has('seismic2d') ? 'Nécessite la sismique 2D' : drilled ? 'Avant un forage' : null,
+      act:`performStudy(${b.id},'seismic3d')`, label:price(cost('seismic3d')), c:cost('seismic3d')},
+    {k:'core',      n:'Analyse de carotte', done:has('core'), locked:!drilled ? 'Après un forage' : null,
+      act:`performStudy(${b.id},'core')`, label:price(cost('core')), c:cost('core')},
+    {k:'rockeval',  n:'Géochimie Rock-Eval', done:has('rockeval'), locked:!drilled ? 'Après un forage' : null,
+      act:`performStudy(${b.id},'rockeval')`, label:price(cost('rockeval')), c:cost('rockeval')},
+  ];
+  const rec = items.find(i=>!i.done && !i.locked);
+  const afford = i => i.nopay || sbx || G.budget >= i.c;
+  const ico = id => `<svg class="ico sr-ico"><use href="#i-${id}"/></svg>`;
+  let html = '';
+  if(rec){
+    const desc = rec.k==='seismic2d' ? 'Traçage d\'une coupe puis sismique : profondeur du réservoir et failles.' : (STUDIES[rec.k].reveals || '');
+    html += `<div class="stl-rec"><div><span class="r-name">${rec.n}</span><span class="r-tag">recommandée</span><div class="r-desc">${desc}</div></div>
+      <button class="pbtn${rec.nopay?' sec':''}" ${afford(rec)?'':'disabled'} onclick="${rec.act}">${rec.label}</button></div>`;
+  }
+  items.forEach(i=>{
+    if(i===rec) return;
+    if(i.done) html += `<div class="stl-row done">${ico('check')}<span class="sr-n">${i.n}</span><span class="sr-s">Faite</span></div>`;
+    else if(i.locked) html += `<div class="stl-row">${ico('lock')}<span class="sr-n">${i.n}</span><span class="sr-s">${i.locked}</span></div>`;
+  });
+  return html;
+}
+
 function renderGeoPanel(b){
   const el=document.getElementById('geoContent');
-  if(!b){el.innerHTML='<div style="color:var(--muted);font-size:12px;padding:16px 0;">Sélectionnez un bloc.</div>';return;}
+  if(!b){el.innerHTML='<div style="color:var(--muted);font-size:12.5px;padding:16px 0;">Cliquez un bloc sur la carte pour voir ce que vous savez de lui.</div>';return;}
   const e=b.estimate;
+  const drilled = !!(b.well || b.dryHole);
 
-  let html=`<div style="color:var(--amber);font-size:13px;margin-bottom:10px;">Bloc (${b.x}, ${b.y})${b.isOffshore?' 🌊':''}</div>`;
+  // Titre et puces d'état
+  const chips = [`<span class="chip">${b.isOffshore?'Mer':'Terre'}</span>`];
+  if(e?.structPos !== undefined && !drilled){
+    chips.push(`<span class="chip acc">${e.structPos>0.2?'Haut structural':e.structPos<-0.2?'Bas structural':'Position intermédiaire'}</span>`);
+  }
+  if(b.well) chips.push('<span class="chip ok">Puits productif</span>');
+  else if(b.dryHole) chips.push('<span class="chip ko">Puits sec</span>');
+  let html=`<div class="blk-head"><h2 class="blk-title">Bloc (${b.x}, ${b.y})</h2>${chips.join('')}</div>`;
 
-  // Système pétrolier. Les quatre facteurs réels ne sont connus qu'APRÈS le
-  // forage (post-mortem) ou en bac à sable : avant, les afficher donnait gratuitement
-  // la réponse et rendait toutes les études inutiles. Les études réduisent
-  // l'incertitude sur la probabilité et la qualité sans les révéler.
-  const factorsKnown = !!MODES[G.mode]?.revealAll || !!G.revealFieldsMode || !!b.well || !!b.dryHole;
-  html+=`<div class="ps-section">Système pétrolier</div>`;
-  if(factorsKnown){
-    html+=`<div class="ps-grid">
-      ${psCard('Piège',   b.trapFactor,  '#e8a33d', 'Structure anticlinal, flanc de sel, biseau')}
-      ${psCard('Réservoir',b.resFactor,  '#4caf6e', 'Qualité du réservoir : porosité/perméabilité')}
-      ${psCard('Couverture',b.sealFactor,'#4d8fc7', 'Étanchéité de la couverture')}
-      ${psCard('Charge',   b.srcFactor,  '#a855f7', 'Roche-mère × maturité thermique')}
-    </div>`;
+  // Carte de probabilité : estimation et incertitude annoncée (± erreur nominale)
+  if(!drilled){
+    if(e?.prob !== undefined){
+      const pct = e.prob*100, err = e.probErr*100;
+      const lo = Math.max(0, pct-err), hi = Math.min(100, pct+err);
+      const n3d = b.studies.some(st=>st.type==='seismic3d');
+      html += `<div class="pcard"><div class="pc-top"><span>Probabilité de succès estimée</span><span class="pc-val">${Math.round(pct)}<small> %</small></span></div>
+        <div class="pc-bar"><i class="pc-band" style="left:${lo.toFixed(1)}%;width:${(hi-lo).toFixed(1)}%"></i><i class="pc-tick" style="left:${pct.toFixed(1)}%"></i></div>
+        <div class="pc-note">± ${Math.round(err)} points d'incertitude annoncée.${n3d ? ' Un faux signal d\'amplitude reste possible : cette marge ne le couvre pas.' : ''}</div></div>`;
+    } else {
+      html += `<div class="pcard"><div class="pc-top"><span>Probabilité de succès</span><span class="pc-val" style="color:var(--muted)">?</span></div>
+        <div class="pc-bar"></div><div class="pc-note">${e?.structPos!==undefined ? 'Inconnue. Une sismique 3D donnera une première estimation.' : 'Inconnue. Commencez par le levé gravimétrique.'}</div></div>`;
+    }
   } else {
-    html+=`<div class="ps-detail">Les quatre facteurs du système pétrolier (piège, réservoir, couverture, charge) ne sont connus qu'après le forage. Les études précisent la probabilité et la qualité du prospect sans les révéler.</div>`;
+    html += `<div class="pcard"><div class="pc-top"><span>Résultat du forage</span><span class="pc-val" style="color:${b.well?'var(--green)':'var(--red)'}">${b.well?'Productif':'Sec'}</span></div>
+      <div class="pc-note">${b.well ? 'Le puits produit : voir l\'onglet Gisements pour son suivi.' : 'Aucun hydrocarbure exploitable. Les diagraphies ci-dessous montrent pourquoi.'}</div></div>`;
   }
 
-  // Probabilité combinée et qualité
-  if(e?.prob!==undefined){
-    const pct=(e.prob*100).toFixed(0);
-    html+=`<div class="ps-section">Évaluation du prospect</div>`;
-    html+=infoRow('Probabilité de présence', `<strong>${pct}%</strong> ±${(e.probErr*100).toFixed(0)}%`);
+  // Système pétrolier : ce que vous savez
+  html += `<div class="ps-section">Système pétrolier · ce que vous savez</div><div class="kgrid">` +
+    blockKnowledge(b).map(k=>`<div class="kcard"><div class="k-top"><span class="k-name">${k.n}</span><span class="kst ${k.st}">${{conf:'Confirmé',ind:'Indice',inc:'Inconnu'}[k.st]}</span></div><div class="k-txt">${k.t}</div></div>`).join('') + `</div>`;
+
+  // Études sur ce bloc + avertissement avant de forer sans en savoir assez
+  html += `<div class="ps-section">Études sur ce bloc</div>` + blockStudiesHtml(b);
+  if(!drilled && b.studyLevel>=1 && !G.drilling.some(d=>d.blockId===b.id)){
+    html += `<div class="warn-banner"><svg class="ico"><use href="#i-alert"/></svg><span>Forer maintenant : couverture et roche-mère encore inconnues, risque de puits sec ${e?.prob!==undefined && e.prob>=0.45 ? 'réel malgré une bonne estimation' : 'élevé'}.</span><button onclick="guideDo('drill',${b.id})">Forer quand même</button></div>`;
+  }
+
+  // Détails chiffrés de l'évaluation
+  if(e?.prob!==undefined || e?.depth!==undefined || e?.saltHint){
+    html += `<div class="ps-section">Détails</div>`;
     if(e.depth) html+=infoRow('Profondeur du réservoir', `${Math.round(e.depth)} m ±${Math.round(e.depthErr)} m`);
     if(e.quality!==undefined) html+=infoRow('Qualité réservoir', `${Math.round(e.quality)}/100 ±${Math.round(e.qualErr)}`);
     if(e.amplitude) html+=infoRow('Indicateur direct (DHI)', e.amplitude);
     if(e.maturityClass) html+=infoRow('Maturité roche-mère', e.maturityClass);
-    if(e.isGas) html+=`<div style="color:var(--amber);font-size:11px;margin-top:6px;">🔥 Cible probablement <strong>gazeuse</strong> (surmaturation)</div>`;
-    if(e.tempAtRes) html+=infoRow('T° au réservoir',`${Math.round(e.tempAtRes)}°C`);
+    if(e.isGas) html+=`<div style="color:var(--amber);font-size:12px;margin-top:6px;">Cible probablement <strong>gazeuse</strong> (surmaturation)</div>`;
+    if(e.tempAtRes) html+=infoRow('T° au réservoir',`${Math.round(e.tempAtRes)} °C`);
     if(e.pressureRes) html+=infoRow('Pression',`${e.pressureRes.toFixed(1)} MPa`);
-  } else if(e?.structPos!==undefined){
-    html+=`<div class="ps-section">Données gravimétriques</div>`;
-    const pos=e.structPos>0?'Haut structural':e.structPos<-.2?'Bas structural':'Position intermédiaire';
-    html+=infoRow('Position structurale', pos);
-    if(e.saltHint) html+=infoRow('Anomalie', e.saltHint);
-    html+=`<div class="ps-detail" style="margin-top:8px;">Réalisez une sismique 2D pour affiner la profondeur des horizons.</div>`;
-  } else {
-    html+=`<div class="ps-detail">Aucune donnée géologique disponible sur ce bloc.<br>Commencez par un levé gravimétrique (<strong>${G.mode==='sandbox'?'gratuit':formatM(STUDIES.gravity.cost*(G.offshore?STUDIES.gravity.offMult:1))}</strong>).</div>`;
+    if(e.saltHint) html+=infoRow('Anomalie gravimétrique', e.saltHint);
   }
 
   // Carotte
@@ -4188,6 +4443,121 @@ function updateHud(){
   } else {
     drillWrap.style.display = 'none';
   }
+  if(typeof renderGuide==='function') renderGuide();
+}
+
+
+// =====================================================================
+// GUIDE : fil d'étapes et action recommandée
+// Calculé d'après l'état réel de la partie (aucune mécanique ajoutée) : il
+// propose la prochaine étape logique de la démarche d'exploration, avec son
+// coût, et dit toujours pourquoi une action est bloquée.
+// =====================================================================
+const GUIDE_STEPS = ['Cartographier','Tracer une coupe','Sismique 2D','Sismique 3D','Forer'];
+let guideHidden = false;
+try { guideHidden = localStorage.getItem('geoexplorer_guide') === '0'; } catch(e){}
+let _guideHtml = '';
+
+function guideCompute(){
+  if(!blocks.length) return null;
+  const m = MODES[G.mode];
+  if(m.revealAll || m.tpMode || G.revealFieldsMode) return null; // bac à sable, TP, fin de partie : pas de guide
+  const gravDone = blocks.some(b=>b.studies.some(st=>st.type==='gravity'));
+  const money = c => G.budget >= c;
+  if(!gravDone){
+    const c = STUDIES.gravity.cost*(G.offshore?STUDIES.gravity.offMult:1);
+    return {cur:0, text:"Lancez un levé gravimétrique : il révèle le relief du sous-sol sur toute la concession.",
+            act:{label:`Levé gravimétrique · ${formatM(c)}`, call:"guideDo('gravity')", ok:money(c), why:`Budget insuffisant (${formatM(c)} requis).`}};
+  }
+  const hasProf = G.sectionA!==null && G.sectionB!==null;
+  const free = b => !b.well && !b.dryHole && !G.drilling.some(d=>d.blockId===b.id);
+  // Meilleur bloc à forer : estimation 3D (ou log) la plus haute
+  const drillable = blocks.filter(b=>free(b) && b.estimate?.prob!==undefined && b.studies.some(st=>st.type==='seismic3d'))
+                          .sort((a,z)=>z.estimate.prob-a.estimate.prob);
+  if(!hasProf){
+    if(G.tool==='section' && G.sectionA!==null)
+      return {cur:1, text:`Bloc A posé en (${blocks[G.sectionA].x}, ${blocks[G.sectionA].y}). Cliquez maintenant le bloc B pour terminer la coupe.`, act:null};
+    return {cur:1, text:drillable.length ? "Les blocs étudiés ne suffisent pas : tracez une nouvelle coupe à travers un autre haut structural."
+                        : "Tracez une coupe A→B à travers un haut structural (les zones ocre foncé de la carte).",
+            act:{label:"Tracer une coupe", call:"guideDo('section')", ok:true}};
+  }
+  const prof = getProfileBlocks(G.sectionA, G.sectionB);
+  const to2d = prof.filter(({b})=>!b.studies.some(st=>st.type==='seismic2d'));
+  if(to2d.length){
+    const c = to2d.reduce((sum,{b})=>sum+STUDIES.seismic2d.cost*(b.isOffshore?STUDIES.seismic2d.offMult:1),0);
+    return {cur:2, text:`Le profil A→B couvre ${prof.length} blocs. Une sismique 2D précisera la profondeur du réservoir et les failles.`,
+            act:{label:`Sismique 2D · ${formatM(c)}`, call:"guideDo('seismic2d')", ok:money(c), why:`Budget insuffisant (${formatM(c)} requis).`}};
+  }
+  // Prochain bloc du profil à passer en 3D : le plus haut structuralement. On s'arrête
+  // d'étudier dès qu'un bloc dépasse 35 % (il vaut mieux forer que multiplier les
+  // études), ou après 4 études 3D sur ce profil.
+  const n3d = prof.filter(({b})=>b.studies.some(st=>st.type==='seismic3d')).length;
+  const promising = drillable.some(b=>b.estimate.prob >= 0.35);
+  const cands = prof.map(o=>o.b).filter(b=>free(b) && b.estimate?.depth!==undefined && !b.studies.some(st=>st.type==='seismic3d'))
+                    .sort((a,z)=>a.estimate.depth-z.estimate.depth);
+  if(cands.length && !promising && n3d < 4){
+    const b = cands[0];
+    const c = STUDIES.seismic3d.cost*(b.isOffshore?STUDIES.seismic3d.offMult:1);
+    return {cur:3, text:`Le profil montre un haut structural en (${b.x}, ${b.y}). Une sismique 3D y précisera la profondeur et cherchera des indices directs de fluides.`,
+            act:{label:`Sismique 3D sur (${b.x}, ${b.y}) · ${formatM(c)}`, call:`guideDo('seismic3d',${b.id})`, ok:money(c), why:`Budget insuffisant (${formatM(c)} requis).`}};
+  }
+  if(drillable.length && drillable[0].estimate.prob >= 0.30){
+    const b = drillable[0];
+    return {cur:4, text:`Bloc (${b.x}, ${b.y}) : probabilité estimée ${Math.round(b.estimate.prob*100)} %. Forer est le seul moyen de savoir : le puits sera productif ou sec.`,
+            act:{label:`Forer le bloc (${b.x}, ${b.y})`, call:`guideDo('drill',${b.id})`, ok:true}};
+  }
+  const best = drillable[0] ? `meilleure estimation ${Math.round(drillable[0].estimate.prob*100)} %` : 'aucun bloc étudié en 3D';
+  return {cur:1, text:`Les blocs étudiés sont peu prometteurs (${best}). Cherchez ailleurs avec une nouvelle coupe.`,
+          act:{label:"Nouvelle coupe", call:"guideDo('section')", ok:true}};
+}
+
+function renderGuide(){
+  const bar = document.getElementById('guideBar'); if(!bar) return;
+  const g = guideCompute();
+  if(!g){ bar.style.display='none'; _guideHtml=''; if(typeof updateGuideHeight==='function') updateGuideHeight(); return; }
+  bar.style.display='';
+  let html;
+  if(guideHidden){
+    html = `<button class="guide-hide" onclick="guideToggle()">Afficher le guide</button>`;
+    bar.className = 'collapsed';
+  } else {
+    bar.className = '';
+    const steps = GUIDE_STEPS.map((n,i)=>{
+      const st = i<g.cur ? 'done' : i===g.cur ? 'cur' : '';
+      return `<li class="${st}"><span class="gs-dot">${i<g.cur ? '<svg class="ico"><use href="#i-check"/></svg>' : i+1}</span>${n}</li>`;
+    }).join('');
+    const bars = GUIDE_STEPS.map((_,i)=>`<i class="${i<=g.cur?'on':''}"></i>`).join('');
+    const act = g.act ? `<button class="guide-act" onclick="${g.act.call}" ${g.act.ok?'':'disabled'}>${g.act.label}</button>` : '';
+    const why = g.act && !g.act.ok && g.act.why ? `<div class="guide-why">${g.act.why}</div>` : '';
+    html = `<ol class="guide-steps" aria-label="Étapes">${steps}</ol>
+      <div class="guide-mini"><span class="gm-bars">${bars}</span><span>Étape ${g.cur+1} sur 5 · ${GUIDE_STEPS[g.cur]}</span></div>
+      <div class="guide-text"><strong>Étape ${g.cur+1} :</strong> ${g.text}</div>${act}
+      <button class="guide-hide" onclick="guideToggle()">Masquer le guide</button>${why}`;
+  }
+  if(html !== _guideHtml){ bar.innerHTML = html; _guideHtml = html; }
+  if(typeof updateGuideHeight==='function') updateGuideHeight();
+}
+function guideToggle(){
+  guideHidden = !guideHidden;
+  try { localStorage.setItem('geoexplorer_guide', guideHidden ? '0' : '1'); } catch(e){}
+  _guideHtml=''; renderGuide();
+  if(typeof updateMobileLayoutClass==='function') updateMobileLayoutClass();
+}
+function guideSelect(id){
+  selectedBlock = id; rerenderAllBlocks();
+  renderGeoPanel(blocks[id]); renderStudiesPanel(blocks[id]);
+  if(typeof renderMobileSheet==='function') renderMobileSheet();
+}
+function guideDo(kind, id){
+  if(kind==='gravity'){ performStudy(null,'gravity'); return; }
+  if(kind==='section'){ setTool('section'); return; }
+  if(kind==='seismic2d'){ performStudy(G.sectionA,'seismic2d'); return; }
+  if(kind==='seismic3d'){ performStudy(id,'seismic3d'); guideSelect(id); return; }
+  if(kind==='drill'){
+    guideSelect(id);
+    if(isMobileLayout()) showMobileScreen('studies'); else switchTab('studies');
+    setTimeout(()=>{ document.getElementById('drillBtn')?.scrollIntoView({block:'center', behavior:'smooth'}); }, 60);
+  }
 }
 
 function addLog(msg, type=''){
@@ -4213,6 +4583,29 @@ const MODE_NAMES = {junior:'Géologue junior', expert:'Géologue senior', tp:'Mo
 // =====================================================================
 // GESTION DES CLICS CARTE & OUTILS
 // =====================================================================
+// Panneau coulissant (mobile) : résumé du bloc sélectionné au bas de la carte,
+// avec un lien « Détails » vers l'écran complet (au lieu de quitter la carte d'office).
+function renderMobileSheet(){
+  const sh = document.getElementById('mobileSheet'); if(!sh) return;
+  const b = selectedBlock!==null ? blocks[selectedBlock] : null;
+  const visible = !!b && isMobileLayout() && currentMobileScreen==='map';
+  document.getElementById('mapPanel')?.classList.toggle('has-sheet', visible);
+  sh.classList.toggle('show', visible);
+  if(!visible){ sh.innerHTML=''; return; }
+  const e = b.estimate, drilled = !!(b.well||b.dryHole);
+  const chips = [`<span class="chip">${b.isOffshore?'Mer':'Terre'}</span>`];
+  if(b.well) chips.push('<span class="chip ok">Puits productif</span>');
+  else if(b.dryHole) chips.push('<span class="chip ko">Puits sec</span>');
+  else if(e?.structPos!==undefined) chips.push(`<span class="chip acc">${e.structPos>0.2?'Haut structural':e.structPos<-0.2?'Bas structural':'Position intermédiaire'}</span>`);
+  let sum;
+  if(drilled) sum = b.well ? 'Le puits produit. Ouvrez les détails pour les diagraphies et le suivi.' : 'Aucun hydrocarbure exploitable. Ouvrez les détails pour comprendre pourquoi.';
+  else if(e?.prob!==undefined) sum = `Probabilité de succès estimée ${Math.round(e.prob*100)} % (± ${Math.round(e.probErr*100)} points). Couverture et roche-mère restent inconnues.`;
+  else if(e?.depth!==undefined) sum = `Réservoir estimé vers ${Math.round(e.depth)} m. Une sismique 3D donnera une probabilité.`;
+  else if(e?.structPos!==undefined) sum = 'Relief connu par la gravimétrie. Tracez une coupe pour préciser la profondeur.';
+  else sum = 'Aucune donnée. Le levé gravimétrique couvrira ce bloc.';
+  sh.innerHTML = `<div class="ms-top"><span class="ms-title">Bloc (${b.x}, ${b.y})</span>${chips.join('')}<button class="ms-more" onclick="showMobileScreen('geo')">Détails</button></div><div class="ms-sum">${sum}</div>`;
+}
+
 function onBlockClick(id){
   const b=blocks[id];
   switch(G.tool){
@@ -4222,7 +4615,8 @@ function onBlockClick(id){
       rerenderAllBlocks();
       renderGeoPanel(selectedBlock!==null?b:null);
       renderStudiesPanel(selectedBlock!==null?b:null);
-      if(selectedBlock!==null) showMobileScreen('geo');
+      if(isMobileLayout()) renderMobileSheet();
+      else if(selectedBlock!==null) showMobileScreen('geo');
       break;
     case 'section':
       if(G.sectionA===null||G.sectionB!==null){
@@ -4314,6 +4708,7 @@ const TICK_MS={1:4000,2:2000,4:1000};
 
 function setSpeed(s){
   G.speed=s; G.paused=s===0;
+  const cyc=document.getElementById('btnSpeedCycle'); if(cyc) cyc.textContent = s===0 ? 'II' : '×'+s;
   ['btnPause','btnX1','btnX2','btnX4'].forEach(id=>{
     document.getElementById(id).classList.toggle('active',
       (s===0&&id==='btnPause')||(s===1&&id==='btnX1')||(s===2&&id==='btnX2')||(s===4&&id==='btnX4'));
@@ -4321,6 +4716,7 @@ function setSpeed(s){
   clearInterval(gameLoopId); gameLoopId=null;
   if(!G.paused) gameLoopId=setInterval(monthTick, TICK_MS[s]||4000);
 }
+document.getElementById('btnSpeedCycle').addEventListener('click',()=>{ const next={0:1,1:2,2:4,4:0}; setSpeed(next[G.speed] ?? 1); });
 document.getElementById('btnPause').addEventListener('click',()=>setSpeed(0));
 document.getElementById('btnX1').addEventListener('click',()=>setSpeed(1));
 document.getElementById('btnX2').addEventListener('click',()=>setSpeed(2));
@@ -4340,7 +4736,16 @@ function updateMobileLayoutClass(){
   // dessous, sans jamais le recouvrir ni laisser un espace vide.
   const headerEl = document.querySelector('header');
   if(headerEl) document.documentElement.style.setProperty('--header-h', headerEl.getBoundingClientRect().height+'px');
+  updateGuideHeight();
   if(on) showMobileScreen(currentMobileScreen); // réappliquer l'écran actif si on vient d'entrer en layout mobile
+}
+// Sur mobile, la barre du guide se place sous le bandeau et la carte plein écran
+// démarre juste en dessous : on mesure sa hauteur pour ne pas la recouvrir.
+function updateGuideHeight(){
+  const bar = document.getElementById('guideBar');
+  let h = 0;
+  if(bar && bar.style.display!=='none' && document.body.classList.contains('mobile-layout')) h = bar.getBoundingClientRect().height + 10;
+  document.documentElement.style.setProperty('--guide-h', h+'px');
 }
 let currentMobileScreen = 'map';
 function showMobileScreen(name){
@@ -4349,6 +4754,7 @@ function showMobileScreen(name){
   document.getElementById('rightPanel').classList.toggle('mscreen-active', name!=='map');
   document.querySelectorAll('#mobileScreenBar button').forEach(b=>b.classList.toggle('active', b.dataset.screen===name));
   if(name!=='map') switchTab(name);
+  renderMobileSheet();
 }
 document.querySelectorAll('#mobileScreenBar button[data-screen]').forEach(btn=>{
   btn.addEventListener('click', ()=>showMobileScreen(btn.dataset.screen));
