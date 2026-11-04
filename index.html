@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.11</title>
+<title>GeoExplorer V4.12</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -1007,7 +1007,7 @@ const MODES = {
 // Briefs géologiques par bassin (mode TP / affichage menu)
 const BASIN_BRIEFS = {
   paris:     '📋 Bassin Parisien : anticlinaux peu profonds (600-1300m), exhumation post-hercynienne importante (×2.8), quasi pas d\'offshore. Roche-mère type Lias ou Trias. Bon cas pédagogique pour la paléo-maturation.',
-  north_sea: '📋 Mer du Nord (sud) : système gazier classique. Grès éoliens du Rotliegend (Permien) scellés par le sel du Zechstein, charbons du Carbonifère comme roche-mère (gaz), halocinèse du sel, failles normales, 90% offshore. Gradient géothermique élevé. Forage coûteux mais gisements importants.',
+  north_sea: '📋 Mer du Nord : deux systèmes possibles, tirés au hasard à chaque partie. Au sud, gaz du Rotliegend scellé par le sel du Zechstein, charbons du Carbonifère comme roche-mère sous le réservoir. Au centre, huile du Brent dont la roche-mère (Kimmeridge) est au-dessus du réservoir et le charge par les failles. Halocinèse du sel, failles normales, 90% offshore, gradient géothermique élevé.',
   rift:      '📋 Bassin de rift : failles normales intenses, horsts et grabens, gradient thermique fort. Diversité structurale élevée. Bons réservoirs dans les flancs de horst.',
   passive:   '📋 Marge passive : séquences progradantes, coin sédimentaire, possibilité de sel (évaporites). Réservoirs turbiditiques ou carbonatés de plateforme.',
   foreland:  '📋 Bassin d\'avant-pays : plissement compressif, anticlinaux en chevrons, chevauchements. Structures souvent bien définies mais profondeur variable.',
@@ -1065,9 +1065,8 @@ const LITHO = {
 // formations, au lieu de retomber sur la séquence générique 'random' avec
 // des lithologies tirées dans des listes communes. Les noms sont des
 // formations ou des ensembles réels, volontairement simplifiés : une
-// colonne de jeu garde UN réservoir principal et UNE roche-mère SOUS lui
-// (le moteur de charge suppose encore une kitchen plus profonde que le
-// piège). Une clé de la forme 'rôle#suffixe' (ex. 'neutral_top#2',
+// colonne de jeu garde UN réservoir principal et UNE roche-mère, placée au-dessous
+// ou au-dessus selon la variante tirée (voir `variants`). Une clé de la forme 'rôle#suffixe' (ex. 'neutral_top#2',
 // 'reservoir#deep') désigne une 2e couche du même rôle avec son propre
 // lot de lithologies. `mobileSalt` marque le sel capable de former des
 // diapirs. Les épaisseurs ('thick') sont calées sur la profondeur typique
@@ -1121,6 +1120,42 @@ const BASIN_COLUMNS = {
   north_sea: {
     sequence: ['overburden','neutral_top','neutral_top#2','evaporite','reservoir','neutral_mid','source','basement'],
     deepResProb: 0.25, // grès du Westphalien dans la série houillère
+    // Deux systèmes réels de la mer du Nord, tirés au hasard à chaque partie : au sud le gaz du
+    // Rotliegend (roche-mère SOUS le réservoir, sel au-dessus), au centre l'huile du Brent, dont
+    // la roche-mère (Kimmeridge) est AU-DESSUS du réservoir et le charge par les failles.
+    variants: [
+      { id:'sud_gaz', label:'Mer du Nord sud : gaz du Rotliegend, roche-mère du Carbonifère sous le réservoir', w:1 },
+      { id:'centre_huile', label:'Mer du Nord centrale : huile du Brent, roche-mère du Kimmeridge au-dessus du réservoir', w:1,
+        sequence: ['overburden','neutral_top','neutral_top#2','source','reservoir','neutral_mid','evaporite','basement'],
+        deepResProb: 0.3, deepAfter: 'neutral_mid',
+        // Brent : réservoir moins profond et gradient plus modéré que le gaz du sud, pour que la
+        // roche-mère placée au-dessus reste surtout dans la fenêtre à huile.
+        bp: { dBase:2300, dRange:1300, gMin:28, gRange:8 },
+        thick: { source:[60,200], reservoir:[30,150], neutral_mid:[60,200], 'reservoir#deep':[30,120] },
+        pools: {
+          'neutral_top#2': [
+            {id:'ns_cret_inf',  name:'Marnes du Crétacé moyen', lith:'Marnes et argilites, couverture régionale', col:'#6a7a60', light:'#8a9a80'},
+            {id:'ns_cret_inf2', name:'Argilites du Crétacé moyen', lith:'Argilite grise compacte', col:'#4a5568', light:'#6a7590'},
+          ],
+          source: [
+            {id:'ns_kimm',    name:'Argile de Kimmeridge', lith:'Argilite noire marine riche en matière organique, kérogène de type II', col:'#1a1a2e', light:'#2a2a4e'},
+            {id:'ns_draupne', name:'Argilite de Draupne',  lith:'Argilite organique du Jurassique supérieur, kérogène de type II', col:'#241a2a', light:'#3a2a44'},
+          ],
+          reservoir: [
+            {id:'ns_brent',  name:'Grès du Brent',  lith:'Grès deltaïque du Jurassique moyen', col:'#C4863A', light:'#e0a04a'},
+            {id:'ns_fulmar', name:'Grès du Fulmar', lith:'Grès marin du Jurassique supérieur', col:'#D0A868', light:'#e8c488'},
+          ],
+          neutral_mid: [
+            {id:'ns_dunlin', name:'Argilites du Dunlin', lith:'Argilites et siltites du Jurassique inférieur', col:'#5a5040', light:'#7a7058'},
+            {id:'ns_drake',  name:'Siltites du Drake',   lith:'Siltites argileuses compactes', col:'#887050', light:'#a89060'},
+          ],
+          'reservoir#deep': [
+            {id:'ns_statfjord', name:'Grès du Statfjord', lith:'Grès fluviatile du Trias supérieur', col:'#B89058', light:'#d0a878'},
+            {id:'ns_skagerrak', name:'Grès du Skagerrak', lith:'Grès continental du Trias', col:'#A05030', light:'#c07040'},
+          ],
+        },
+      },
+    ],
     thick: { overburden:[300,900], neutral_top:[150,450], 'neutral_top#2':[100,300], evaporite:[150,450],
              reservoir:[30,150], neutral_mid:[60,200], source:[40,150] },
     pools: {
@@ -1255,6 +1290,47 @@ const BASIN_COLUMNS = {
   },
 };
 
+// Gabarits de succession des bassins génériques : à chaque partie, UN gabarit est tiré selon son
+// poids. L'ordre des rôles varie donc d'une partie à l'autre (mais reste le même entre les
+// provinces d'une même carte). `deepAfter` : rôle après lequel un éventuel réservoir profond est
+// inséré (par défaut la roche-mère) ; une clé 'reservoir#deep' déjà présente fixe ce réservoir.
+const GENERIC_TEMPLATES = {
+  random: [
+    { id:'classique', w:3, label:'Roche-mère sous le réservoir',
+      seq:['overburden','neutral_top','seal','reservoir','neutral_mid','source','evaporite','basement'] },
+    { id:'source_dessus', w:2, label:'Roche-mère au-dessus du réservoir', deepAfter:'neutral_mid',
+      seq:['overburden','neutral_top','seal','source','reservoir','neutral_mid','evaporite','basement'] },
+    { id:'sandwich', w:2, label:'Roche-mère entre deux réservoirs',
+      seq:['overburden','neutral_top','seal','reservoir','source','reservoir#deep','neutral_mid','basement'] },
+    { id:'evaporite', w:2, label:'Réservoir scellé par des évaporites',
+      seq:['overburden','neutral_top','evaporite','reservoir','neutral_mid','source','basement'] },
+  ],
+  rift: [
+    { id:'classique', w:3, label:'Roche-mère sous le réservoir',
+      seq:['overburden','seal','reservoir','neutral_mid','source','neutral_mid','basement'] },
+    { id:'lacustre_dessus', w:2, label:'Roche-mère lacustre au-dessus du réservoir', deepAfter:'neutral_mid',
+      seq:['overburden','seal','source','reservoir','neutral_mid','basement'] },
+    { id:'sandwich', w:2, label:'Roche-mère entre deux réservoirs',
+      seq:['overburden','seal','reservoir','source','reservoir#deep','neutral_mid','basement'] },
+  ],
+  passive: [
+    { id:'classique', w:3, label:'Roche-mère sous le réservoir et les évaporites',
+      seq:['overburden','neutral_top','seal','reservoir','evaporite','source','neutral_mid','basement'] },
+    { id:'source_dessus', w:2, label:'Roche-mère au-dessus du réservoir', deepAfter:'neutral_mid',
+      seq:['overburden','neutral_top','seal','source','reservoir','evaporite','neutral_mid','basement'] },
+    { id:'sandwich', w:2, label:'Roche-mère entre deux réservoirs',
+      seq:['overburden','neutral_top','seal','reservoir','source','reservoir#deep','evaporite','basement'] },
+  ],
+  foreland: [
+    { id:'classique', w:3, label:'Roche-mère sous le réservoir',
+      seq:['overburden','seal','reservoir','seal','neutral_mid','source','basement'] },
+    { id:'source_dessus', w:2, label:'Roche-mère au-dessus du réservoir', deepAfter:'neutral_mid',
+      seq:['overburden','seal','source','reservoir','seal','neutral_mid','basement'] },
+    { id:'sandwich', w:2, label:'Roche-mère entre deux réservoirs',
+      seq:['overburden','seal','reservoir','source','reservoir#deep','neutral_mid','basement'] },
+  ],
+};
+
 // Profil stratigraphique d'un bassin (du toit vers le bas). Génère nVariants
 // colonnes indépendantes ("provinces lithostratigraphiques") qui partagent
 // la MÊME séquence de rôles (même ordre, même longueur), mais avec une
@@ -1337,8 +1413,24 @@ function buildStratigraphy(basinType, rng, nVariants=1){
   // Colonne propre au bassin nommé (Paris, Mer du Nord, Aquitaine, Gulf
   // Coast) : séquence, lithologies et épaisseurs spécifiques. Les 4 bassins
   // génériques (random, rift, passive, foreland) gardent leurs listes communes.
-  const bc = BASIN_COLUMNS[basinType] || null;
+  let bc = BASIN_COLUMNS[basinType] || null;
   const baseOf = (key) => key.split('#')[0]; // 'neutral_top#2' -> 'neutral_top'
+  // Tirage pondéré (un seul appel au générateur)
+  const weightedPick = (arr) => {
+    const tot = arr.reduce((a,x)=>a+x.w, 0); let r = rng()*tot;
+    for(const x of arr){ r -= x.w; if(r < 0) return x; }
+    return arr[arr.length-1];
+  };
+  // Succession tirée pour cette partie : variante d'un bassin nommé (ex. mer du Nord) ou gabarit générique.
+  let tmpl = null;
+  if(bc?.variants){
+    const v = weightedPick(bc.variants);
+    bc = { ...bc, ...v, pools:{...bc.pools, ...(v.pools||{})}, thick:{...bc.thick, ...(v.thick||{})} };
+    tmpl = v;
+  } else if(!bc){
+    tmpl = weightedPick(GENERIC_TEMPLATES[basinType] || GENERIC_TEMPLATES.random);
+  }
+  buildStratigraphy.lastVariant = tmpl ? { id:tmpl.id, label:tmpl.label, bp:tmpl.bp || null } : null;
   const pick = (poolName) => {
     const base = baseOf(poolName);
     const p = bc?.pools?.[poolName] || pools[base];
@@ -1360,11 +1452,13 @@ function buildStratigraphy(basinType, rng, nVariants=1){
   // FOIS pour toute la partie (pas par variante) : la présence ou non d'un
   // piège stratigraphique profond est une caractéristique du bassin, pas
   // d'une province locale.
-  let seq = [...(bc?.sequence || sequences[basinType] || sequences.random)];
-  if(rng() < (bc?.deepResProb ?? 0.35) && seq.includes('source')){
-    const srcIdx = seq.lastIndexOf('source');
-    // réservoir sous la roche-mère (piège stratigraphique)
-    seq.splice(srcIdx+1, 0, bc?.pools?.['reservoir#deep'] ? 'reservoir#deep' : 'reservoir');
+  let seq = [...(bc?.sequence || tmpl?.seq || sequences[basinType] || sequences.random)];
+  const deepAfter = bc?.deepAfter ?? tmpl?.deepAfter ?? 'source';
+  const rollDeep = rng();
+  // Un gabarit « sandwich » porte déjà son réservoir profond ; sinon on l'insère (piège stratigraphique)
+  if(!seq.includes('reservoir#deep') && rollDeep < (bc?.deepResProb ?? tmpl?.deepResProb ?? 0.35) && seq.includes(deepAfter)){
+    const at = seq.lastIndexOf(deepAfter);
+    seq.splice(at+1, 0, bc?.pools?.['reservoir#deep'] ? 'reservoir#deep' : 'reservoir');
   }
 
   const thickRanges = {
@@ -1389,7 +1483,17 @@ function buildStratigraphy(basinType, rng, nVariants=1){
   });
 
   const variants = [];
-  for(let i=0; i<Math.max(1,nVariants); i++) variants.push(buildColumn());
+  for(let i=0; i<Math.max(1,nVariants); i++){
+    const col = buildColumn();
+    // Lacunes d'érosion : dans les provinces autres que la colonne de référence, une couche
+    // neutre peut manquer (épaisseur nulle, donc biseau sur la coupe). L'emplacement de la
+    // couche reste réservé dans la séquence, ce qui préserve la corrélation de la coupe.
+    // Réservoir, roche-mère, couverture et évaporites ne sont jamais supprimés.
+    if(i > 0) col.forEach((l, j)=>{
+      if(['neutral_top','neutral_top#2','neutral_mid'].includes(seq[j]) && rng() < 0.15){ l.thickness = 0; l.hiatus = true; }
+    });
+    variants.push(col);
+  }
   return variants;
 }
 
@@ -1445,6 +1549,10 @@ function generateGeology(gridSize, basinType, offshore, seed){
   const reservoirIdx = STRAT.findIndex(l=>l.role==='reservoir');
   const sourceIdx    = STRAT.findIndex(l=>l.role==='source');
   const sealIdx      = STRAT.slice(0, Math.max(reservoirIdx,0)).findLastIndex(l=>l.role==='seal');
+  // Roche-mère au-dessus du réservoir (type Kimmeridge sur Brent) : les failles de grand rejet,
+  // qui bloquent la migration latérale dans le cas classique, deviennent des conduits (la roche-mère
+  // est juxtaposée au réservoir de l'autre côté de la faille).
+  const sourceAbove = sourceIdx>=0 && reservoirIdx>=0 && sourceIdx < reservoirIdx;
 
   // Profils par bassin — paramètres structuraux et thermiques calibrés par type
   const BP = {
@@ -1459,7 +1567,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
     aquitaine: {saltP:.30,saltMax:2,fMin:1,fMax:3,aMin:2,aMax:4,dBase:1900,dRange:900, gMin:27,gRange:8, oRatio:.20,exhum:1.7},
     gulf_coast:{saltP:.85,saltMax:3,fMin:2,fMax:5,aMin:1,aMax:2,dBase:3400,dRange:1800,gMin:26,gRange:9, oRatio:.80,exhum:1.0},
   };
-  const bp = BP[basinType] || BP.random;
+  const bp = { ...(BP[basinType] || BP.random), ...(buildStratigraphy.lastVariant?.bp || {}) };
 
   // Échelle de taille : les compteurs de structures (anticlinaux, failles,
   // sel) et la résolution des champs spatiaux (faciès, provinces) sont
@@ -1491,7 +1599,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
   // Les ids 'salt'/'evaporite' n'existent plus dans les listes de lithologies
   // depuis les provinces : le test ne trouvait jamais de sel et aucune carte
   // n'avait de diapir. On repère maintenant le sel mobile par son drapeau.
-  const hasSalt = STRAT_PROVINCES.some(col => col.some(l=>l.mobileSalt));
+  const hasSalt = STRAT_PROVINCES.some(col => col.some(l=>l.mobileSalt && l.thickness > 50));
   const saltDomes = hasSalt && rng()<bp.saltP ? Array.from({length:Math.round((1+Math.floor(rng()*bp.saltMax))*sizeScale)}, ()=>({
     x:rng()*gridSize, y:rng()*gridSize, r:0.8+rng()*0.8, uplift:400+rng()*600,
   })) : [];
@@ -1673,9 +1781,9 @@ function generateGeology(gridSize, basinType, offshore, seed){
       const sideK = (k.x-f.px)*f.nx + (k.y-f.py)*f.ny;
       if(sideB===0 || sideK===0 || Math.sign(sideB)===Math.sign(sideK)) return; // la faille ne coupe pas le trajet
       const throwAbs = Math.abs(f.throw);
-      if(throwAbs > 60) factor *= 0.35;      // faille majeure : barrière, coupe une grande partie de la migration
-      else if(throwAbs > 20) factor *= 0.7;  // faille moyenne : gêne partiellement
-      else factor *= 1.25;                    // faille mineure : drain secondaire, favorise la migration
+      if(throwAbs > 60) factor *= sourceAbove ? 1.3 : 0.35;      // faille majeure : barrière (conduit si la roche-mère est au-dessus)
+      else if(throwAbs > 20) factor *= sourceAbove ? 1.15 : 0.7; // faille moyenne : gêne partiellement (aide si la roche-mère est au-dessus)
+      else factor *= 1.25;                                       // faille mineure : drain secondaire, favorise la migration
     });
     return clamp(factor, .1, 1.5);
   }
