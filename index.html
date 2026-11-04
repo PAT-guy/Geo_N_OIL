@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.14</title>
+<title>GeoExplorer V4.15</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -373,6 +373,23 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .est-buckets button.sel{background:var(--ink);color:var(--on-ink);border-color:var(--ink);}
 .est-hint{font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:4px;}
 .est-clear{background:none;border:none;color:var(--muted);text-decoration:underline;font-size:11px;cursor:pointer;padding:0;font-family:var(--sans);}
+/* ── VUE AGRANDIE (coupe, diagraphies) ── */
+#bigView{position:fixed;inset:0;z-index:1200;background:var(--bg);display:none;flex-direction:column;}
+#bigView.open{display:flex;}
+.bv-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);flex-shrink:0;}
+.bv-title{font-family:var(--serif);font-size:16px;font-weight:600;margin-right:auto;min-width:0;}
+.bv-tools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.bv-tools .btn{min-width:40px;justify-content:center;}
+#bvZoomLbl{font-family:var(--mono);font-size:12px;color:var(--muted);min-width:34px;text-align:center;}
+.bv-body{flex:1;min-height:0;overflow:auto;padding:8px;position:relative;background:var(--sec-paper, var(--bg));}
+#bvStage{margin:0 auto;}
+#bvStage svg{display:block;width:100%;height:auto;}
+#bvStage .ps-section,#bvStage button,#bvStage [data-bv-open]{display:none;}
+#bvStage .wl-wrap{border:none;background:none;padding:0;}
+#bvStage .wl-note{font-size:12px;}
+.bv-cap{flex-shrink:0;max-height:34vh;overflow:auto;padding:8px 12px;border-top:1px solid var(--line);background:var(--panel);font-size:12px;line-height:1.6;}
+.bv-cap:empty{display:none;}
+#bvLayer{font-size:12px;color:var(--amber);font-weight:600;}
 #alertModal{position:fixed;inset:0;z-index:1310;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px;}
 #alertModal.open{display:flex;}
 #alertBox{background:var(--panel);border:1px solid var(--line);padding:26px;max-width:420px;width:100%;text-align:center;border-radius:12px;}
@@ -732,6 +749,23 @@ body.mobile-layout #priceSparkline{display:none;}
   </div>
 </div>
 
+<!-- Vue agrandie : coupe ou diagraphies en pleine page -->
+<div id="bigView" role="dialog" aria-modal="true" aria-label="Vue agrandie">
+  <div class="bv-head">
+    <span class="bv-title" id="bvTitle"></span>
+    <span id="bvLayer"></span>
+    <div class="bv-tools">
+      <button class="btn" id="bvZoomOut" aria-label="Zoom arrière">−</button>
+      <span id="bvZoomLbl">1×</span>
+      <button class="btn" id="bvZoomIn" aria-label="Zoom avant">+</button>
+      <button class="btn" id="bvRotate" style="display:none;">⟳ Pivoter</button>
+      <button class="btn" id="bvClose">✕ Fermer</button>
+    </div>
+  </div>
+  <div class="bv-body" id="bvBody"><div id="bvStage"></div></div>
+  <div class="bv-cap" id="bvCap"></div>
+</div>
+
 <!-- Alerte de jeu (accident) : le temps est arrêté jusqu'à ce que le joueur reprenne -->
 <div id="alertModal" role="alertdialog" aria-labelledby="alertTitle">
   <div id="alertBox">
@@ -983,6 +1017,7 @@ body.mobile-layout #priceSparkline{display:none;}
         <div style="font-size:11px; color:var(--muted); margin-bottom:6px;" id="sectionSeismicInfo"></div>
         <button class="study-btn" id="btnSeismic2d" onclick="performStudy(null,'seismic2d')">📡 Lancer sismique 2D sur ce profil</button>
       </div>
+      <div id="sectionTools" style="display:none;text-align:right;padding:6px 8px;"><button class="study-btn study-btn-compact" onclick="openBigView('section')">⤢ <span class="i18n" data-fr="Agrandir la coupe" data-en="Enlarge section">Agrandir la coupe</span></button></div>
       <svg id="sectionSvg" style="display:none;"></svg>
       <div class="section-legend" id="sectionLegend" style="display:none;"></div>
       <div id="sectionInterpret" style="display:none; padding:8px; background:rgba(13,17,23,0.6); border-top:1px solid var(--line); font-size:11px; line-height:1.6;"></div>
@@ -3571,7 +3606,92 @@ const WL_LITH = {
   basalt:   {rhoMa:2.9, dtMa:50,  gr:35, nOff:0.03,   rt:800,  fixed:true},
 };
 let wlZoom = false; // vue zoomée sur le réservoir principal
-function wlToggleZoom(){ wlZoom = !wlZoom; if(selectedBlock!==null) renderGeoPanel(blocks[selectedBlock]); }
+function wlToggleZoom(){ wlZoom = !wlZoom; if(selectedBlock!==null) renderGeoPanel(blocks[selectedBlock]); if(bigView.open) bvRender(); }
+
+// ── Vue agrandie ──
+// Affiche la coupe ou les diagraphies en pleine page : l'image SVG est vectorielle, donc les
+// textes restent nets à tout grossissement. Sur téléphone, « Pivoter » couche la coupe à l'horizontale
+// pour utiliser toute la hauteur de l'écran (sans dépendre du verrouillage d'orientation).
+let secDims = null; // dimensions imposées au dessin de la coupe par la vue agrandie (sinon 460×320)
+const bigView = {open:false, kind:null, id:null, zoom:1, rot:false};
+const BV_ZOOMS = [1, 1.5, 2, 3];
+function openBigView(kind, id){
+  Object.assign(bigView, {open:true, kind, id:id??null, zoom:1, rot:false});
+  document.getElementById('bigView').classList.add('open');
+  bvRender();
+}
+function closeBigView(){
+  bigView.open = false;
+  document.getElementById('bigView').classList.remove('open');
+  document.getElementById('bvStage').replaceChildren();
+}
+function bvRender(){
+  const v = bigView, body = document.getElementById('bvBody'), stage = document.getElementById('bvStage');
+  const cap = document.getElementById('bvCap'), title = document.getElementById('bvTitle');
+  document.getElementById('bvLayer').textContent = '';
+  const mobile = typeof isMobileLayout==='function' && isMobileLayout();
+  const canRot = v.kind==='section' && mobile;
+  if(!canRot) v.rot = false;
+  document.getElementById('bvRotate').style.display = canRot ? '' : 'none';
+  // légende et interprétation sous l'image (masquées en mode pivoté pour garder toute la hauteur)
+  let capHtml = '';
+  if(v.kind==='section'){
+    if(G.sectionA===null || G.sectionB===null || document.getElementById('sectionSvg').style.display==='none'){ closeBigView(); return; }
+    const lg = document.getElementById('sectionLegend'), it = document.getElementById('sectionInterpret');
+    capHtml = (lg ? `<div class="section-legend">${lg.innerHTML}</div>` : '') + (it && it.style.display!=='none' ? it.innerHTML : '');
+    const A = blocks[G.sectionA], B = blocks[G.sectionB];
+    title.textContent = T('Coupe', 'Section') + ` A (${A.x},${A.y}) → B (${B.x},${B.y})`;
+  }
+  cap.innerHTML = v.rot ? '' : capHtml;
+  const bw = Math.max(200, body.clientWidth - 16), bh = Math.max(200, body.clientHeight - 16);
+  let base;
+  if(v.kind==='section'){
+    // La coupe est redessinée avec les proportions de la fenêtre : la profondeur est déjà
+    // exagérée et la distance n'est pas à l'échelle, donc on peut étirer sans trahir la géologie.
+    const availW = v.rot ? bh : bw, availH = v.rot ? bw : bh, r = availW/availH;
+    secDims = r >= 1.2 ? {W: Math.round(320*r), H: 320} : {W: 460, H: Math.round(460/r)};
+    try { renderSection(); } finally { var src = document.getElementById('sectionSvg'); var c = src.cloneNode(true); secDims = null; renderSection(); }
+    c.removeAttribute('id'); c.removeAttribute('style'); c.removeAttribute('width'); c.removeAttribute('height');
+    stage.replaceChildren(c);
+    c.querySelectorAll('.sec-layer-poly').forEach(poly => poly.addEventListener('click', () => {
+      c.querySelectorAll('.sec-layer-poly').forEach(q => q.classList.remove('sec-layer-selected'));
+      poly.classList.add('sec-layer-selected');
+      document.getElementById('bvLayer').textContent = poly.dataset.layerName || '';
+    }));
+    base = availW;
+  } else {
+    const b = blocks[v.id];
+    if(!b){ closeBigView(); return; }
+    stage.innerHTML = wellLogHtml(b);
+    if(!stage.querySelector('.wl-svg')){ closeBigView(); return; }
+    title.textContent = T('Diagraphies', 'Well logs') + ` : bloc (${b.x},${b.y})`;
+    if(stage.querySelector('button:not([data-bv-open])')){
+      const zb = document.createElement('button'); zb.className = 'btn'; zb.style.display = 'inline-flex';
+      zb.textContent = wlZoom ? '↕ Colonne entière' : '🔍 Zoom sur le réservoir'; zb.onclick = wlToggleZoom;
+      document.getElementById('bvLayer').replaceChildren(zb);
+    }
+    base = Math.min(bw, 640);
+  }
+  const z = v.rot ? 1 : v.zoom;
+  stage.style.width = Math.round(base*z) + 'px';
+  if(v.rot){
+    body.style.overflow = 'hidden';
+    Object.assign(stage.style, {position:'absolute', left:'50%', top:'50%', transform:'translate(-50%,-50%) rotate(90deg)', margin:'0'});
+  } else {
+    body.style.overflow = 'auto';
+    Object.assign(stage.style, {position:'', left:'', top:'', transform:'', margin:'0 auto'});
+  }
+  document.getElementById('bvZoomLbl').textContent = z + '×';
+  document.getElementById('bvZoomOut').disabled = v.rot || v.zoom<=BV_ZOOMS[0];
+  document.getElementById('bvZoomIn').disabled  = v.rot || v.zoom>=BV_ZOOMS[BV_ZOOMS.length-1];
+}
+document.getElementById('bvClose').addEventListener('click', closeBigView);
+document.getElementById('bvZoomIn').addEventListener('click', () => { const i = BV_ZOOMS.indexOf(bigView.zoom); if(i<BV_ZOOMS.length-1){ bigView.zoom = BV_ZOOMS[i+1]; bvRender(); } });
+document.getElementById('bvZoomOut').addEventListener('click', () => { const i = BV_ZOOMS.indexOf(bigView.zoom); if(i>0){ bigView.zoom = BV_ZOOMS[i-1]; bvRender(); } });
+document.getElementById('bvRotate').addEventListener('click', () => { bigView.rot = !bigView.rot; bvRender(); });
+document.addEventListener('keydown', e => { if(e.key==='Escape' && bigView.open) closeBigView(); });
+let _bvResizeT = null;
+window.addEventListener('resize', () => { if(!bigView.open) return; clearTimeout(_bvResizeT); _bvResizeT = setTimeout(bvRender, 120); });
 function wlGrid(b, zoom){
   // Échantillonne les courbes sur toute la colonne du puits.
   const H = b.horizons.filter(h => (h.thicknessLocal ?? h.thickness) > 0.5);
@@ -3731,7 +3851,7 @@ function wellLogHtml(b){
   const legend = `<div class="wl-note"><span style="color:#2e8b57;">━ GR</span> · <span style="color:#c0392b;">━ résistivité profonde</span> · <span style="color:#2c6fbb;">┅ résistivité peu profonde</span> · <span style="color:#c0392b;">━ densité</span> · <span style="color:#2c6fbb;">┅ neutron</span> · <span style="color:#8e44ad;">━ sonique</span> · <span style="color:#d4a800;">▮ croisement densité-neutron</span></div>
     <div class="wl-note">Colonne de gauche : couches traversées (survol pour le nom). À vous d'interpréter : lithologie, porosité, nature du fluide.</div>`;
   const hasRes = g.firstRes >= 0;
-  const bar = hasRes ? `<div style="margin:0 0 6px;"><button class="study-btn study-btn-compact" onclick="wlToggleZoom()">${wlZoom?'↕ Colonne entière':'🔍 Zoom sur le réservoir'}</button></div>` : '';
+  const bar = `<div style="margin:0 0 6px;display:flex;gap:6px;flex-wrap:wrap;">${hasRes?`<button class="study-btn study-btn-compact" onclick="wlToggleZoom()">${wlZoom?'↕ Colonne entière':'🔍 Zoom sur le réservoir'}</button>`:''}<button class="study-btn study-btn-compact" data-bv-open onclick="openBigView('log',${b.id})">⤢ Plein écran</button></div>`;
   return `<div class="ps-section">Diagraphies</div>${bar}<div class="wl-wrap">${s}${legend}</div>`;
 }
 
@@ -4165,13 +4285,16 @@ function renderSection(){
   const legend   = document.getElementById('sectionLegend');
   const seismicBar = document.getElementById('sectionSeismicBar');
 
+  const secTools = document.getElementById('sectionTools');
   if(G.sectionA===null || G.sectionB===null){
+    if(secTools) secTools.style.display='none';
     svgEl.style.display='none'; hint.style.display='block';
     legend.style.display='none';
     if(seismicBar) seismicBar.style.display='none';
     return;
   }
   hint.style.display='none'; svgEl.style.display='block'; legend.style.display='flex';
+  if(secTools) secTools.style.display='block';
 
   // Barre sismique
   if(seismicBar){
@@ -4194,7 +4317,7 @@ function renderSection(){
   }
 
   const ba = blocks[G.sectionA], bb = blocks[G.sectionB];
-  const W=460, H=320, MARG={t:38, b:34, l:52, r:14};
+  const W=secDims?.W ?? 460, H=secDims?.H ?? 320, MARG={t:38, b:34, l:52, r:30};
   const PW = W-MARG.l-MARG.r, PH = H-MARG.t-MARG.b;
   svgEl.setAttribute('viewBox',`0 0 ${W} ${H}`);
   svgEl.setAttribute('width','100%'); svgEl.setAttribute('height','auto');
