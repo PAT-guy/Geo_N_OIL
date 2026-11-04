@@ -3,59 +3,95 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.7</title>
+<title>GeoExplorer V4.8</title>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
 :root{
-  --bg:#f2ecd8; --panel:#e9e0c4; --panel2:#ddd2ac;
-  --line:#a8996a; --text:#1c170e; --muted:#5c5238;
-  --amber:#8f4d15; --green:#245c30; --red:#8f2a21; --blue:#254f6b;
-  --mono:'Courier New',monospace;
+  /* Kit visuel (refonte) : papier, encre et rouille. Les noms historiques
+     (--bg, --panel, --panel2, --amber...) sont conservés pour ne pas toucher
+     tout le code existant : --amber est désormais la couleur d'accent (rouille). */
+  --bg:#F4EFE1; --panel:#EBE3CD; --panel2:#FBF8F0;
+  --line:#D5C9A8; --line-strong:#A8996A;
+  --text:#1C170E; --muted:#5C5238;
+  --amber:#8F4D15; --green:#245C30; --red:#8F2A21; --blue:#254F6B;
+  --ink:#1C170E; --on-ink:#F4EFE1; /* action principale : encre pleine */
+  --serif:'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --sans:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono:'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   /* Couleurs dédiées à la coupe SVG (papier + encre), pour que les
      éléments codés en dur dans renderSection() suivent le thème au lieu
      de rester calés sur un thème fixe. */
-  --sec-paper:#f6f1e0; --sec-text-strong:#1a160e; --sec-text-soft:rgba(26,22,14,.85);
+  --sec-paper:#FBF8F0; --sec-text-strong:#1a160e; --sec-text-soft:rgba(26,22,14,.85);
   --sec-line-strong:rgba(26,22,14,.7); --sec-line-soft:rgba(26,22,14,.3);
   --sec-surface-line:rgba(26,22,14,.4); --sec-ink-edge:rgba(26,22,14,.6);
 }
-/* Thème sombre alternatif — activé via [data-theme="dark"] sur <html> */
+/* Thème sombre : fond brun très sombre plutôt que bleu nuit, pour rester
+   « dans le carnet, éclairé à la lampe ». Activé via [data-theme="dark"] sur <html> */
 html[data-theme="dark"]{
-  --bg:#0d1117; --panel:#131920; --panel2:#1a2230;
-  --line:#243040; --text:#d8dee9; --muted:#8a9aac;
-  --amber:#e8a33d; --green:#4caf6e; --red:#d9534f; --blue:#4d8fc7;
-  --sec-paper:#0d1117; --sec-text-strong:#ffffff; --sec-text-soft:rgba(255,255,255,.85);
+  --bg:#14110C; --panel:#1D1913; --panel2:#26211A;
+  --line:#3A3327; --line-strong:#5A5040; --text:#EDE6D3; --muted:#A99F86;
+  --amber:#E09A5A; --green:#7DC38F; --red:#E07A6E; --blue:#7FB0CC;
+  --ink:#EDE6D3; --on-ink:#14110C;
+  --sec-paper:#14110C; --sec-text-strong:#ffffff; --sec-text-soft:rgba(255,255,255,.85);
   --sec-line-strong:rgba(255,255,255,.6); --sec-line-soft:rgba(255,255,255,.2);
   --sec-surface-line:rgba(255,255,255,.3); --sec-ink-edge:rgba(255,255,255,.45);
 }
+/* Polices locales (dossier fonts/, licence SIL OFL) : pas de requête vers un
+   serveur tiers, et le jeu reste utilisable hors ligne. */
+@font-face{font-family:'IBM Plex Sans';font-weight:400;font-style:normal;font-display:swap;src:url('fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');}
+@font-face{font-family:'IBM Plex Sans';font-weight:500;font-style:normal;font-display:swap;src:url('fonts/ibm-plex-sans-latin-500-normal.woff2') format('woff2');}
+@font-face{font-family:'IBM Plex Sans';font-weight:600;font-style:normal;font-display:swap;src:url('fonts/ibm-plex-sans-latin-600-normal.woff2') format('woff2');}
+@font-face{font-family:'IBM Plex Mono';font-weight:400;font-style:normal;font-display:swap;src:url('fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');}
+@font-face{font-family:'IBM Plex Mono';font-weight:500;font-style:normal;font-display:swap;src:url('fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2');}
+@font-face{font-family:'IBM Plex Mono';font-weight:600;font-style:normal;font-display:swap;src:url('fonts/ibm-plex-mono-latin-600-normal.woff2') format('woff2');}
+@font-face{font-family:'Source Serif 4';font-weight:200 900;font-style:normal;font-display:swap;src:url('fonts/source-serif-4-latin-wght-normal.woff2') format('woff2');}
+/* Icônes au trait (sprite en tête de <body>), remplacent les emoji de l'interface */
+.ico{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none;vertical-align:-3px;}
+.btn .ico{margin-right:6px;}
 *{box-sizing:border-box; margin:0; padding:0;}
-body{background:var(--bg); color:var(--text); font-family:var(--mono); font-size:13px; height:100vh; display:flex; flex-direction:column; overflow:hidden;}
+body{background:var(--bg); color:var(--text); font-family:var(--sans); font-size:13.5px; line-height:1.45; height:100vh; display:flex; flex-direction:column; overflow:hidden; -webkit-font-smoothing:antialiased;}
 
 /* ── HEADER ── */
 header{
-  display:flex; align-items:center; gap:16px; padding:8px 14px;
+  display:flex; align-items:center; gap:22px; padding:10px 20px;
   border-bottom:1px solid var(--line); background:var(--panel);
   flex-shrink:0; flex-wrap:wrap;
   position:sticky; top:0; z-index:950; /* reste toujours au-dessus des volets plein écran mobile (z-index:850) */
 }
-header h1{font-size:14px; color:var(--amber); letter-spacing:2px; font-weight:normal;}
-.hud{display:flex; gap:14px; align-items:center; flex-wrap:wrap;}
-.hud-item{display:flex; flex-direction:column; align-items:center;}
-.hud-lbl{font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;}
-.hud-val{font-size:13px; font-weight:bold;}
-.sep{width:1px; height:24px; background:var(--line);}
+.brand-name{font-family:var(--serif); font-size:22px; font-weight:600; color:var(--amber); letter-spacing:-.01em; line-height:1.1;}
+.brand-sub{font-size:11px; color:var(--muted); margin-top:3px; max-width:170px; line-height:1.3;}
+.hud{display:flex; gap:22px; align-items:center; flex-wrap:wrap; flex:1;}
+.hud-item{display:flex; flex-direction:column; align-items:flex-start; gap:2px;}
+.hud-lbl{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em;}
+.hud-val{font-family:var(--mono); font-size:15px; font-weight:500;}
+.hud-unit{font-family:var(--sans); font-size:11px; color:var(--muted); font-weight:400; margin-left:3px;}
+.hud-budget{display:flex; flex-direction:column; gap:5px; min-width:200px;}
+.hud-budget-top{display:flex; align-items:baseline; gap:10px;}
+#hudBudget{font-family:var(--mono); font-size:24px; font-weight:500; line-height:1;}
+.hud-bar{height:5px; border-radius:3px; background:var(--line); overflow:hidden;}
+.hud-bar-fill{height:100%; width:0; background:var(--ink); border-radius:3px; transition:width .4s;}
+.hud-goal-txt{font-size:11px; color:var(--muted);}
+.sep{width:1px; height:30px; background:var(--line);}
 #priceSparkline{height:28px; width:80px;}
-.btn{background:var(--bg); border:1px solid var(--line); color:var(--text); font-family:var(--mono); font-size:11px; padding:5px 10px; cursor:pointer; white-space:nowrap; border-radius:6px;}
-.btn:hover{border-color:var(--amber);}
-.btn.active{border-color:var(--amber); color:var(--amber);}
+.btn{background:var(--panel2); border:1px solid var(--line-strong); color:var(--text); font-family:var(--sans); font-size:13px; padding:7px 13px; cursor:pointer; white-space:nowrap; border-radius:8px; display:inline-flex; align-items:center; line-height:1.2;}
+.btn:hover{border-color:var(--ink);}
+.btn.active{border-color:var(--ink); background:var(--ink); color:var(--on-ink);}
+/* Contrôle segmenté : sélection d'un outil ou d'une vitesse */
+.seg{display:inline-flex; border:1px solid var(--line-strong); border-radius:8px; overflow:hidden; background:var(--panel2);}
+.seg .btn{border:none; border-radius:0; background:transparent; border-right:1px solid var(--line);}
+.seg .btn:last-child{border-right:none;}
+.seg .btn.active{background:var(--ink); color:var(--on-ink);}
+.seg .btn:hover{background:rgba(0,0,0,.04);}
+.seg .btn.active:hover{background:var(--ink);}
 
 /* ── MAIN ── */
 main{flex:1; display:grid; grid-template-columns:1fr var(--right-w, 380px); overflow:hidden;}
 
 /* ── CARTE ── */
 #mapPanel{display:flex; flex-direction:column; overflow:hidden;}
-.map-toolbar{display:flex; gap:6px; align-items:center; padding:6px 10px; border-bottom:1px solid var(--line); flex-wrap:wrap; flex-shrink:0;}
-.map-toolbar span{font-size:11px; color:var(--muted);}
+.map-toolbar{display:flex; gap:12px; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; flex-shrink:0; background:var(--panel2);}
+.map-toolbar > span{font-size:12.5px; color:var(--muted);}
 #mapWrap{flex:1; min-height:0; overflow:auto; position:relative; padding:10px;}
 .grid{display:grid; gap:2px; width:fit-content;}
 .block{
@@ -80,12 +116,13 @@ main{flex:1; display:grid; grid-template-columns:1fr var(--right-w, 380px); over
 #tip .tl{color:var(--muted);}
 
 /* ── PANNEAU DROIT ── */
-#rightPanel{position:relative; border-left:1px solid var(--line); display:flex; flex-direction:column; overflow:hidden;}
+#rightPanel{position:relative; border-left:1px solid var(--line); display:flex; flex-direction:column; overflow:hidden; background:var(--bg);}
 #rpResizeHandle{position:absolute; left:-4px; top:0; width:8px; height:100%; cursor:col-resize; z-index:950;}
 #rpResizeHandle:hover, #rpResizeHandle.dragging{background:var(--amber); opacity:.35;}
-.rpanel-tabs{display:flex; border-bottom:1px solid var(--line);}
-.rtab{flex:1; padding:8px; text-align:center; font-size:11px; cursor:pointer; color:var(--muted); border:none; background:none; font-family:var(--mono);}
-.rtab.active{color:var(--amber); border-bottom:2px solid var(--amber);}
+.rpanel-tabs{display:flex; border-bottom:1px solid var(--line); background:var(--panel2);}
+.rtab{flex:1; padding:9px 4px 8px; display:flex; flex-direction:column; align-items:center; gap:4px; font-size:11.5px; cursor:pointer; color:var(--muted); border:none; border-bottom:2px solid transparent; background:none; font-family:var(--sans);}
+.rtab:hover{color:var(--text);}
+.rtab.active{color:var(--text); font-weight:500; border-bottom-color:var(--ink);}
 .rpanel-content{flex:1; overflow-y:auto; padding:12px; display:none;}
 .rpanel-content.active{display:block;}
 
@@ -93,12 +130,12 @@ main{flex:1; display:grid; grid-template-columns:1fr var(--right-w, 380px); over
 .ps-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;}
 .ps-card{background:var(--panel2); border:1px solid var(--line); padding:10px; border-radius:8px;}
 .ps-card .ps-lbl{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;}
-.ps-card .ps-val{font-size:18px; font-weight:bold; margin:4px 0;}
+.ps-card .ps-val{font-family:var(--mono); font-size:18px; font-weight:500; margin:4px 0;}
 .ps-card .ps-bar{height:4px; background:var(--line); border-radius:2px; margin-top:4px;}
 .ps-card .ps-fill{height:4px; border-radius:2px; transition:width .3s;}
 .ps-detail{font-size:11px; color:var(--muted); line-height:1.7; margin-bottom:10px;}
-.ps-section{font-size:11px; color:var(--amber); text-transform:uppercase; letter-spacing:1px; margin:12px 0 6px 0; border-bottom:1px solid var(--line); padding-bottom:4px;}
-.info-row{display:flex; justify-content:space-between; font-size:12px; padding:3px 0; border-bottom:1px solid rgba(36,48,64,.5);}
+.ps-section{font-size:11px; color:var(--muted); font-weight:500; text-transform:uppercase; letter-spacing:.08em; margin:16px 0 8px 0;}
+.info-row{display:flex; justify-content:space-between; gap:12px; font-size:12.5px; padding:5px 0; border-bottom:1px solid var(--line);}
 .info-row .il{color:var(--muted);}
 
 /* ── COUPE STRUCTURALE ── */
@@ -122,23 +159,23 @@ main{flex:1; display:grid; grid-template-columns:1fr var(--right-w, 380px); over
 .study-card .sc-meta{display:flex; justify-content:space-between; font-size:11px; margin-bottom:8px;}
 .study-card .sc-cost{color:var(--amber);}
 .study-card .sc-reveal{color:var(--blue);}
-.study-btn{width:100%; padding:8px; background:var(--bg); border:1px solid var(--amber); color:var(--amber); font-family:var(--mono); font-size:12px; cursor:pointer; border-radius:6px;}
+.study-btn{width:100%; padding:9px; background:var(--panel2); border:1px solid var(--line-strong); color:var(--text); font-family:var(--sans); font-size:13px; font-weight:500; cursor:pointer; border-radius:8px;}
 .study-btn-compact{padding:8px 10px !important; font-size:11px !important; min-height:0 !important; width:auto !important;}
 html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px !important;} /* volontairement plus compact que les autres boutons en Mode téléphone */
-.study-btn:hover{background:rgba(232,163,61,.08);}
+.study-btn:hover{border-color:var(--ink);}
 .study-btn:disabled{border-color:var(--line); color:var(--muted); cursor:not-allowed; background:none;}
 .done-badge{font-size:10px; color:var(--green); margin-left:8px;}
 
 /* ── FORAGE ── */
 .drill-card{background:var(--panel2); border:1px solid var(--line); padding:12px; margin-bottom:8px; border-radius:8px;}
-.drill-select{width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text); font-family:var(--mono); font-size:12px; padding:6px; margin-bottom:6px; border-radius:6px;}
+.drill-select{width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text); font-family:var(--sans); font-size:12px; padding:6px; margin-bottom:6px; border-radius:6px;}
 .drill-summary{font-size:11px; color:var(--muted); line-height:1.7; margin:8px 0;}
 .drill-summary .ds-good{color:var(--green);}
 .drill-summary .ds-warn{color:var(--amber);}
 .drill-summary .ds-bad{color:var(--red);}
 
 /* ── JOURNAL ── */
-.log-entry{font-size:11px; padding:5px 0; border-bottom:1px solid rgba(36,48,64,.5); line-height:1.5; color:var(--muted);}
+.log-entry{font-size:12px; padding:6px 0; border-bottom:1px solid var(--line); line-height:1.5; color:var(--muted);}
 .log-entry.ev{color:var(--text);}
 .log-entry.good{color:var(--green);}
 .log-entry.bad{color:var(--red);}
@@ -146,11 +183,12 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 
 /* ── MENU ── */
 #menu{position:fixed;inset:0;z-index:999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;overflow-y:auto;}
-.menu-title{font-size:clamp(22px,4vw,36px);color:var(--amber);letter-spacing:4px;margin-bottom:4px;}
-.menu-sub{font-size:11px;color:var(--muted);letter-spacing:2px;margin-bottom:28px;}
-.menu-card{background:var(--panel);border:1px solid var(--line);padding:24px;width:100%;max-width:500px;border-radius:10px;}
+.menu-title{font-family:var(--serif);font-weight:600;font-size:clamp(30px,5vw,48px);color:var(--amber);letter-spacing:-.01em;margin-bottom:4px;}
+.menu-sub{font-size:11px;color:var(--muted);letter-spacing:.12em;margin-bottom:28px;}
+.menu-card{background:var(--panel2);border:1px solid var(--line);padding:26px;width:100%;max-width:520px;border-radius:14px;}
 .mode-card{border:1px solid var(--line);padding:12px;margin-bottom:8px;cursor:pointer;border-radius:8px;}
-.mode-card:hover,.mode-card.sel{border-color:var(--amber);background:rgba(232,163,61,.05);}
+.mode-card:hover{border-color:var(--line-strong);}
+.mode-card.sel{border-color:var(--ink);background:var(--panel);}
 .mode-name{font-size:14px;color:var(--text);}
 .mode-desc{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5;}
 .mode-stats{font-size:11px;color:var(--muted);margin-top:6px;}
@@ -158,9 +196,9 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .menu-opt-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:12px;}
 .menu-opt-lbl{color:var(--muted);}
 .menu-tabs{display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid var(--line);}
-.menu-tab{background:none;border:none;font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--muted);padding:8px 12px;cursor:pointer;border-bottom:2px solid transparent;}
+.menu-tab{background:none;border:none;font-family:var(--sans);font-size:11px;letter-spacing:1px;color:var(--muted);padding:8px 12px;cursor:pointer;border-bottom:2px solid transparent;}
 .menu-tab:hover{color:var(--text);}
-.menu-tab.active{color:var(--amber);border-bottom-color:var(--amber);}
+.menu-tab.active{color:var(--text);font-weight:500;border-bottom-color:var(--ink);}
 .menu-section{display:none;}
 .menu-section.active{display:block;}
 .adv-group{margin-bottom:16px;}
@@ -168,15 +206,15 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .adv-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);gap:8px;}
 .adv-label{font-size:11px;color:var(--muted);flex:1;}
 .adv-label b{color:var(--text);font-weight:normal;}
-.adv-input{background:var(--bg);border:1px solid var(--line);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 6px;width:70px;text-align:right;}
-.adv-reset{font-size:10px;color:var(--muted);text-decoration:underline;cursor:pointer;background:none;border:none;font-family:var(--mono);margin-bottom:10px;}
+.adv-input{background:var(--bg);border:1px solid var(--line);color:var(--text);font-family:var(--sans);font-size:11px;padding:4px 6px;width:70px;text-align:right;}
+.adv-reset{font-size:10px;color:var(--muted);text-decoration:underline;cursor:pointer;background:none;border:none;font-family:var(--sans);margin-bottom:10px;}
 .tg{display:flex;flex-wrap:wrap;gap:2px;justify-content:flex-end;}
-.tg button{background:var(--bg);border:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:11px;padding:5px 10px;cursor:pointer;margin-left:-1px;}
+.tg button{background:var(--bg);border:1px solid var(--line);color:var(--muted);font-family:var(--sans);font-size:11px;padding:5px 10px;cursor:pointer;margin-left:-1px;}
 .tg button:first-child{border-radius:6px 0 0 6px;}
 .tg button:last-child{border-radius:0 6px 6px 0;}
-.tg button.sel{border-color:var(--amber);color:var(--amber);z-index:1;position:relative;}
-.start-btn{width:100%;padding:14px;background:var(--amber);border:none;color:#f6f1e0;font-family:var(--mono);font-size:13px;letter-spacing:2px;cursor:pointer;margin-top:20px;font-weight:bold;border-radius:8px;}
-.start-btn:hover{background:#f0b44d;}
+.tg button.sel{border-color:var(--ink);background:var(--ink);color:var(--on-ink);z-index:1;position:relative;}
+.start-btn{width:100%;padding:15px;background:var(--ink);border:none;color:var(--on-ink);font-family:var(--sans);font-size:15px;cursor:pointer;margin-top:20px;font-weight:600;border-radius:10px;}
+.start-btn:hover{opacity:.9;}
 #menu.hidden{display:none;}
 
 /* ── FIN DE PARTIE ── */
@@ -200,7 +238,7 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .glossary-term b{color:var(--amber);}
 #endScreen{position:fixed;inset:0;z-index:998;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;padding:20px;}
 .end-icon{font-size:48px;margin-bottom:10px;}
-.end-title{font-size:28px;letter-spacing:3px;margin-bottom:6px;}
+.end-title{font-family:var(--serif);font-weight:600;font-size:32px;margin-bottom:6px;}
 .end-box{background:var(--panel);border:1px solid var(--line);padding:24px;width:100%;max-width:500px;margin:16px 0;border-radius:10px;}
 .end-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;font-size:12px;}
 .debrief-title{font-size:12px;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px 0;padding-bottom:4px;border-bottom:1px solid var(--line);}
@@ -210,7 +248,7 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .debrief-summary{font-size:11px;color:var(--muted);line-height:1.6;padding:8px 0;}
 .end-lbl{color:var(--muted);}
 .end-btns{display:flex;gap:12px;}
-.end-btns button{flex:1;padding:12px;font-family:var(--mono);font-size:13px;cursor:pointer;}
+.end-btns button{flex:1;padding:12px;font-family:var(--sans);font-size:13px;cursor:pointer;}
 
 /* ── MODE TÉLÉPHONE ── activé manuellement, indépendant de la largeur d'écran */
 html.phone-mode .btn{padding:10px 14px; min-height:40px; font-size:13px;}
@@ -222,7 +260,7 @@ html.phone-mode .hud-item:has(#hudCF){display:none;}
 html.phone-mode .adv-label{font-size:12px;}
 html.phone-mode .rpanel-swipe-hint{display:block;}
 html.phone-mode header{justify-content:center; padding:10px 14px 12px; gap:0;}
-html.phone-mode header h1{font-size:17px; letter-spacing:3px; width:100%; text-align:center; margin-bottom:8px;}
+html.phone-mode .brand-name{font-size:19px;}
 html.phone-mode .hud{width:100%; justify-content:space-evenly; gap:0;}
 html.phone-mode .hud-item{flex:1; padding:0 6px; position:relative;}
 html.phone-mode .hud-item+.hud-item::before{content:''; position:absolute; left:0; top:2px; bottom:2px; width:1px; background:var(--line);}
@@ -233,7 +271,7 @@ html.phone-mode #mobileScreenBar button{
   display:flex; flex-direction:column; align-items:center; gap:2px;
   padding:9px 4px 11px; font-size:9px; min-height:52px; justify-content:center;
 }
-html.phone-mode #mobileScreenBar button::first-line{font-size:17px;}
+html.phone-mode #mobileScreenBar .ico{width:20px;height:20px;}
 html.phone-mode .grid{gap:3px;}
 .rpanel-swipe-hint{display:none;text-align:center;font-size:10px;color:var(--muted);padding:4px 0;}
 
@@ -264,22 +302,53 @@ body.mobile-layout #mobileScreenBar{
   background:var(--panel); border-top:1px solid var(--line);
 }
 #mobileScreenBar button{
-  flex:1; padding:10px 4px; background:none; border:none; color:var(--muted);
-  font-family:var(--mono); font-size:10px; cursor:pointer;
+  flex:1; padding:8px 4px 9px; background:none; border:none; color:var(--muted);
+  font-family:var(--sans); font-size:10.5px; cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; gap:3px;
 }
-#mobileScreenBar button.active{color:var(--amber);}
+#mobileScreenBar button.active{color:var(--text); font-weight:600;}
+/* En-tête compact sur mobile : marque et budget sur une ligne, le reste dessous */
+body.mobile-layout header{gap:10px 14px; padding:8px 14px;}
+body.mobile-layout .brand-sub{display:none;}
+body.mobile-layout .brand-name{font-size:18px;}
+body.mobile-layout .hud{gap:12px 16px;}
+body.mobile-layout #hudBudget{font-size:19px;}
+body.mobile-layout .hud-budget{min-width:0;}
+body.mobile-layout .hud-item:has(#hudCF){display:none;}
+body.mobile-layout header .sep{display:none;}
+body.mobile-layout #priceSparkline{display:none;}
 #mobilePanelToggle, #mobilePanelClose{display:none !important;} /* remplacés par la barre d'écrans */
 </style>
 </head>
 <body>
 
+<!-- Icônes au trait (style Lucide, licence ISC), utilisées par <svg class="ico"><use href="#i-..."/></svg> -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></symbol>
+  <symbol id="i-section" viewBox="0 0 24 24"><path d="M3 6h18M3 12h14M3 18h18"/></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24"><path d="M10 2v7.5a2 2 0 0 1-.2.9L4.7 20.5a1 1 0 0 0 .9 1.5h12.8a1 1 0 0 0 .9-1.5l-5.1-10.1a2 2 0 0 1-.2-.9V2M8.5 2h7M7 16h10"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4M10 9H8M16 13H8M16 17H8"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M12 20V10M18 20V4M6 20v-4"/></symbol>
+  <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M4 4l16 6.5-6.2 1.6a2 2 0 0 0-1.4 1.4L10.8 20z"/></symbol>
+  <symbol id="i-route" viewBox="0 0 24 24"><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="5.5" r="2.5"/><path d="M7.4 16.6l9.2-9.2"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M22 12h-4M6 12H2M12 6V2M12 22v-4"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M7 4v16M17 4v16"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
+</svg>
+
 <!-- Barre d'écrans mobile : navigue entre la carte et les volets, un seul visible à la fois -->
 <div id="mobileScreenBar">
-  <button data-screen="map" class="active">🗺️<br><span class="i18n" data-fr="Carte" data-en="Map">Carte</span></button>
-  <button data-screen="geo">🧱<br><span class="i18n" data-fr="Géo" data-en="Geo">Géo</span></button>
-  <button data-screen="section">📐<br><span class="i18n" data-fr="Coupe" data-en="Section">Coupe</span></button>
-  <button data-screen="studies">🔬<br>Études</button>
-  <button data-screen="log">📋<br>Journal</button>
+  <button data-screen="map" class="active"><svg class="ico"><use href="#i-map"/></svg><span class="i18n" data-fr="Carte" data-en="Map">Carte</span></button>
+  <button data-screen="geo"><svg class="ico"><use href="#i-layers"/></svg><span class="i18n" data-fr="Géo" data-en="Geo">Géo</span></button>
+  <button data-screen="section"><svg class="ico"><use href="#i-section"/></svg><span class="i18n" data-fr="Coupe" data-en="Section">Coupe</span></button>
+  <button data-screen="studies"><svg class="ico"><use href="#i-flask"/></svg><span>Études</span></button>
+  <button data-screen="log"><svg class="ico"><use href="#i-doc"/></svg><span>Journal</span></button>
 </div>
 
 
@@ -293,7 +362,7 @@ body.mobile-layout #mobileScreenBar{
 </div>
 
 <div id="menu">
-  <div class="menu-title">GEOEXPLORER</div>
+  <div class="menu-title">GeoExplorer</div>
   <div class="menu-sub"><span class="i18n" data-fr="SIMULATEUR D'EXPLORATION PÉTROLIÈRE" data-en="OIL EXPLORATION SIMULATOR">SIMULATEUR D'EXPLORATION PÉTROLIÈRE</span></div>
   <div class="menu-card">
     <div class="menu-tabs">
@@ -397,7 +466,7 @@ body.mobile-layout #mobileScreenBar{
       <div class="menu-opt-row">
         <span class="menu-opt-lbl">Seed géologique<div style="font-size:10px;color:var(--muted);">Même seed = même carte pour tout un groupe</div></span>
         <div style="display:flex;gap:6px;align-items:center;">
-          <input type="text" id="geoSeed" placeholder="ex: 42" style="background:var(--bg);border:1px solid var(--line);color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 8px;width:80px;">
+          <input type="text" id="geoSeed" placeholder="ex: 42" style="background:var(--bg);border:1px solid var(--line);color:var(--text);font-family:var(--sans);font-size:11px;padding:5px 8px;width:80px;">
           <button class="btn" id="randomSeedBtn" title="Générer un seed aléatoire">🎲</button>
         </div>
       </div>
@@ -592,50 +661,56 @@ body.mobile-layout #mobileScreenBar{
 
 <!-- HEADER -->
 <header>
-  <h1>GEOEXPLORER</h1>
+  <div class="brand">
+    <div class="brand-name">GeoExplorer</div>
+    <div class="brand-sub" id="brandSub"></div>
+  </div>
   <div class="sep"></div>
   <div class="hud">
+    <div class="hud-budget">
+      <div class="hud-budget-top">
+        <span class="hud-lbl">Budget</span>
+        <span id="hudBudget">0</span>
+      </div>
+      <div class="hud-bar" id="hudGoalWrap" style="display:none" title="Progression vers l'objectif">
+        <div class="hud-bar-fill" id="hudGoalFill"></div>
+      </div>
+      <span class="hud-goal-txt" id="hudGoalTxt" style="display:none"></span>
+      <span id="hudGoal" style="display:none"></span>
+    </div>
     <div class="hud-item">
       <span class="hud-lbl">Date</span>
       <span class="hud-val" id="hudDate">Jan 2026</span>
     </div>
     <div class="hud-item">
-      <span class="hud-lbl">Budget</span>
-      <span class="hud-val" id="hudBudget">$0</span>
-    </div>
-    <div class="hud-item">
       <span class="hud-lbl">Cash flow/mois</span>
-      <span class="hud-val" id="hudCF">$0</span>
+      <span class="hud-val" id="hudCF">0</span>
     </div>
     <div class="hud-item">
-      <span class="hud-lbl">Brut $/bbl</span>
-      <span class="hud-val" id="hudPrice">$70</span>
+      <span class="hud-lbl">Brut</span>
+      <span class="hud-val"><span id="hudPrice">70,0</span><span class="hud-unit">$/bbl</span></span>
     </div>
     <canvas id="priceSparkline" width="80" height="28" title="Cours du brut : 24 derniers mois"></canvas>
     <div class="hud-item">
       <span class="hud-lbl">Puits</span>
       <span class="hud-val" id="hudWells">0</span>
     </div>
-    <div class="hud-item" id="hudGoalWrap" style="display:none">
-      <span class="hud-lbl">Objectif</span>
-      <span class="hud-val" id="hudGoal">0%</span>
-    </div>
     <div class="hud-item" id="hudDrillingWrap" style="display:none">
       <span class="hud-lbl" id="hudDrillLbl">Forage</span>
-      <div style="width:60px;height:6px;background:var(--panel2);border:1px solid var(--line);overflow:hidden;">
+      <div style="width:60px;height:6px;background:var(--line);border-radius:3px;overflow:hidden;">
         <div id="hudDrillFill" style="height:100%;width:0%;background:var(--amber);transition:width .3s;"></div>
       </div>
-      <span class="hud-val" id="hudDrillTxt" style="font-size:10px;" title="Vous pouvez lancer une étude sur un autre bloc pendant ce temps"></span>
+      <span class="hud-val" id="hudDrillTxt" style="font-size:11px;" title="Vous pouvez lancer une étude sur un autre bloc pendant ce temps"></span>
     </div>
   </div>
-  <div class="sep"></div>
-  <button class="btn" id="tpTargetsBtn" style="display:none;">🎯 Mes cibles (0/2)</button>
-  <button class="btn" id="btnPause">⏸</button>
-  <button class="btn active" id="btnX1">×1</button>
-  <button class="btn" id="btnX2">×2</button>
-  <button class="btn" id="btnX4">×4</button>
-  <div class="sep"></div>
-  <button class="btn" id="btnMenu">☰ Menu</button>
+  <button class="btn" id="tpTargetsBtn" style="display:none;">Mes cibles (0/2)</button>
+  <div class="seg" id="speedSeg" role="group" aria-label="Vitesse du temps">
+    <button class="btn" id="btnPause" aria-label="Pause"><svg class="ico" style="margin:0"><use href="#i-pause"/></svg></button>
+    <button class="btn active" id="btnX1">×1</button>
+    <button class="btn" id="btnX2">×2</button>
+    <button class="btn" id="btnX4">×4</button>
+  </div>
+  <button class="btn" id="btnMenu"><svg class="ico"><use href="#i-menu"/></svg> Menu</button>
 </header>
 
 <!-- MAIN -->
@@ -643,14 +718,16 @@ body.mobile-layout #mobileScreenBar{
   <!-- CARTE -->
   <div id="mapPanel">
     <div class="map-toolbar">
+      <div class="seg" role="group" aria-label="Outil de carte">
+        <button class="btn active" id="toolSelect"><svg class="ico"><use href="#i-pointer"/></svg> Sélection</button>
+        <button class="btn" id="toolSection"><svg class="ico"><use href="#i-route"/></svg> Coupe A→B</button>
+        <button class="btn" id="toolPlan"><svg class="ico"><use href="#i-target"/></svg> Planifier un forage</button>
+      </div>
       <span id="toolLabel">Mode : Sélection</span>
-      <button class="btn active" id="toolSelect">✱ Sélection</button>
-      <button class="btn" id="toolSection">📐 Coupe A→B</button>
-      <button class="btn" id="toolPlan">🎯 Planifier forage</button>
       <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
-        <button class="btn" id="zoomOut">−</button>
-        <span id="zoomLbl" style="font-size:11px; color:var(--muted); min-width:36px; text-align:center;">100%</span>
-        <button class="btn" id="zoomIn">+</button>
+        <button class="btn" id="zoomOut" aria-label="Zoom arrière">−</button>
+        <span id="zoomLbl" style="font-size:12px; color:var(--muted); min-width:40px; text-align:center; font-family:var(--mono);">100%</span>
+        <button class="btn" id="zoomIn" aria-label="Zoom avant">+</button>
       </div>
     </div>
     <div id="mapWrap">
@@ -662,12 +739,12 @@ body.mobile-layout #mobileScreenBar{
   <div id="rightPanel">
     <div id="rpResizeHandle" title="Glisser pour redimensionner"></div>
     <div class="rpanel-tabs">
-      <button class="rtab active" data-tab="geo">🧱 <span class="i18n" data-fr="Géologie" data-en="Geology">Géologie</span></button>
-      <button class="rtab" data-tab="section">📐 <span class="i18n" data-fr="Coupe" data-en="Section">Coupe</span></button>
-      <button class="rtab" data-tab="studies">🔬 <span class="i18n" data-fr="Études" data-en="Studies">Études</span></button>
-      <button class="rtab" data-tab="gisements">🛢 <span class="i18n" data-fr="Gisements" data-en="Fields">Gisements</span></button>
-      <button class="rtab" data-tab="log">📋 <span class="i18n" data-fr="Journal" data-en="Log">Journal</span></button>
-      <button class="rtab" data-tab="finance" id="tabFinanceBtn" style="display:none;">💰 Finance</button>
+      <button class="rtab active" data-tab="geo"><svg class="ico"><use href="#i-layers"/></svg><span class="i18n" data-fr="Géologie" data-en="Geology">Géologie</span></button>
+      <button class="rtab" data-tab="section"><svg class="ico"><use href="#i-section"/></svg><span class="i18n" data-fr="Coupe" data-en="Section">Coupe</span></button>
+      <button class="rtab" data-tab="studies"><svg class="ico"><use href="#i-flask"/></svg><span class="i18n" data-fr="Études" data-en="Studies">Études</span></button>
+      <button class="rtab" data-tab="gisements"><svg class="ico"><use href="#i-drop"/></svg><span class="i18n" data-fr="Gisements" data-en="Fields">Gisements</span></button>
+      <button class="rtab" data-tab="log"><svg class="ico"><use href="#i-doc"/></svg><span class="i18n" data-fr="Journal" data-en="Log">Journal</span></button>
+      <button class="rtab" data-tab="finance" id="tabFinanceBtn" style="display:none;"><svg class="ico"><use href="#i-chart"/></svg><span>Finance</span></button>
     </div>
     <div class="rpanel-swipe-hint">← swipez pour changer d'onglet →</div>
 
@@ -3047,7 +3124,7 @@ function wellLogHtml(b){
   const lin = (v,a,c,k) => tx(k) + clamp((v-a)/(c-a),0,1)*tw;       // échelle linéaire
   const lg  = (v,a,c,k) => tx(k) + clamp(Math.log10(Math.max(v,1e-3)/a)/Math.log10(c/a),0,1)*tw; // échelle log
   const pts = (arr,f) => arr.map((v,i)=>`${f(v).toFixed(1)},${ys(g.z[i]).toFixed(1)}`).join(' ');
-  let s = `<svg class="wl-svg" viewBox="0 0 ${VBW} ${H}" role="img" aria-label="Diagraphies du puits (${b.x},${b.y})" xmlns="http://www.w3.org/2000/svg" font-family="monospace">`;
+  let s = `<svg class="wl-svg" viewBox="0 0 ${VBW} ${H}" role="img" aria-label="Diagraphies du puits (${b.x},${b.y})" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, ui-monospace, monospace">`;
   // fond des pistes et grilles
   const titles = [['GR','0 — 150 API'],['Résistivité','0,2 — 2000 Ω·m'],['ρb / NPHI','1,95–2,95 g/cc · 45 à −15 %'],['Sonique DT','140 — 40 µs/ft']];
   for(let k=0;k<4;k++){
@@ -4072,17 +4149,26 @@ function updateHud(){
   ][d.getMonth()]+' '+d.getFullYear();
   document.getElementById('hudBudget').textContent=formatM(G.budget);
   document.getElementById('hudBudget').style.color=G.budget<2e6?'var(--red)':G.budget<5e6?'var(--amber)':'var(--text)';
+  const brandSub=document.getElementById('brandSub');
+  if(brandSub) brandSub.textContent=(BASIN_NAMES[G.basinType]||'')+' · '+(MODE_NAMES[G.mode]||'');
   const cf=document.getElementById('hudCF');
   cf.textContent=(G.lastCF>=0?'+':'')+formatM(G.lastCF||0);
   cf.style.color=(G.lastCF||0)>=0?'var(--green)':'var(--red)';
-  document.getElementById('hudPrice').textContent='$'+G.price.toFixed(1);
+  document.getElementById('hudPrice').textContent=G.price.toFixed(1).replace('.',',');
   document.getElementById('hudWells').textContent=G.wells.filter(w=>w.status==='producing').length;
   if(m.winGoal>0){
     document.getElementById('hudGoalWrap').style.display='';
-    const pct=Math.min(100,(G.budget/m.winGoal*100)).toFixed(0);
+    const pct=Math.min(100,Math.max(0,(G.budget/m.winGoal*100))).toFixed(0);
     const goalEl=document.getElementById('hudGoal');
     goalEl.textContent=pct+'%';
     goalEl.style.color=pct>=80?'var(--green)':pct>=40?'var(--amber)':'var(--text)';
+    // jauge vers l'objectif et libellé lisible sous le budget
+    document.getElementById('hudGoalFill').style.width=pct+'%';
+    const gt=document.getElementById('hudGoalTxt');
+    gt.style.display=''; gt.textContent='Objectif '+(m.winGoal/1e6).toFixed(0)+'\u00a0M$ · '+pct+'\u00a0%';
+  } else {
+    document.getElementById('hudGoalWrap').style.display='none';
+    document.getElementById('hudGoalTxt').style.display='none';
   }
 
   // Barre de progression du forage le plus proche de sa fin : sans ça, le
@@ -4114,12 +4200,15 @@ function addLog(msg, type=''){
   el.prepend(div);
 }
 
+// Montants à la française : « 13,94 M$ », « 144 k$ » (espace insécable avant l'unité).
 function formatM(v){
   const s=v<0?'-':''; v=Math.abs(v);
-  if(v>=1e6) return s+'$'+(v/1e6).toFixed(2)+'M';
-  if(v>=1e3) return s+'$'+(v/1e3).toFixed(0)+'k';
-  return s+'$'+v.toFixed(0);
+  if(v>=1e6) return s+(v/1e6).toFixed(2).replace('.',',')+'\u00a0M$';
+  if(v>=1e3) return s+(v/1e3).toFixed(0)+'\u00a0k$';
+  return s+v.toFixed(0)+'\u00a0$';
 }
+const BASIN_NAMES = {random:'Bassin aléatoire', paris:'Bassin parisien', rift:'Bassin de rift', passive:'Marge passive', foreland:'Avant-pays', aquitaine:'Bassin aquitain', north_sea:'Mer du Nord', gulf_coast:'Gulf Coast'};
+const MODE_NAMES = {junior:'Géologue junior', expert:'Géologue senior', tp:'Mode TP', sandbox:'Bac à sable', expedition:'Grande exploration'};
 
 // =====================================================================
 // GESTION DES CLICS CARTE & OUTILS
@@ -4310,7 +4399,7 @@ function renderTpTargetsList(){
           <button class="cg-close" onclick="tpRemoveTarget(${i})" style="padding:2px 8px;">✕</button>
         </div>
         <textarea data-idx="${i}" class="tp-justif-input" placeholder="Justifiez ce choix (piège, réservoir, couverture, charge)..."
-          style="width:100%;min-height:50px;background:var(--bg);border:1px solid var(--line);color:var(--text);font-family:var(--mono);font-size:11px;padding:6px;resize:vertical;">${t.justification}</textarea>
+          style="width:100%;min-height:50px;background:var(--bg);border:1px solid var(--line);color:var(--text);font-family:var(--sans);font-size:11px;padding:6px;resize:vertical;">${t.justification}</textarea>
       </div>`;
     }).join('');
     el.querySelectorAll('.tp-justif-input').forEach(ta=>{
@@ -4938,7 +5027,7 @@ function _doStartGame(){
 #cardGameModal.open{display:flex;}
 .cg-header{display:flex;justify-content:space-between;align-items:center;width:100%;max-width:720px;margin-bottom:6px;}
 .cg-title{font-size:16px;color:var(--amber);letter-spacing:1px;}
-.cg-close{background:none;border:1px solid var(--line);color:var(--text);font-family:var(--mono);font-size:12px;padding:6px 12px;cursor:pointer;}
+.cg-close{background:none;border:1px solid var(--line);color:var(--text);font-family:var(--sans);font-size:12px;padding:6px 12px;cursor:pointer;}
 .cg-sub{font-size:11px;color:var(--muted);max-width:720px;width:100%;margin-bottom:16px;line-height:1.5;}
 .cg-cats{display:flex;flex-direction:column;gap:14px;width:100%;max-width:720px;}
 .cg-cat-title{font-size:11px;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;}
@@ -5145,7 +5234,7 @@ function _doStartGame(){
 .qz-title{font-size:16px;color:var(--amber);letter-spacing:1px;}
 .qz-question{width:100%;max-width:600px;border:1px solid var(--line);background:var(--panel);padding:18px;margin-top:14px;font-size:13px;line-height:1.6;border-radius:8px;}
 .qz-choices{display:flex;flex-direction:column;gap:8px;width:100%;max-width:600px;margin-top:14px;}
-.qz-choice{border:1px solid var(--line);background:var(--panel);color:var(--text);font-family:var(--mono);font-size:12px;padding:10px 12px;text-align:left;cursor:pointer;border-radius:6px;}
+.qz-choice{border:1px solid var(--line);background:var(--panel);color:var(--text);font-family:var(--sans);font-size:12px;padding:10px 12px;text-align:left;cursor:pointer;border-radius:6px;}
 .qz-choice:hover{border-color:var(--amber);}
 .qz-choice.correct{border-color:var(--green);background:var(--panel2);color:var(--green);}
 .qz-choice.wrong{border-color:var(--red);color:var(--red);}
