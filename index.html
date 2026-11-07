@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.22</title>
+<title>GeoExplorer V4.23</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2856,6 +2856,7 @@ function monthTick(){
     });
   }
 
+  G.totalRevenue = (G.totalRevenue||0) + revenue;
   const net = revenue - opex - loanPayments;
   G.budget += net;
   G.lastCF = net;
@@ -2925,6 +2926,7 @@ function sellStock(){
   if(G.stock<=0){ addLog('Aucun stock à vendre.'); return; }
   const revenue = G.stock * G.price;
   G.budget += revenue;
+  G.totalRevenue = (G.totalRevenue||0) + revenue;
   addLog(`📦 Vente de ${Math.round(G.stock).toLocaleString()} barils à $${G.price.toFixed(1)}/bbl = ${formatM(revenue)}.`, 'ev');
   G.stock = 0;
   updateHud(); renderFinancePanel();
@@ -3170,12 +3172,14 @@ function showEnd(reason){
   document.getElementById('endIcon').textContent  = icon;
   document.getElementById('endTitle').textContent = title;
   document.getElementById('endTitle').style.color = color;
-  const totalProd = G.history.reduce((a,h)=>a+(h.cf>0?h.cf:0),0);
+  // Revenus réellement encaissés depuis le début (ventes), cumulés mois après mois. Avant : somme des flux nets
+  // positifs de G.history, tronqué aux 120 derniers mois, soit 62 k$ affichés pour 25 ans de production.
+  const totalProd = G.totalRevenue!==undefined ? G.totalRevenue : G.history.reduce((a,h)=>a+(h.cf>0?h.cf:0),0);
   document.getElementById('endStats').innerHTML = `
     <div><span class="end-lbl">Budget final</span><br><strong>${formatM(G.budget)}</strong></div>
     <div><span class="end-lbl">Budget initial</span><br><strong>${formatM(MODES[G.mode].budget)}</strong></div>
     <div><span class="end-lbl">Durée de partie</span><br><strong>${(G.month/12).toFixed(1)} ans</strong></div>
-    <div><span class="end-lbl">Puits forés</span><br><strong>${G.wells.length} (${G.wells.filter(w=>w.status==='producing').length} encore actifs)</strong></div>
+    <div><span class="end-lbl">Puits forés</span><br><strong>${G.wells.length + blocks.filter(b=>b.dryHole).length} (${G.wells.length} productifs, ${blocks.filter(b=>b.dryHole).length} secs, ${G.wells.filter(w=>w.status==='producing').length} encore actifs)</strong></div>
     <div><span class="end-lbl">Cours final</span><br><strong>$${G.price.toFixed(1)}/bbl</strong></div>
     <div><span class="end-lbl">Revenus cumulés</span><br><strong>${formatM(totalProd)}</strong></div>
     ${G.calib?.n?`<div><span class="end-lbl">Calibration (${G.calib.n} ${G.calib.n>1?"estimations":"estimation"})</span><br><strong>${G.calib.net>=0?'+':''}${formatM(G.calib.net)}</strong></div>`:''}
@@ -5048,6 +5052,27 @@ let guideHidden = false;
 try { guideHidden = localStorage.getItem('geoexplorer_guide') === '0'; } catch(e){}
 let _guideHtml = '';
 
+// Gain net espéré sur 10 ans d'un forage sur ce bloc, avec le matériel qui le maximise (même modèle que la fiche
+// de forage : débit nominal d'après la qualité estimée, déclin d'Arps, fiabilité du matériel). Le guide classait
+// avant les blocs par probabilité seule : un bloc à 70 % et petit réservoir passait devant un bloc à 40 % et gros
+// réservoir, et suivre le guide ruinait la partie.
+function guideEV(b){
+  const depth = drillDepthEstimate(b);
+  const eqs = Object.entries(EQUIPMENT).filter(([,e])=>depth<=e.maxDepth);
+  if(!eqs.length || b.estimate?.prob===undefined) return null;
+  const nomRes = STRAT.find(l=>l.role==='reservoir');
+  const q = b.estimate.quality ?? 50;
+  const estProd = (q/100)*(nomRes?.thickness||40)*PROD_BASE*METHODS.vertical.prodMult;
+  const cum = projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, 0, 120).cum;
+  let best = null;
+  eqs.forEach(([k,e])=>{
+    const cost = depth*e.costM*METHODS.vertical.costMult*(b.isOffshore?2.8:1);
+    const ev = b.estimate.prob*e.reliability*cum - cost;
+    if(!best || ev>best.ev) best = {ev, cost, equip:k};
+  });
+  return best;
+}
+
 function guideCompute(){
   if(!blocks.length) return null;
   const m = MODES[G.mode];
@@ -5064,6 +5089,8 @@ function guideCompute(){
   // Meilleur bloc à forer : estimation 3D (ou log) la plus haute
   const drillable = blocks.filter(b=>free(b) && b.estimate?.prob!==undefined && b.studies.some(st=>st.type==='seismic3d'))
                           .sort((a,z)=>z.estimate.prob-a.estimate.prob);
+  // classement par gain net espéré (le meilleur en premier) ; seuls les gains positifs sont conseillés
+  const ranked = drillable.map(b=>({b, e:guideEV(b)})).filter(x=>x.e).sort((a,z)=>z.e.ev-a.e.ev);
   if(!hasProf){
     if(G.tool==='section' && G.sectionA!==null)
       return {cur:1, text:`Bloc A posé en (${blocks[G.sectionA].x}, ${blocks[G.sectionA].y}). Cliquez maintenant le bloc B pour terminer la coupe.`, act:null};
@@ -5082,7 +5109,7 @@ function guideCompute(){
   // d'étudier dès qu'un bloc dépasse 35 % (il vaut mieux forer que multiplier les
   // études), ou après 4 études 3D sur ce profil.
   const n3d = prof.filter(({b})=>b.studies.some(st=>st.type==='seismic3d')).length;
-  const promising = drillable.some(b=>b.estimate.prob >= 0.35);
+  const promising = ranked.some(x=>x.e.ev > 0);
   const cands = prof.map(o=>o.b).filter(b=>free(b) && b.estimate?.depth!==undefined && !b.studies.some(st=>st.type==='seismic3d'))
                     .sort((a,z)=>a.estimate.depth-z.estimate.depth);
   if(cands.length && !promising && n3d < 4){
@@ -5091,8 +5118,8 @@ function guideCompute(){
     return {cur:3, text:`Le profil montre un haut structural en (${b.x}, ${b.y}). Une sismique 3D y précisera la profondeur et cherchera des indices directs de fluides.`,
             act:{label:`Sismique 3D sur (${b.x}, ${b.y}) · ${formatM(c)}`, call:`guideDo('seismic3d',${b.id})`, ok:money(c), why:`Budget insuffisant (${formatM(c)} requis).`}};
   }
-  if(drillable.length && drillable[0].estimate.prob >= 0.30){
-    const b = drillable[0];
+  if(ranked.length && ranked[0].e.ev > 0){
+    const b = ranked[0].b;
     // Coût du forage le moins cher possible pour ce bloc (matériel qui atteint la profondeur estimée) :
     // le guide ne doit pas proposer un forage que le joueur n'a pas les moyens de lancer.
     const depth = drillDepthEstimate(b);
@@ -5101,11 +5128,11 @@ function guideCompute(){
     const canDrill = G.mode==='sandbox' || (cheapest!==null && G.budget>=cheapest);
     const why = cheapest===null ? `Aucun matériel n'atteint la profondeur estimée (${Math.round(depth)} m).`
       : `Budget insuffisant : forage estimé à ${formatM(cheapest)}, disponible ${formatM(G.budget)}.${G.financeMode?' Un emprunt (onglet Finance) peut combler l\'écart.':''}`;
-    return {cur:4, text:`Bloc (${b.x}, ${b.y}) : probabilité estimée ${Math.round(b.estimate.prob*100)} %. Forer est le seul moyen de savoir : le puits sera productif ou sec.`,
+    return {cur:4, text:`Bloc (${b.x}, ${b.y}) : probabilité estimée ${Math.round(b.estimate.prob*100)} %, gain net espéré ${formatM(ranked[0].e.ev)} sur 10 ans. Forer est le seul moyen de savoir : le puits sera productif ou sec.`,
             act:{label:`Forer le bloc (${b.x}, ${b.y})`, call:`guideDo('drill',${b.id})`, ok:canDrill, why}};
   }
-  const best = drillable[0] ? `meilleure estimation ${Math.round(drillable[0].estimate.prob*100)} %` : 'aucun bloc étudié en 3D';
-  return {cur:1, text:`Les blocs étudiés sont peu prometteurs (${best}). Cherchez ailleurs avec une nouvelle coupe.`,
+  const best = ranked[0] ? `meilleur gain net espéré ${formatM(ranked[0].e.ev)} sur 10 ans, forage non rentable` : 'aucun bloc étudié en 3D';
+  return {cur:1, text:`Les blocs étudiés ne rapportent pas assez (${best}). Cherchez ailleurs avec une nouvelle coupe.`,
           act:{label:"Nouvelle coupe", call:"guideDo('section')", ok:true}};
 }
 
