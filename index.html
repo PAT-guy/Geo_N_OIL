@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.23</title>
+<title>GeoExplorer V4.24</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3431,9 +3431,11 @@ function buildGrid(){
       div.className='block';
       div.dataset.id=b.id;
       div.addEventListener('click',()=>onBlockClick(b.id));
-      div.addEventListener('mouseenter',e=>showTip(b,e));
-      div.addEventListener('mousemove',e=>moveTip(e));
-      div.addEventListener('mouseleave',hideTip);
+      // L'info-bulle n'existe qu'avec une vraie souris. Sur écran tactile, le navigateur simule un survol au
+      // toucher mais n'envoie jamais la sortie : la bulle restait collée par-dessus tous les autres écrans.
+      div.addEventListener('pointerenter',e=>{ if(e.pointerType==='mouse') showTip(b,e); });
+      div.addEventListener('pointermove',e=>{ if(e.pointerType==='mouse') moveTip(e); });
+      div.addEventListener('pointerleave',hideTip);
       gridEl.appendChild(div);
       b.el=div;
       renderBlock(b);
@@ -4399,6 +4401,8 @@ function selectBlockFromSection(id){
 //   couche voisine (pas de dépassement) ;
 // - un saut vertical supérieur à `faultPx` entre deux points voisins est une
 //   faille, pas un pli : le segment reste droit et les tangentes s'y arrêtent.
+let SEC_ROUND = 1/6; // longueur des poignées de Bézier (1/6 = Catmull-Rom classique)
+let SEC_SHIFT_PASSES = 8; // passes du lissage de la structure (2 avant : charnières anguleuses ; 8 : plis arrondis sans écraser les anticlinaux)
 function secSmoothPath(pts, faultPx){
   const n = pts.length; let d = '';
   const f = v => v.toFixed(1);
@@ -4409,8 +4413,9 @@ function secSmoothPath(pts, faultPx){
     const pm = (i>0   && !isFault(pts[i-1],p0)) ? pts[i-1] : p0;
     const pn = (i+2<n && !isFault(p1,pts[i+2])) ? pts[i+2] : p1;
     const lo = Math.min(p0.y,p1.y), hi = Math.max(p0.y,p1.y);
-    const c1 = { x: p0.x + (p1.x-pm.x)/6, y: clamp(p0.y + (p1.y-pm.y)/6, lo, hi) };
-    const c2 = { x: p1.x - (pn.x-p0.x)/6, y: clamp(p1.y - (pn.y-p0.y)/6, lo, hi) };
+    const k = SEC_ROUND;
+    const c1 = { x: p0.x + (p1.x-pm.x)*k, y: clamp(p0.y + (p1.y-pm.y)*k, lo, hi) };
+    const c2 = { x: p1.x - (pn.x-p0.x)*k, y: clamp(p1.y - (pn.y-p0.y)*k, lo, hi) };
     d += ` C${f(c1.x)},${f(c1.y)} ${f(c2.x)},${f(c2.y)} ${f(p1.x)},${f(p1.y)}`;
   }
   return d;
@@ -4512,7 +4517,7 @@ function renderSection(){
     let shift = idxs.map(i=>dispData[i].layers[0].top);
     const orig = shift.slice();
     const brk = (a,b) => (idxs[b]-idxs[a] !== 1) || Math.abs(orig[b]-orig[a]) > 120; // trou de données ou faille
-    for(let pass=0; pass<2; pass++){
+    for(let pass=0; pass<SEC_SHIFT_PASSES; pass++){
       shift = shift.map((v,k)=>{
         const l = (k>0 && !brk(k-1,k)) ? shift[k-1] : v;
         const r = (k<shift.length-1 && !brk(k,k+1)) ? shift[k+1] : v;
@@ -4964,6 +4969,9 @@ function moveTip(e){
   tipEl.style.top=(e.clientY+16+th>vh?e.clientY-th-8:e.clientY+16)+'px';
 }
 function hideTip(){tipEl.style.display='none';}
+// Filet de sécurité : la bulle disparaît à tout changement d'écran ou d'onglet, au toucher, au défilement et au clic.
+['touchstart','scroll','blur','wheel'].forEach(ev=>window.addEventListener(ev, hideTip, {passive:true, capture:true}));
+document.addEventListener('click', e=>{ if(!e.target.closest?.('.block')) hideTip(); }, true);
 
 // =====================================================================
 // SPARKLINE DU COURS
@@ -5320,6 +5328,7 @@ function renderMobileSheet(){
 
 function onBlockClick(id){
   const b=blocks[id];
+  hideTip(); // la sélection s'affiche dans le panneau, la bulle de survol devient inutile
   switch(G.tool){
     case 'select':
       if(selectedBlock===id){ selectedBlock=null; }
@@ -5363,6 +5372,7 @@ function setFinanceVisible(on){
   if(content) content.style.display = on ? '' : 'none';
 }
 function switchTab(name){
+  hideTip();
   document.querySelectorAll('.rtab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
   document.querySelectorAll('.rpanel-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+name));
 }
@@ -5486,6 +5496,7 @@ function updateGuideHeight(){
 }
 let currentMobileScreen = 'map';
 function showMobileScreen(name){
+  hideTip();
   currentMobileScreen = name;
   document.getElementById('mapPanel').classList.toggle('mscreen-active', name==='map');
   document.getElementById('rightPanel').classList.toggle('mscreen-active', name!=='map');
