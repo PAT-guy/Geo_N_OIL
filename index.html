@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.25</title>
+<title>GeoExplorer V4.26</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -4525,7 +4525,10 @@ function renderSection(){
     if(idxs.length < 3) return;
     let shift = idxs.map(i=>dispData[i].layers[0].top);
     const orig = shift.slice();
-    const brk = (a,b) => (idxs[b]-idxs[a] !== 1) || Math.abs(orig[b]-orig[a]) > 120; // trou de données ou faille
+    // Seul un trou de données coupe le lissage. Les failles ne le coupent plus : un rejet de plus de 120 m était
+    // laissé tel quel (plateau, marche, plateau) et la coupe prenait l'allure d'un escalier. Il s'étale maintenant
+    // en une flexure sur quelques blocs ; la faille probable reste signalée par son trait rouge.
+    const brk = (a,b) => (idxs[b]-idxs[a] !== 1); // trou de données
     for(let pass=0; pass<SEC_SHIFT_PASSES; pass++){
       shift = shift.map((v,k)=>{
         const l = (k>0 && !brk(k-1,k)) ? shift[k-1] : v;
