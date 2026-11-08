@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.24</title>
+<title>GeoExplorer V4.25</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -4401,21 +4401,30 @@ function selectBlockFromSection(id){
 //   couche voisine (pas de dépassement) ;
 // - un saut vertical supérieur à `faultPx` entre deux points voisins est une
 //   faille, pas un pli : le segment reste droit et les tangentes s'y arrêtent.
-let SEC_ROUND = 1/6; // longueur des poignées de Bézier (1/6 = Catmull-Rom classique)
-let SEC_SHIFT_PASSES = 8; // passes du lissage de la structure (2 avant : charnières anguleuses ; 8 : plis arrondis sans écraser les anticlinaux)
+let SEC_ROUND = 0.22;
+let SEC_FLEX = 0.36; // part de l'intervalle prise par chaque poignée d'une flexure (plus petit = marche plus raide) // longueur des poignées de Bézier (1/6 = Catmull-Rom classique)
+let SEC_SHIFT_PASSES = 14; // passes du lissage de la structure (2 avant : charnières anguleuses)
+let SEC_AMP_MAX = 1.6;     // restitution maximale de l'amplitude des plis après lissage
 function secSmoothPath(pts, faultPx){
   const n = pts.length; let d = '';
   const f = v => v.toFixed(1);
   const isFault = (a,b) => Math.abs(b.y-a.y) > faultPx;
   for(let i=0;i<n-1;i++){
     const p0 = pts[i], p1 = pts[i+1];
-    if(isFault(p0,p1)){ d += ` L${f(p1.x)},${f(p1.y)}`; continue; }
+    // Saut important entre deux blocs (rejet de faille) : flexure en S, tangentes horizontales aux deux bouts. Avant,
+    // une droite oblique raccordée à angle vif aux couches voisines donnait un profil en marches d'escalier.
+    if(isFault(p0,p1)){
+      const dx = p1.x - p0.x;
+      d += ` C${f(p0.x+dx*SEC_FLEX)},${f(p0.y)} ${f(p1.x-dx*SEC_FLEX)},${f(p1.y)} ${f(p1.x)},${f(p1.y)}`; continue;
+    }
+    const faultBefore = !(i>0 && !isFault(pts[i-1],p0)), faultAfter = !(i+2<n && !isFault(p1,pts[i+2]));
     const pm = (i>0   && !isFault(pts[i-1],p0)) ? pts[i-1] : p0;
     const pn = (i+2<n && !isFault(p1,pts[i+2])) ? pts[i+2] : p1;
     const lo = Math.min(p0.y,p1.y), hi = Math.max(p0.y,p1.y);
     const k = SEC_ROUND;
-    const c1 = { x: p0.x + (p1.x-pm.x)*k, y: clamp(p0.y + (p1.y-pm.y)*k, lo, hi) };
-    const c2 = { x: p1.x - (pn.x-p0.x)*k, y: clamp(p1.y - (pn.y-p0.y)*k, lo, hi) };
+    // contre une flexure (faille), la couche arrive à l'horizontale : raccord tangent, sans angle
+    const c1 = { x: p0.x + (p1.x-pm.x)*k, y: (i>0 && faultBefore && isFault(pts[i-1],p0)) ? p0.y : clamp(p0.y + (p1.y-pm.y)*k, lo, hi) };
+    const c2 = { x: p1.x - (pn.x-p0.x)*k, y: (i+2<n && faultAfter && isFault(p1,pts[i+2])) ? p1.y : clamp(p1.y - (pn.y-p0.y)*k, lo, hi) };
     d += ` C${f(c1.x)},${f(c1.y)} ${f(c2.x)},${f(c2.y)} ${f(p1.x)},${f(p1.y)}`;
   }
   return d;
@@ -4523,6 +4532,26 @@ function renderSection(){
         const r = (k<shift.length-1 && !brk(k,k+1)) ? shift[k+1] : v;
         return (l + 2*v + r)/4;
       });
+    }
+    // Le lissage arrondit les charnières mais écrase aussi la hauteur des plis (un anticlinal étroit perd
+    // une bonne partie de sa fermeture). On restitue l'amplitude : sur chaque tronçon sans faille, l'écart à la
+    // tendance régionale (droite des moindres carrés) est multiplié pour retrouver l'écart-type d'origine
+    // (facteur plafonné à SEC_AMP_MAX). Résultat : des plis aussi hauts qu'avant, mais à charnières rondes.
+    for(let k0=0; k0<shift.length; ){
+      let k1 = k0; while(k1<shift.length-1 && !brk(k1,k1+1)) k1++;
+      const m = k1-k0+1;
+      if(m >= 4){
+        const xs = Array.from({length:m},(_,j)=>j), mx = (m-1)/2;
+        const my = orig.slice(k0,k1+1).reduce((a,v)=>a+v,0)/m;
+        let sxy=0, sxx=0; for(let j=0;j<m;j++){ sxy += (xs[j]-mx)*(orig[k0+j]-my); sxx += (xs[j]-mx)**2; }
+        const slope = sxy/sxx, trend = j => my + slope*(j-mx);
+        let rr=0, rs=0; for(let j=0;j<m;j++){ rr += (orig[k0+j]-trend(j))**2; rs += (shift[k0+j]-trend(j))**2; }
+        if(rs > 1e-6){
+          const g = clamp(Math.sqrt(rr/rs), 1, SEC_AMP_MAX);
+          for(let j=0;j<m;j++) shift[k0+j] = trend(j) + g*(shift[k0+j]-trend(j));
+        }
+      }
+      k0 = k1+1;
     }
     idxs.forEach((i,k)=>{
       const delta = shift[k] - orig[k];
