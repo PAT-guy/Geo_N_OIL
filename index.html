@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.37</title>
+<title>GeoExplorer V4.38</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2532,7 +2532,10 @@ const PROD_BASE_SIDETRACK = 51;  // side-track sur un 2e réservoir (était 135)
 let OFFSHORE_PROD_MULT = 8;
 // Coûts d'un site en mer : forage et charges fixes mensuelles (à terre : 8 k$ par mois)
 let OFFSHORE_COST_MULT = 6, OFFSHORE_OPEX = 80000;
-const prodSite = b => (b && b.isOffshore) ? OFFSHORE_PROD_MULT : 1;
+// À terre : ×1,2 depuis la V4.38 (environ 55 bbl/j médian au lieu de 46). Un puits conventionnel de bassin mature donne
+// plutôt de 30 à 150 bbl/j ; l'ancienne valeur était dans le bas de la fourchette.
+let ONSHORE_PROD_MULT = 1.2;
+const prodSite = b => (b && b.isOffshore) ? OFFSHORE_PROD_MULT : ONSHORE_PROD_MULT;
 
 // Déclin de production : loi hyperbolique d'Arps, q(t) = q0 · (1 + b·Di·t)^(-1/b), t en mois.
 // Avant, le déclin était exponentiel à 3,5 %/mois, soit 35 %/an en continu : un profil de gaz de
@@ -7445,7 +7448,7 @@ function _doStartGame(){
       title: 'Forer et produire',
       body: `Le résultat est binaire : puits productif ou sec, révélé après un court suspense, avec le facteur
         qui a le plus joué. Un puits décline ensuite : environ -12 % la première année, un peu plus de la moitié du débit
-        après 5 ans. Un puits en mer produit environ huit fois plus qu'un puits à terre, mais coûte six fois plus cher et supporte des charges fixes bien plus lourdes. Un puits productif rend ses voisins (à moins de trois cases) plus prometteurs ; un puits sec dont la géologie a vraiment été testée les rend un peu moins prometteurs. Fermez les puits marginaux depuis l'onglet <b>Gisements</b> quand ils coûtent plus
+        après 5 ans. Un puits en mer produit environ sept fois plus qu'un puits à terre, mais coûte six fois plus cher et supporte des charges fixes bien plus lourdes. Un puits productif rend ses voisins (à moins de trois cases) plus prometteurs ; un puits sec dont la géologie a vraiment été testée les rend un peu moins prometteurs. Fermez les puits marginaux depuis l'onglet <b>Gisements</b> quand ils coûtent plus
         qu'ils ne rapportent.<br><br>
         Si un second réservoir existe plus profond, un side-track l'exploite sans forer un nouveau trou.`,
     },
