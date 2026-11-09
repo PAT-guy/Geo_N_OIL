@@ -1,16 +1,17 @@
 // Simulation d'équilibrage du labo : parties de 25 ans jouées par des robots, sans interface.
 // Usage : node sim_lab.js <parties> <préréglages> <stratégies> [<mode>]
+//   5e argument facultatif : objectif de victoire en M$ (par défaut celui du niveau) ; 6e : multiplicateur du coût des études ; 7e : multiplicateur du coût des forages
 //   préréglages : decouverte,inter,complet,expert (suffixes -nodhi, -nopick, -nocal, -noreal pour couper une règle)      stratégies : oracle,sism100,sism60,sism30,random
 //   sismNN = joueur qui étudie (2D + 3D) puis fore les meilleurs blocs, avec NN % de chances de désigner le bon horizon
 //   (après un puits manqué, il apprend le bon horizon grâce au log). oracle = connaît les vraies valeurs.
 const { chromium } = require('playwright');
-const [,, nGames='20', presets='decouverte,inter,complet', strategies='oracle,sism100,sism60,sism30,random', mode='junior'] = process.argv;
+const [,, nGames='20', presets='decouverte,inter,complet', strategies='oracle,sism100,sism60,sism30,random', mode='junior', goalM='', studyMult='', drillMult=''] = process.argv;
 const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
 (async()=>{
   const br = await chromium.launch(); const pg = await br.newPage();
   const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
   await pg.goto(LABO);
-  const res = await pg.evaluate(({nGames,presets,strategies,mode})=>{
+  const res = await pg.evaluate(({nGames,presets,strategies,mode,goalM,studyMult,drillMult})=>{
     document.getElementById('tutorialModal').style.display='none';
     let ended=null;
     ['updateHud','renderBlock','drawSparkline','renderGeoPanel','renderStudiesPanel','renderSection','renderFinancePanel','addLog','toast','showDrillReveal','buildDebriefReport','renderGuide'].forEach(n=>{ window[n]=()=>{}; });
@@ -43,9 +44,12 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       const [base, ...flags] = preset.split('-'); const o = { ...LAB_PRESETS[base].o }; flags.forEach(f=>{ if(f.startsWith('no')) o[f.slice(2)] = false; });
       LABOPT = labNormOpt(o);
       menuConfig.seed=seed; menuConfig.mode=mode; menuConfig.basinType='random'; menuConfig.offshore=true; menuConfig.gridSize = mode==='expedition' ? 30 : 12; menuConfig.financeMode=false; menuConfig.uncertainty='medium';
+      if(goalM) MODES[mode].winGoal = +goalM*1e6;
+      if(typeof ADV!=='undefined') ADV.studyCostMult = studyMult ? +studyMult : 1;
+      if(typeof ADV!=='undefined') ADV.drillCostMult = drillMult ? +drillMult : 1;
       _doStartGame(); setSpeed(0);
       const resIdx = STRAT.findIndex(l=>l.role==='reservoir');
-      const acc = strat.startsWith('sism') ? +strat.slice(4)/100 : strat==='oracle' ? 1 : 0;
+      const acc = strat==='sismB' ? 1 : strat.startsWith('sism') ? +strat.slice(4)/100 : strat==='oracle' ? 1 : 0;
       let learned = false;
       const choosePick = ()=> (learned || Math.random() < acc) ? resIdx : Math.floor(Math.random()*STRAT.length);
       if(LABOPT.pick) G.labPick = strat==='random' ? Math.floor(Math.random()*STRAT.length) : choosePick();
@@ -66,6 +70,9 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
         if(strat==='random'){
           for(let k=0;k<slots;k++){ const b = cand[Math.floor(Math.random()*cand.length)]; if(!b) break;
             const d = bestDrill(b, 0.12, 50, false); if(!d || !canAfford(d.cost)) continue; drillOne(b,d); }
+        } else if(strat==='gravite'){
+          const sorted = cand.filter(b=>b.estimate?.structPos!==undefined).sort((a,z)=>z.estimate.structPos-a.estimate.structPos);
+          for(const b of sorted){ if(slots<=0) break; const d=bestDrill(b,0.12,50,false); if(!d||!canAfford(d.cost)) continue; if(drillOne(b,d)) slots--; }
         } else if(strat==='oracle'){
           const scored = cand.map(b=>({b, d:bestDrill(b,b.trueProbability,b.trueQuality,true)})).filter(x=>x.d && canAfford(x.d.cost)).sort((a,z)=>z.d.ev-a.d.ev);
           for(const x of scored){ if(slots<=0) break; if(x.d.ev<=0) break; if(drillOne(x.b,x.d)) slots--; }
@@ -73,7 +80,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
           const done = cand.filter(b=>b.estimate?.prob!==undefined && b.studies.some(s=>s.type==='seismic3d'));
           const scored = done.map(b=>({b, d:bestDrill(b,b.estimate.prob,b.estimate.quality??50,false)})).filter(x=>x.d && x.d.ev>0 && canAfford(x.d.cost)).sort((a,z)=>z.d.ev-a.d.ev);
           for(const x of scored){ if(slots<=0) break; if(drillOne(x.b,x.d)) slots--; }
-          if(st.studySpend < 0.35*budget0){
+          if(st.studySpend < (strat==='sismB' ? 0.6 : 0.35)*budget0){
             const next = cand.filter(b=>b.estimate?.structPos!==undefined && !studied3d.has(b.id)).sort((a,z)=>z.estimate.structPos-a.estimate.structPos)[0];
             if(next){
               const c2 = STUDIES.seismic2d.cost*(next.isOffshore?STUDIES.seismic2d.offMult:1), c3 = STUDIES.seismic3d.cost*(next.isOffshore?STUDIES.seismic3d.offMult:1);
@@ -109,7 +116,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
         etudesM:+(avg(ok.map(r=>r.studySpend))/1e6).toFixed(1), foragesM:+(avg(ok.map(r=>r.drillSpend))/1e6).toFixed(1), bonusCalM:+(avg(ok.map(r=>r.calBonus))/1e6).toFixed(2)});
     }));
     Math.random = realRandom; return out;
-  },{nGames,presets,strategies,mode});
+  },{nGames,presets,strategies,mode,goalM,studyMult,drillMult});
   console.log('preset      strat    n  win% bloq% ratioMed forages prod manqués étudesM foragesM bonusCalM');
   res.forEach(r=>console.log(`${r.preset.padEnd(11)} ${r.strat.padEnd(8)} ${String(r.n).padStart(2)} ${String(r.win).padStart(4)} ${String(r.bloque).padStart(5)} ${String(r.ratioMed).padStart(8)} ${String(r.forages).padStart(7)} ${String(r.puitsProd).padStart(4)} ${String(r.manques).padStart(7)} ${String(r.etudesM).padStart(7)} ${String(r.foragesM).padStart(8)} ${String(r.bonusCalM).padStart(9)}` + (r.errs? '  ERREURS:'+r.errs+' '+r.err:'')));
   console.log('erreurs page:', errs.slice(0,3)); await br.close();
