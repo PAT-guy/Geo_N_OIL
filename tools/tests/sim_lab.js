@@ -29,7 +29,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       const depth = useTrue ? b.topOfReservoir : drillDepthEstimate(b);
       const res = b.horizons.find(l=>l.role==='reservoir');
       const th = useTrue ? (res?.thicknessLocal||0) : (STRAT.find(l=>l.role==='reservoir')?.thickness||40);
-      const prod0 = (qEst/100)*th*PROD_BASE*METHODS.vertical.prodMult;
+      const prod0 = (qEst/100)*th*PROD_BASE*METHODS.vertical.prodMult*prodSite(b);
       const V = lifetimeValue(prod0, G.price, b.isOffshore, useTrue ? b.isGas : false);
       let best=null;
       Object.entries(EQUIPMENT).forEach(([k,eq])=>{
@@ -45,7 +45,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       Math.random = mulberry(seed*7919+13);
       const [base, ...flags] = preset.split('-'); const o = { ...LAB_PRESETS[base].o }; flags.forEach(f=>{ if(f.startsWith('no')) o[f.slice(2)] = false; });
       LABOPT = labNormOpt(o);
-      menuConfig.seed=seed; menuConfig.mode=mode; menuConfig.basinType='random'; menuConfig.offshore=true; menuConfig.gridSize = mode==='expedition' ? 30 : 12; if(EX.offshore!==undefined) menuConfig.offshore = EX.offshore; if(EX.budget) MODES[mode].budget = EX.budget*1e6; if(EX.years) MODES[mode].maxYears = EX.years; menuConfig.financeMode=false; menuConfig.uncertainty = EX.uncertainty || 'medium'; if(EX.reliab) Object.values(EQUIPMENT).forEach(e=>{ e.reliability = EX.reliab; }); if(EX.declMult && typeof DECL!=='undefined') DECL.Di = 0.015*EX.declMult;
+      menuConfig.seed=seed; menuConfig.mode=mode; menuConfig.basinType='random'; menuConfig.offshore=true; menuConfig.gridSize = mode==='expedition' ? 30 : 12; if(EX.offshore!==undefined) menuConfig.offshore = EX.offshore; if(EX.budget) MODES[mode].budget = EX.budget*1e6; if(EX.years) MODES[mode].maxYears = EX.years; menuConfig.financeMode=false; menuConfig.uncertainty = EX.uncertainty || 'medium'; if(EX.reliab) Object.values(EQUIPMENT).forEach(e=>{ e.reliability = EX.reliab; }); if(EX.declMult && typeof DECL!=='undefined') DECL.Di = 0.015*EX.declMult; if(EX.offProd!==undefined) OFFSHORE_PROD_MULT = EX.offProd; if(EX.price0) G.price = EX.price0;
       if(goalM) MODES[mode].winGoal = +goalM*1e6;
       if(typeof ADV!=='undefined') ADV.studyCostMult = studyMult ? +studyMult : 1;
       if(typeof ADV!=='undefined') ADV.drillCostMult = drillMult ? +drillMult : 1;
