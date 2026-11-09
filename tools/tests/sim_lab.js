@@ -85,6 +85,8 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
           if(kind==='section'){ if(G.budget < 2.5e6) return false; return chooseProfile(); }
           if(kind==='seismic2d'){ if(G.budget < 1.5e6) return false; performStudy(G.sectionA,'seismic2d'); st.studySpend += b0-G.budget; return G.budget < b0; }
           if(kind==='seismic3d'){ if(G.budget < 1.5e6) return false; performStudy(+id,'seismic3d'); st.studySpend += b0-G.budget; return G.budget < b0; }
+          if(kind==='ext'){ if(G.budget < 1.5e6) return false; const a0=G.sectionA, b1=G.sectionB; G.sectionA=G.sectionB=+id; performStudy(+id,'seismic2d'); G.sectionA=a0; G.sectionB=b1; performStudy(+id,'seismic3d'); st.studySpend += b0-G.budget; return G.budget < b0; }
+          if(kind==='loan'){ const n0 = G.loans.length; takeLoan(+id); return G.loans.length > n0; }
           if(kind==='drill'){ const b = blocks[+id]; const depth = drillDepthEstimate(b); const equip = depth > EQUIPMENT.standard.maxDepth ? 'renforce' : 'standard'; return drillOne(b, {equip}); }
           return false; }
         if(g.act.call==='labGoSection()'){ if(LABOPT.pick && G.labPick==null){ G.labPick = choosePick(); return true; } return false; }
