@@ -376,6 +376,8 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .start-btn{width:100%;padding:15px;background:var(--ink);border:none;color:var(--on-ink);font-family:var(--sans);font-size:15px;cursor:pointer;margin-top:20px;font-weight:600;border-radius:10px;}
 .start-btn:hover{opacity:.9;}
 #menu.hidden{display:none;}
+/* Le bouton DÉMARRER reste visible en bas de l'accueil sur toutes les tailles d'écran (il passait sous le pli sur ordinateur depuis la V4.22). */
+#menu .menu-card #startBtn{position:sticky; bottom:12px; z-index:4; box-shadow:0 6px 18px rgba(0,0,0,.18);}
 @media (max-width:720px){
   #menu{padding:14px 10px; justify-content:flex-start; align-items:stretch;}
   .menu-title{font-size:34px; text-align:center;}
