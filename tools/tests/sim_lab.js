@@ -1,18 +1,19 @@
 // Simulation d'équilibrage du labo : parties de 25 ans jouées par des robots, sans interface.
 // Usage : node sim_lab.js <parties> <préréglages> <stratégies> [<mode>]
-//   5e argument facultatif : objectif de victoire en M$ (par défaut celui du niveau) ; 6e : multiplicateur du coût des études ; 7e : multiplicateur du coût des forages ; 8e : multiplicateur de production d'un puits vertical
+//   5e argument facultatif : objectif de victoire en M$ (par défaut celui du niveau) ; 6e : multiplicateur du coût des études ; 7e : multiplicateur du coût des forages ; 8e : multiplicateur de production d'un puits vertical ; 9e : JSON d'options (offshore, uncertainty, budget en M$, years, probMult, price)
 //   préréglages : decouverte,inter,complet,expert (suffixes -nodhi, -nopick, -nocal, -noreal pour couper une règle)      stratégies : oracle,sism100,sism60,sism30,random
 //   guide / guideNN = joueur docile qui exécute à chaque étape l'action recommandée par le guide du jeu (NN % de bonnes cibles)
 //   sismNN = joueur qui étudie (2D + 3D) puis fore les meilleurs blocs, avec NN % de chances de désigner le bon horizon
 //   (après un puits manqué, il apprend le bon horizon grâce au log). oracle = connaît les vraies valeurs.
 const { chromium } = require('playwright');
-const [,, nGames='20', presets='decouverte,inter,complet', strategies='oracle,sism100,sism60,sism30,random', mode='junior', goalM='', studyMult='', drillMult='', prodMult=''] = process.argv;
+const [,, nGames='20', presets='decouverte,inter,complet', strategies='oracle,sism100,sism60,sism30,random', mode='junior', goalM='', studyMult='', drillMult='', prodMult='', extraJson=''] = process.argv;
 const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
 (async()=>{
   const br = await chromium.launch(); const pg = await br.newPage();
   const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
   await pg.goto(LABO);
-  const res = await pg.evaluate(({nGames,presets,strategies,mode,goalM,studyMult,drillMult,prodMult})=>{
+  const res = await pg.evaluate(({nGames,presets,strategies,mode,goalM,studyMult,drillMult,prodMult,extraJson})=>{
+    const EX = extraJson ? JSON.parse(extraJson) : {};
     document.getElementById('tutorialModal').style.display='none';
     let ended=null;
     ['updateHud','renderBlock','drawSparkline','renderGeoPanel','renderStudiesPanel','renderSection','renderFinancePanel','addLog','toast','showDrillReveal','buildDebriefReport','renderGuide'].forEach(n=>{ window[n]=()=>{}; });
@@ -44,12 +45,14 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       Math.random = mulberry(seed*7919+13);
       const [base, ...flags] = preset.split('-'); const o = { ...LAB_PRESETS[base].o }; flags.forEach(f=>{ if(f.startsWith('no')) o[f.slice(2)] = false; });
       LABOPT = labNormOpt(o);
-      menuConfig.seed=seed; menuConfig.mode=mode; menuConfig.basinType='random'; menuConfig.offshore=true; menuConfig.gridSize = mode==='expedition' ? 30 : 12; menuConfig.financeMode=false; menuConfig.uncertainty='medium';
+      menuConfig.seed=seed; menuConfig.mode=mode; menuConfig.basinType='random'; menuConfig.offshore=true; menuConfig.gridSize = mode==='expedition' ? 30 : 12; if(EX.offshore!==undefined) menuConfig.offshore = EX.offshore; if(EX.budget) MODES[mode].budget = EX.budget*1e6; if(EX.years) MODES[mode].maxYears = EX.years; menuConfig.financeMode=false; menuConfig.uncertainty = EX.uncertainty || 'medium'; if(EX.reliab) Object.values(EQUIPMENT).forEach(e=>{ e.reliability = EX.reliab; }); if(EX.declMult && typeof DECL!=='undefined') DECL.Di = 0.015*EX.declMult;
       if(goalM) MODES[mode].winGoal = +goalM*1e6;
       if(typeof ADV!=='undefined') ADV.studyCostMult = studyMult ? +studyMult : 1;
       if(typeof ADV!=='undefined') ADV.drillCostMult = drillMult ? +drillMult : 1;
       METHODS.vertical.prodMult = prodMult ? +prodMult : 1;
       _doStartGame(); setSpeed(0);
+      if(EX.probMult) blocks.forEach(b=>{ b.trueProbability = Math.min(0.92, b.trueProbability*EX.probMult); });
+      if(EX.price) G.price = EX.price;
       const resIdx = STRAT.findIndex(l=>l.role==='reservoir');
       const acc = strat.startsWith('guide') ? (/^guide\d+$/.test(strat) ? +strat.slice(5)/100 : 1) : strat==='sismB' ? 1 : strat.startsWith('sism') ? +strat.slice(4)/100 : strat==='oracle' ? 1 : 0;
       let learned = false;
@@ -141,7 +144,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
         etudesM:+(avg(ok.map(r=>r.studySpend))/1e6).toFixed(1), foragesM:+(avg(ok.map(r=>r.drillSpend))/1e6).toFixed(1), bonusCalM:+(avg(ok.map(r=>r.calBonus))/1e6).toFixed(2)});
     }));
     Math.random = realRandom; return out;
-  },{nGames,presets,strategies,mode,goalM,studyMult,drillMult,prodMult});
+  },{nGames,presets,strategies,mode,goalM,studyMult,drillMult,prodMult,extraJson});
   console.log('preset      strat    n  win% gain% bloq% ratioMed ratioMoy forages prod manqués étudesM foragesM bonusCalM');
   res.forEach(r=>console.log(`${r.preset.padEnd(11)} ${r.strat.padEnd(8)} ${String(r.n).padStart(2)} ${String(r.win).padStart(4)} ${String(r.gain).padStart(5)} ${String(r.bloque).padStart(5)} ${String(r.ratioMed).padStart(8)} ${String(r.ratioMoy).padStart(8)} ${String(r.forages).padStart(7)} ${String(r.puitsProd).padStart(4)} ${String(r.manques).padStart(7)} ${String(r.etudesM).padStart(7)} ${String(r.foragesM).padStart(8)} ${String(r.bonusCalM).padStart(9)}` + (r.errs? '  ERREURS:'+r.errs+' '+r.err:'')));
   console.log('erreurs page:', errs.slice(0,3)); await br.close();
