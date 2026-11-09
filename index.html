@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.31</title>
+<title>GeoExplorer V4.32</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -4412,6 +4412,8 @@ function selectBlockFromSection(id){
   rerenderAllBlocks();
   renderGeoPanel(selectedBlock!==null ? b : null);
   renderStudiesPanel(selectedBlock!==null ? b : null);
+  renderSection(); // le trait vertical du bloc sélectionné suit
+  if(typeof bigView!=='undefined' && bigView.open) bvRender();
 }
 
 // Courbe lisse (Catmull-Rom converti en Bézier) à travers des points {x,y}.
@@ -4910,9 +4912,18 @@ function renderSection(){
   // ── Rangée de sélection ── un point cliquable par bloc du profil, même
   // sans donnée, pour pouvoir enchaîner directement sur une étude depuis la
   // coupe sans repasser par la carte.
+  // Cette rangée est tracée HORS du groupe écrêté (elle est sous le cadre du tracé) : avant, elle était rognée et
+  // invisible, donc impossible de choisir un bloc depuis la coupe. On referme le groupe, on dessine, on le rouvre
+  // pour que le `</g>` suivant reste équilibré.
+  svg += `</g>`;
   const selRowY = MARG.t+PH+9;
   svg += `<line x1="${MARG.l}" y1="${selRowY.toFixed(1)}" x2="${MARG.l+PW}" y2="${selRowY.toFixed(1)}"
     stroke="var(--line)" stroke-width=".4" opacity=".5"/>`;
+  // SELECTION-VERTICALE : le bloc sélectionné est repéré par un trait vertical sur toute la hauteur de la coupe
+  { const sp = profileBlocks.find(pb=>pb.b.id===selectedBlock);
+    if(sp){ const sx = xOf(sp.t);
+      svg += `<line x1="${sx.toFixed(1)}" y1="${MARG.t}" x2="${sx.toFixed(1)}" y2="${selRowY.toFixed(1)}" stroke="var(--amber)" stroke-width="1.2" stroke-dasharray="4 3" pointer-events="none"/>`;
+      svg += `<text x="${sx.toFixed(1)}" y="${(MARG.t-4).toFixed(1)}" font-size="8" font-weight="700" fill="var(--amber)" text-anchor="middle" pointer-events="none">Bloc (${sp.b.x}, ${sp.b.y})</text>`; } }
   profileBlocks.forEach(pb=>{
     const b = pb.b;
     const x = xOf(pb.t);
@@ -4924,6 +4935,7 @@ function renderSection(){
       style="cursor:pointer" onclick="selectBlockFromSection(${b.id})">
       <title>Bloc (${b.x},${b.y}) : cliquer pour sélectionner</title></circle>`;
   });
+  svg += `<g clip-path="url(#sectionPlotClip)">`;
 
   svg += `</g>`;
 
@@ -4954,9 +4966,9 @@ function renderSection(){
   }
 
   // Labels A / B
-  svg += `<text x="${MARG.l}" y="${MARG.t+PH+15}" font-size="8.5"
+  svg += `<text x="${MARG.l}" y="${MARG.t+PH+24}" font-size="8.5"
     fill="var(--green)" text-anchor="middle">A (${ba.x},${ba.y})</text>`;
-  svg += `<text x="${MARG.l+PW}" y="${MARG.t+PH+15}" font-size="8.5"
+  svg += `<text x="${MARG.l+PW}" y="${MARG.t+PH+24}" font-size="8.5"
     fill="var(--blue)" text-anchor="middle">B (${bb.x},${bb.y})</text>`;
 
   // Indicateur d'échelle

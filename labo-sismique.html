@@ -4474,6 +4474,8 @@ function selectBlockFromSection(id){
   rerenderAllBlocks();
   renderGeoPanel(selectedBlock!==null ? b : null);
   renderStudiesPanel(selectedBlock!==null ? b : null);
+  renderSection(); // le trait vertical du bloc sélectionné suit
+  if(typeof bigView!=='undefined' && bigView.open) bvRender();
 }
 
 // Courbe lisse (Catmull-Rom converti en Bézier) à travers des points {x,y}.
@@ -5384,9 +5386,24 @@ function renderSection(){
   // ── Rangée de sélection ── un point cliquable par bloc du profil, même
   // sans donnée, pour pouvoir enchaîner directement sur une étude depuis la
   // coupe sans repasser par la carte.
+  // Cette rangée est tracée HORS du groupe écrêté (elle est sous le cadre du tracé) : avant, elle était rognée et
+  // invisible, donc impossible de choisir un bloc depuis la coupe. On referme le groupe, on dessine, on le rouvre
+  // pour que le `</g>` suivant reste équilibré.
+  svg += `</g>`;
   const selRowY = MARG.t+PH+9;
   svg += `<line x1="${MARG.l}" y1="${selRowY.toFixed(1)}" x2="${MARG.l+PW}" y2="${selRowY.toFixed(1)}"
     stroke="var(--line)" stroke-width=".4" opacity=".5"/>`;
+  // SELECTION-VERTICALE : le bloc sélectionné est repéré par un trait vertical sur toute la hauteur de la coupe
+  // Labo : sur ce trait, point du forage visé (profondeur de la cible désignée au droit du bloc)
+  if(!LAB.truth && G.labPick!=null && selectedBlock!==null){
+    const sd = dispData.find(bd=>bd.b && bd.b.id===selectedBlock), sl = sd && sd.layers && sd.layers[G.labPick];
+    if(sl && sl.thickness>=1){ const sx = xOf(sd.t), sy = yOf(sl.top);
+      svg += `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="4.2" fill="var(--amber)" stroke="var(--sec-paper)" stroke-width="1.4" pointer-events="none"/>`;
+      svg += `<text x="${(sx+7).toFixed(1)}" y="${(sy+3).toFixed(1)}" font-size="8" font-weight="700" fill="var(--amber)" pointer-events="none">forage visé ${Math.round(sl.top)} m</text>`; } }
+  { const sp = profileBlocks.find(pb=>pb.b.id===selectedBlock);
+    if(sp){ const sx = xOf(sp.t);
+      svg += `<line x1="${sx.toFixed(1)}" y1="${MARG.t}" x2="${sx.toFixed(1)}" y2="${selRowY.toFixed(1)}" stroke="var(--amber)" stroke-width="1.2" stroke-dasharray="4 3" pointer-events="none"/>`;
+      svg += `<text x="${sx.toFixed(1)}" y="${(MARG.t-4).toFixed(1)}" font-size="8" font-weight="700" fill="var(--amber)" text-anchor="middle" pointer-events="none">Bloc (${sp.b.x}, ${sp.b.y})</text>`; } }
   profileBlocks.forEach(pb=>{
     const b = pb.b;
     const x = xOf(pb.t);
@@ -5398,6 +5415,7 @@ function renderSection(){
       style="cursor:pointer" onclick="selectBlockFromSection(${b.id})">
       <title>Bloc (${b.x},${b.y}) : cliquer pour sélectionner</title></circle>`;
   });
+  svg += `<g clip-path="url(#sectionPlotClip)">`;
 
   // Horizon visé : trait ambre sur toute sa longueur
   if(!LAB.truth && G.labPick!=null){
@@ -5450,9 +5468,9 @@ function renderSection(){
   }
 
   // Labels A / B
-  svg += `<text x="${MARG.l}" y="${MARG.t+PH+15}" font-size="8.5"
+  svg += `<text x="${MARG.l}" y="${MARG.t+PH+24}" font-size="8.5"
     fill="var(--green)" text-anchor="middle">A (${ba.x},${ba.y})</text>`;
-  svg += `<text x="${MARG.l+PW}" y="${MARG.t+PH+15}" font-size="8.5"
+  svg += `<text x="${MARG.l+PW}" y="${MARG.t+PH+24}" font-size="8.5"
     fill="var(--blue)" text-anchor="middle">B (${bb.x},${bb.y})</text>`;
 
   // Indicateur d'échelle
@@ -7794,9 +7812,10 @@ function _doStartGame(){
 .lab-pick{padding:3px 9px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:999px;font-size:11px;cursor:pointer;font-family:var(--sans);}
 .lab-pick.sel{background:var(--amber);color:#fff;border-color:var(--amber);font-weight:600;}
 .lab-note{font-size:11px;line-height:1.55;color:var(--muted);margin-top:6px;}
-#labBadge{position:fixed;right:10px;bottom:62px;z-index:900;background:var(--ink);color:var(--on-ink);font-size:11px;padding:6px 10px;border-radius:8px;opacity:.88;max-width:260px;line-height:1.4;}
+#labBadge{pointer-events:none;transition:opacity .8s;position:fixed;right:10px;bottom:62px;z-index:900;background:var(--ink);color:var(--on-ink);font-size:11px;padding:6px 10px;border-radius:8px;opacity:.88;max-width:260px;line-height:1.4;}
 body.mobile-layout #labBadge{bottom:64px;}
 </style>
+<script>setTimeout(function(){ var b=document.getElementById('labBadge'); if(b){ b.style.opacity='0'; setTimeout(function(){ b.style.display='none'; }, 900); } }, 10000);</script>
 <div id="labBadge"><b>LABO sismique, phase 4</b> : la sismique ne montre plus les roches ni le réservoir. Désignez votre cible, forez, loguez, puis calez le puits sur la sismique pour étendre la lithologie. Sauvegarde séparée du jeu principal.</div>
 </body>
 </html>

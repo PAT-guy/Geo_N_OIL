@@ -766,5 +766,22 @@ rep("o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat
 rep("o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:false } }", "o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, thick:true, cheat:false } }")
 rep("    ${row('cheat', 'Bouton « Voir la vérité » (triche)'", "    ${row('thick', 'Épaisseurs variables des couches', 'Une couche n\\'a plus la même épaisseur partout : plus épaisse dans les bas structuraux, plus mince sur les hauts, avec une dérive latérale propre à chaque couche. Désactivée : épaisseur constante dans une province, comme dans le jeu principal. Attention : la carte générée pour une même graine n\\'est pas la même selon ce réglage.', labOptMode!=='start')}\n    ${row('cheat', 'Bouton « Voir la vérité » (triche)'")
 
+
+# ====================== Points des blocs sur la coupe : repère du forage visé sur le bloc sélectionné ======================
+rep("  // SELECTION-VERTICALE : le bloc sélectionné est repéré par un trait vertical sur toute la hauteur de la coupe\n", """  // SELECTION-VERTICALE : le bloc sélectionné est repéré par un trait vertical sur toute la hauteur de la coupe
+  // Labo : sur ce trait, point du forage visé (profondeur de la cible désignée au droit du bloc)
+  if(!LAB.truth && G.labPick!=null && selectedBlock!==null){
+    const sd = dispData.find(bd=>bd.b && bd.b.id===selectedBlock), sl = sd && sd.layers && sd.layers[G.labPick];
+    if(sl && sl.thickness>=1){ const sx = xOf(sd.t), sy = yOf(sl.top);
+      svg += `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="4.2" fill="var(--amber)" stroke="var(--sec-paper)" stroke-width="1.4" pointer-events="none"/>`;
+      svg += `<text x="${(sx+7).toFixed(1)}" y="${(sy+3).toFixed(1)}" font-size="8" font-weight="700" fill="var(--amber)" pointer-events="none">forage visé ${Math.round(sl.top)} m</text>`; } }
+""")
+
+
+# Le bandeau « LABO » recouvrait le bas de la coupe (points des blocs, étiquette B) : il ne capte plus les clics et disparaît après 10 s
+rep("#labBadge{position:fixed;", "#labBadge{pointer-events:none;transition:opacity .8s;position:fixed;")
+rep("""<div id="labBadge">""", """<script>setTimeout(function(){ var b=document.getElementById('labBadge'); if(b){ b.style.opacity='0'; setTimeout(function(){ b.style.display='none'; }, 900); } }, 10000);</script>
+<div id="labBadge">""")
+
 open(dst, 'w', encoding='utf-8').write(s)
 print('ok', len(s))
