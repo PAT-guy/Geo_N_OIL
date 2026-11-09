@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.34</title>
+<title>GeoExplorer V4.35</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2499,13 +2499,18 @@ function updateBlockEstimate(b){
 // informé gagne environ une partie sur deux, le tireur au hasard presque jamais).
 const PROD_BASE = 63;            // puits neuf (était 165 avec l'ancien déclin)
 const PROD_BASE_SIDETRACK = 51;  // side-track sur un 2e réservoir (était 135)
+// Un puits en mer produit beaucoup plus qu'un puits à terre : réservoirs plus épais et plus perméables, puits
+// complétés pour de gros débits. C'est ce qui justifie son prix (coût ×2,8, charges fixes ×3,75). Avant, il
+// produisait exactement comme un puits à terre : le puits en mer médian perdait de l'argent (valeur 0,2 fois son coût).
+let OFFSHORE_PROD_MULT = 3;
+const prodSite = b => (b && b.isOffshore) ? OFFSHORE_PROD_MULT : 1;
 
 // Déclin de production : loi hyperbolique d'Arps, q(t) = q0 · (1 + b·Di·t)^(-1/b), t en mois.
 // Avant, le déclin était exponentiel à 3,5 %/mois, soit 35 %/an en continu : un profil de gaz de
 // schiste (60 à 70 % la première année), pas celui d'un gisement conventionnel (5 à 15 %/an). Ici
-// Di = 1,5 %/mois nominal et b = 0,5 donnent environ -16 % la 1re année, la moitié du débit initial
-// après 5 ans et le quart après 10 ans : une queue longue, comme sur un vrai gisement.
-const DECL = { Di: 0.015, b: 0.5 };
+// Di = 1,1 %/mois nominal (1,5 % avant la V4.35) et b = 0,5 donnent environ -12 % la 1re année, 56 % du débit
+// initial après 5 ans et 36 % après 10 ans : une queue longue, comme sur un gisement conventionnel.
+const DECL = { Di: 0.011, b: 0.5 };
 const declineFactor = age => Math.pow(1 + DECL.b*DECL.Di*Math.max(0, age), -1/DECL.b);
 // Débit courant d'un puits = somme de ses venues (puits initial, puis side-tracks), chacune
 // avec sa propre courbe de déclin. `comps` est créé à la volée pour les anciennes sauvegardes.
@@ -2675,7 +2680,7 @@ function resolveDrilling(d){
   let prodOut = null;
   if(geoOk && techOk){
     const res = b.horizons.find(l=>l.role==='reservoir');
-    const initProd = (b.trueQuality/100) * (res?.thicknessLocal||20) * PROD_BASE * me.prodMult;
+    const initProd = (b.trueQuality/100) * (res?.thicknessLocal||20) * PROD_BASE * me.prodMult * prodSite(b);
     const well = {blockId:d.blockId, method:d.method, equip:d.equip, cost:d.cost,
                   studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month,
                   production:initProd, comps:[{q0:initProd, t0:0}], monthsActive:0, status:'producing',
@@ -2717,7 +2722,7 @@ function resolveSidetrack(d){
   const techOk = Math.random() < EQUIPMENT.standard.reliability;
   const geoOk  = info && Math.random() < info.trueProbability2;
   if(info && w && geoOk && techOk){
-    const addedProd = (info.trueQuality2/100) * (info.horizon.thicknessLocal||20) * PROD_BASE_SIDETRACK;
+    const addedProd = (info.trueQuality2/100) * (info.horizon.thicknessLocal||20) * PROD_BASE_SIDETRACK * prodSite(b);
     if(!w.comps) w.comps = [{ q0: w.production, t0: w.monthsActive||0 }];
     w.comps.push({ q0: addedProd, t0: w.monthsActive||0 });
     w.production += addedProd;
@@ -4244,7 +4249,7 @@ function updateDrillSummary(blockId){
   // puits : avant, on utilisait la vraie épaisseur et le vrai fluide. On prend
   // l'épaisseur nominale de la colonne de référence.
   const nomRes=STRAT.find(l=>l.role==='reservoir');
-  const estProd=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult;
+  const estProd=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b);
   const proj=projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, G.mode==='sandbox'?0:cost, 120);
   const netMonth=estProd*(b.estimate.isGas?G.price*.18:G.price)-(b.isOffshore?30000:8000)-estProd*((b.isOffshore?14:4)+6);
   const breakeven=proj.payback;
@@ -5679,7 +5684,7 @@ function guideEV(b){
   if(!eqs.length || b.estimate?.prob===undefined) return null;
   const nomRes = STRAT.find(l=>l.role==='reservoir');
   const q = b.estimate.quality ?? 50;
-  const estProd = (q/100)*(nomRes?.thickness||40)*PROD_BASE*METHODS.vertical.prodMult;
+  const estProd = (q/100)*(nomRes?.thickness||40)*PROD_BASE*METHODS.vertical.prodMult*prodSite(b);
   const cum = projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, 0, 120).cum;
   let best = null;
   eqs.forEach(([k,e])=>{
@@ -7393,8 +7398,8 @@ function _doStartGame(){
     {
       title: 'Forer et produire',
       body: `Le résultat est binaire : puits productif ou sec, révélé après un court suspense, avec le facteur
-        qui a le plus joué. Un puits décline ensuite : environ -16 % la première année, la moitié du débit
-        après 5 ans. Fermez les puits marginaux depuis l'onglet <b>Gisements</b> quand ils coûtent plus
+        qui a le plus joué. Un puits décline ensuite : environ -12 % la première année, un peu plus de la moitié du débit
+        après 5 ans. Un puits en mer produit environ trois fois plus qu'un puits à terre, mais coûte bien plus cher. Fermez les puits marginaux depuis l'onglet <b>Gisements</b> quand ils coûtent plus
         qu'ils ne rapportent.<br><br>
         Si un second réservoir existe plus profond, un side-track l'exploite sans forer un nouveau trou.`,
     },
