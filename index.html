@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.45</title>
+<title>GeoExplorer V4.46</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -7793,6 +7793,16 @@ function _doStartGame(){
 .lgm-q .qz-question{margin-top:0;}
 .lgm-hint{font-size:11.5px;color:var(--muted);line-height:1.55;margin-top:10px;}
 
+.lgm-verdict{border:1px solid var(--line);border-radius:6px;padding:9px 12px;font-size:13px;background:var(--panel);}
+.lgm-verdict.ok{border-color:var(--green);color:var(--green);font-weight:600;}
+.lgm-verdict.ko{border-color:var(--red);color:var(--red);}
+.lgm-q .qz-choices .lgm-verdict + .lgm-verdict{margin-top:0;}
+.qz-feedback.show .lgm-read{width:100%;margin-top:8px;border-collapse:collapse;font-family:var(--mono);font-size:11px;color:var(--text);}
+.lgm-read caption{caption-side:top;text-align:left;font-family:var(--sans);font-size:11px;color:var(--muted);padding-bottom:3px;}
+.lgm-read th,.lgm-read td{border:1px solid var(--line);padding:4px 5px;text-align:center;}
+.lgm-read th{background:var(--panel);font-weight:600;}
+@media (max-width:720px){ #lgmFeedback.show{font-size:12.5px;color:var(--text);line-height:1.5;margin-top:8px;} .lgm-verdict{min-height:40px;display:flex;align-items:center;} .lgm-q .qz-footer .study-btn{flex:1 1 100%;min-height:48px;font-size:14px;} .lgm-read{font-size:10px !important;} }
+
 /* V4.44 : mini-jeux sur téléphone. Log : le log défile dans sa fenêtre, la question et les réponses restent collées en bas. */
 .lgm-det{margin-top:10px;} .lgm-det summary{font-size:11.5px;color:var(--muted);cursor:pointer;padding:8px 0;} .lgm-det .lgm-hint{margin-top:2px;}
 @media (max-width:720px){
@@ -7805,6 +7815,8 @@ function _doStartGame(){
   .lgm-cols{position:sticky;top:0;z-index:3;height:22px;background:var(--panel2);border-bottom:1px solid var(--line);font:600 10.5px var(--mono);color:var(--muted);}
   .lgm-cols span{position:absolute;top:4px;text-align:center;white-space:nowrap;overflow:hidden;}
   .lgm-q{flex:none;min-width:0;max-height:48dvh;overflow-y:auto;overscroll-behavior:contain;}
+  .lgm-q.answered{max-height:74dvh;} .lgm-q.answered .qz-question{display:none;}
+  .lgm-log{min-height:110px;}
   .lgm-q .qz-question{padding:9px 12px;font-size:13px;line-height:1.45;}
   .lgm-q .qz-choices{margin-top:8px;gap:6px;}
   .lgm-q .qz-footer{position:sticky;bottom:0;background:var(--bg);margin-top:6px;padding:6px 0 0;}
@@ -7827,12 +7839,12 @@ function _doStartGame(){
   </div>
   <div class="lgm-body">
     <div class="lgm-log" id="lgmLog"></div>
-    <div class="lgm-q">
+    <div class="lgm-q" id="lgmQ">
       <div class="qz-question" id="lgmQuestion"></div>
       <div class="qz-choices" id="lgmChoices" style="margin-top:12px;"></div>
       <div class="qz-feedback" id="lgmFeedback"></div>
       <div class="qz-footer"><button class="study-btn" id="lgmNext" style="display:none;">Suite →</button><span style="font-size:11px;color:var(--muted);" id="lgmScore"></span></div>
-      <details class="lgm-det" id="lgmDet"><summary>Légende et aide</summary><div class="lgm-hint" id="lgmHint">Chaque log vient d'un puits tiré au hasard (bassin et seed différents). Les courbes : GR en vert, résistivité en rouge (trait plein : profonde, pointillé : peu profonde), densité en rouge et neutron en bleu pointillé (le jaune signale un croisement), sonique en violet. La colonne de gauche donne les couches, sans leur nom.</div></details>
+      <details class="lgm-det" id="lgmDet"><summary>Légende et aide</summary><div class="lgm-hint" id="lgmHint">Chaque log vient d'un puits tiré au hasard (bassin et seed différents). Les courbes : GR en vert, résistivité en rouge (trait plein : profonde, pointillé : peu profonde), densité en rouge et neutron en bleu pointillé (le jaune signale un croisement), sonique en violet. La colonne de gauche donne les couches, sans leur nom.<br><br><b>Repères de lecture du jeu.</b> Dans une roche poreuse, une résistivité profonde sous 10 Ω·m indique de l'eau salée, au-dessus des hydrocarbures. Le jaune (neutron nettement sous la porosité-densité) distingue le gaz de l'huile. Ces repères sont calibrés sur les puits du jeu et chaque question est choisie pour qu'ils tranchent : sur de vrais logs, les cas ambigus existent (roche argileuse, eau douce, gaz peu saturé) et les mêmes courbes se discutent.</div></details>
     </div>
   </div>
 </div>
@@ -7867,29 +7879,65 @@ function _doStartGame(){
   const shuffle = a => [...a].sort(()=>Math.random()-.5);
   let rounds = [], logIdx = 0, qIdx = 0, score = 0, asked = 0, cur = null;
 
-  // Un log complet + ses deux questions, dans un état de jeu isolé
-  function makeLog(){
+  // Valeurs lues sur les courbes à une profondeur (pour le tableau de lecture affiché après la réponse)
+  function readAt(g, z){
+    const k = Math.max(1, Math.min(g.n-1, Math.round((z-g.z0)/g.dz)));
+    return { z:Math.round(z), gr:g.gr[k], rt:g.rt[k], rho:g.rho[k], nphi:g.nphi[k]*100, dt:g.dt[k], gap:((2.71-g.rho[k])/1.71 - g.nphi[k])*100 };
+  }
+  const f0 = v => Math.round(v), f1 = v => (Math.round(v*10)/10).toString().replace('.',','), f2 = v => (Math.round(v*100)/100).toString().replace('.',',');
+  function readTable(r, tag){
+    return `<table class="lgm-read"><caption>Valeurs lues au repère ${tag} (${r.z} m)</caption><tr><th>GR</th><th>Rt</th><th>ρb</th><th>NPHI</th><th>DT</th></tr>
+      <tr><td>${f0(r.gr)} API</td><td>${r.rt>=100?f0(r.rt):f1(r.rt)} Ω·m</td><td>${f2(r.rho)} g/cc</td><td>${f1(r.nphi)} %</td><td>${f0(r.dt)} µs/ft</td></tr></table>`;
+  }
+  // Seuils du jeu pour la question sur le fluide. Un log n'est gardé que si la règle affichée donne la bonne réponse au repère B
+  // (avant la V4.46 : 56 % des puits à gaz sans croisement visible en B, 12 % des puits aquifères au-dessus de 10 Ω·m).
+  const RT_WET = 9, RT_HC = 11, GAP_GAS = 9, GAP_NONE = 5;
+  function pickDepthB(g, fluid){
+    const hr = g.H[g.firstRes], thr = hr.thicknessLocal ?? hr.thickness;
+    const maxF = fluid==='eau' ? 0.5 : Math.min(0.5, (g.hcBase!==null ? (g.hcBase-hr.top)/thr : 0.35) - 0.03);
+    let best = null;
+    for(let f=0.06; f<=maxF; f+=0.03){
+      const z = hr.top + thr*f, k = Math.round((z-g.z0)/g.dz); if(k<4 || k>g.n-4) continue;
+      let rtMin=1e9, rtMax=0, gapMin=1e9, gapMax=-1e9, same=true;
+      for(let j=k-3;j<=k+3;j++){ rtMin=Math.min(rtMin,g.rt[j]); rtMax=Math.max(rtMax,g.rt[j]); const gp=((2.71-g.rho[j])/1.71 - g.nphi[j])*100; gapMin=Math.min(gapMin,gp); gapMax=Math.max(gapMax,gp); if(g.cls[j]!==g.cls[k]) same=false; }
+      if(!same) continue;
+      const okRule = fluid==='eau' ? rtMax < RT_WET
+                   : fluid==='huile' ? rtMin >= RT_HC && gapMax < GAP_NONE
+                   : rtMin >= RT_HC && gapMin >= GAP_GAS;
+      if(!okRule) continue;
+      const score = fluid==='gaz' ? gapMin : fluid==='huile' ? rtMin : -rtMax;
+      if(!best || score > best.score) best = {z, score};
+    }
+    return best ? best.z : null;
+  }
+
+  // Un log complet + ses deux questions, dans un état de jeu isolé. `fluid` : 'eau', 'huile' ou 'gaz' (équilibré sur la manche).
+  function makeLog(fluid, avoid){
+    avoid = avoid || [];
+    fluid = fluid || ['eau','huile','gaz'][Math.floor(Math.random()*3)];
     const keep = { blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
     try {
-      for(let tries=0; tries<40; tries++){
+      for(let tries=0; tries<160; tries++){
         const bt = ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast'][Math.floor(Math.random()*8)];
         generateGeology(12, bt, true, (Math.random()*1e9)|0);
         const ok = blocks.filter(b=>!b.inSalt && b.horizons.some(h=>h.role==='reservoir' && (h.thicknessLocal??h.thickness)>=30) && b.topOfReservoir<4600);
         if(!ok.length) continue;
         const b = ok[Math.floor(Math.random()*ok.length)];
-        const hc = Math.random() < 0.65;
+        const hc = fluid!=='eau';
         b.well = hc ? {status:'producing'} : null; b.dryHole = !hc; b.dryHoleInfo = hc ? null : {techFail:false};
+        b.isGas = fluid==='gaz'; // le fluide est imposé : la géologie de cette manche est jetée juste après
         wlZoom = false;
         const g = wlGrid(b, false); if(!g || g.firstRes<0) continue;
         const H = g.H, ri = g.firstRes;
+        const zB = pickDepthB(g, fluid); if(zB===null) continue;
         const cands = H.map((h,i)=>({h,i})).filter(o=>o.i!==ri && (o.h.thicknessLocal??o.h.thickness)>=25);
         if(!cands.length) continue;
         // tirage par CLASSE de roche (et non par couche) : sinon les argiles, très nombreuses, reviennent une fois sur trois
         const byCls = {}; cands.forEach(o=>{ (byCls[wlLithClass(o.h)] = byCls[wlLithClass(o.h)] || []).push(o); });
-        const clsKeys = Object.keys(byCls), pickCls = byCls[clsKeys[Math.floor(Math.random()*clsKeys.length)]];
+        // dans une même manche, on évite de redemander la même roche en A (sinon argile, socle et sédiments meubles reviennent sans cesse)
+        const fresh = Object.keys(byCls).filter(k=>!avoid.includes(k)), clsKeys = fresh.length ? fresh : Object.keys(byCls), pickCls = byCls[clsKeys[Math.floor(Math.random()*clsKeys.length)]];
         const A = pickCls[Math.floor(Math.random()*pickCls.length)];
         const zA = A.h.top + (A.h.thicknessLocal??A.h.thickness)*0.5;
-        const hr = H[ri], thr = hr.thicknessLocal ?? hr.thickness, zB = hr.top + thr*0.18;
         // log et repères
         let html = wellLogHtml(b);
         const VBW=382, left=38, top=40, plotH=560, right=376, span=g.z1-g.z0;
@@ -7897,23 +7945,22 @@ function _doStartGame(){
         const mark = (z, tag) => { const y = ys(z).toFixed(1); return `<line x1="${left-7}" y1="${y}" x2="${right}" y2="${y}" stroke="#d4380d" stroke-width="1.1" stroke-dasharray="4,2.5"/><polygon points="${left-7},${(+y-6).toFixed(1)} ${left-7},${(+y+6).toFixed(1)} ${left+3},${y}" fill="#d4380d"/><circle cx="${right+0}" cy="${y}" r="7" fill="#d4380d"/><text x="${right}" y="${(+y+3.6).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${tag}</text>`; };
         html = html.replace('</svg>', mark(zA,'A') + mark(zB,'B') + '</svg>');
         const yA = ys(zA), yB = ys(zB);
+        const rA = readAt(g, zA), rB = readAt(g, zB);
         // question 1 : lithologie en A
         const truthA = wlLithClass(A.h);
         const fam = FAMILY.find(f=>f.includes(truthA)) || [];
         const near = shuffle(fam.filter(c=>c!==truthA));
         const far = shuffle(Object.keys(LABEL).filter(c=>c!==truthA && !fam.includes(c)));
         const optsA = shuffle([truthA, ...near.slice(0,2), ...far].slice(0,4));
-        // pour le sel et les évaporites : jamais plus d'un intrus de la même famille que l'on ne pourrait départager
         const q1 = { text:'À la profondeur repérée par A (' + Math.round(zA) + ' m), quelle est la lithologie ?', opts:optsA.map(c=>({k:c, t:LABEL[c]})), good:truthA, y:yA,
-          why:`C'était : <b>${LABEL[truthA].toLowerCase()}</b>. Indices : ${CUE[truthA]}` };
-        // question 2 : fluide du réservoir en B
-        const gasCase = hc && b.isGas, oilCase = hc && !b.isGas;
-        const good2 = gasCase ? 'gaz' : oilCase ? 'huile' : 'eau';
-        const q2 = { text:'En B, dans le réservoir (couche poreuse à ' + Math.round(zB) + ' m), que contient la roche ?', opts:[{k:'gaz',t:'Gaz'},{k:'huile',t:'Huile'},{k:'eau',t:'Eau salée seule (réservoir aquifère)'}], good:good2, y:yB,
-          why: gasCase ? 'C\'était du <b>gaz</b> : résistivité profonde élevée et surtout croisement densité-neutron (le neutron lit moins que la densité), signature classique du gaz.'
-             : oilCase ? 'C\'était de l\'<b>huile</b> : résistivité profonde élevée dans la roche poreuse, mais sans croisement densité-neutron (pas d\'effet gaz).'
-             : 'C\'était de l\'<b>eau salée</b> : résistivité basse dans la roche poreuse (l\'eau de formation conduit), pas de croisement densité-neutron. Un puits sec peut avoir un réservoir parfaitement poreux.' };
-        return { html, qs:[q1,q2] };
+          why:`C'était : <b>${LABEL[truthA].toLowerCase()}</b>. Indices : ${CUE[truthA]}`, table: readTable(rA,'A') };
+        // question 2 : fluide du réservoir en B (le texte cite les valeurs réellement lues)
+        const rtTxt = (rB.rt>=100?f0(rB.rt):f1(rB.rt)) + ' Ω·m', gapTxt = f0(rB.gap);
+        const why2 = fluid==='gaz' ? `C'était du <b>gaz</b> : résistivité profonde de ${rtTxt} (élevée) et neutron ${gapTxt} points sous la porosité-densité, c'est le croisement jaune. Le gaz allège la roche (la densité baisse) et contient peu d'hydrogène (le neutron lit trop bas).`
+          : fluid==='huile' ? `C'était de l'<b>huile</b> : résistivité profonde de ${rtTxt}, bien au-dessus de celle de l'eau salée (une roche aquifère comparable lit moins de 10 Ω·m dans ce jeu), mais écart densité-neutron de ${gapTxt} points seulement : pas de croisement, donc pas de gaz.`
+          : `C'était de l'<b>eau salée</b> : résistivité de ${rtTxt} seulement, l'eau de formation conduit. Un puits sec peut avoir un réservoir parfaitement poreux, c'est le fluide qui manque.`;
+        const q2 = { text:'En B, dans le réservoir (couche poreuse à ' + Math.round(zB) + ' m), que contient la roche ?', opts:[{k:'gaz',t:'Gaz'},{k:'huile',t:'Huile'},{k:'eau',t:'Eau salée seule (réservoir aquifère)'}], good:fluid, y:yB, why:why2, table: readTable(rB,'B') };
+        return { html, qs:[q1,q2], fluid, rB, rA };
       }
       return null;
     } finally {
@@ -7939,17 +7986,23 @@ function _doStartGame(){
     lgmFocus(q);
     document.getElementById('lgmQuestion').textContent = q.text;
     document.getElementById('lgmFeedback').classList.remove('show');
+    { const qb = document.getElementById('lgmQ'); if(qb) qb.classList.remove('answered'); }
     const nb = document.getElementById('lgmNext'); nb.style.display = 'none';
     nb.textContent = (logIdx===rounds.length-1 && qIdx===R.qs.length-1) ? 'Voir le résultat →' : 'Suite →';
     document.getElementById('lgmScore').textContent = `Question ${logIdx*2+qIdx+1}/${rounds.length*2} · score ${score}/${asked}`;
     const ch = document.getElementById('lgmChoices');
     ch.innerHTML = q.opts.map((o,i)=>`<button class="qz-choice" data-k="${o.k}">${o.t}</button>`).join('');
     ch.querySelectorAll('.qz-choice').forEach(btn=>btn.addEventListener('click', ()=>{
-      ch.querySelectorAll('.qz-choice').forEach(b=>{ b.disabled = true; if(b.dataset.k===q.good) b.classList.add('correct'); });
-      asked++; const okk = btn.dataset.k===q.good; if(okk) score++; else btn.classList.add('wrong');
-      const fb = document.getElementById('lgmFeedback'); fb.innerHTML = (okk ? '✓ Correct. ' : '✗ Pas tout à fait. ') + q.why; fb.classList.add('show');
+      asked++; const okk = btn.dataset.k===q.good; if(okk) score++;
+      const lab = k => (q.opts.find(o=>o.k===k)||{}).t || k;
+      // les boutons laissent la place à un verdict compact : sur téléphone, le texte de correction doit tenir à l'écran
+      ch.innerHTML = okk ? `<div class="lgm-verdict ok">✓ Correct : ${lab(q.good)}</div>`
+        : `<div class="lgm-verdict ko">✗ Votre réponse : ${lab(btn.dataset.k)}</div><div class="lgm-verdict ok">✓ Bonne réponse : ${lab(q.good)}</div>`;
+      const fb = document.getElementById('lgmFeedback'); fb.innerHTML = q.why + (q.table||''); fb.classList.add('show');
       document.getElementById('lgmScore').textContent = `Question ${logIdx*2+qIdx+1}/${rounds.length*2} · score ${score}/${asked}`;
       nb.style.display = '';
+      const qb = document.getElementById('lgmQ'); if(qb){ qb.classList.add('answered'); qb.scrollTop = 0; }
+      if(window.matchMedia('(max-width:720px)').matches) nb.scrollIntoView({block:'nearest'});
     }));
   }
   function finish(){
@@ -7971,7 +8024,7 @@ function _doStartGame(){
     if(typeof quickRefresh==='function') quickRefresh();
   }
   function open(){
-    rounds = []; for(let i=0;i<LGM_LOGS;i++){ const r = makeLog(); if(r) rounds.push(r); }
+    rounds = []; const fl = shuffle(['eau','huile','gaz', ['eau','huile','gaz'][Math.floor(Math.random()*3)]]); const used = []; for(let i=0;i<LGM_LOGS;i++){ const r = makeLog(fl[i], used); if(r){ rounds.push(r); used.push(r.qs[0].good); } }
     if(!rounds.length) return;
     logIdx = 0; qIdx = 0; score = 0; asked = 0;
     document.getElementById('logGameModal').classList.add('open');
