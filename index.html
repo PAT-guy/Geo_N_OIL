@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.43</title>
+<title>GeoExplorer V4.44</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -7780,6 +7780,33 @@ function _doStartGame(){
 .lgm-q{flex:1 1 320px;min-width:280px;}
 .lgm-q .qz-question{margin-top:0;}
 .lgm-hint{font-size:11.5px;color:var(--muted);line-height:1.55;margin-top:10px;}
+
+/* V4.44 : mini-jeux sur téléphone. Log : le log défile dans sa fenêtre, la question et les réponses restent collées en bas. */
+.lgm-det{margin-top:10px;} .lgm-det summary{font-size:11.5px;color:var(--muted);cursor:pointer;padding:8px 0;} .lgm-det .lgm-hint{margin-top:2px;}
+@media (max-width:720px){
+  #logGameModal{overflow:hidden;height:100dvh;padding:8px 10px max(8px, env(safe-area-inset-bottom));flex-wrap:nowrap;}
+  #logGameModal .qz-header{margin-bottom:4px;flex:none;}
+  .lgm-body{flex:1;min-height:0;flex-direction:column;flex-wrap:nowrap;gap:8px;margin-top:0;align-items:stretch;justify-content:flex-start;}
+  .lgm-log{flex:1 1 0;min-height:0;min-width:0;overflow-y:auto;overscroll-behavior:contain;border:1px solid var(--line);border-radius:8px;background:var(--panel2);position:relative;}
+  .lgm-log .wl-wrap{border:0;padding:0;margin:0;background:none;}
+  .lgm-log .wl-note{display:none;}
+  .lgm-cols{position:sticky;top:0;z-index:3;height:22px;background:var(--panel2);border-bottom:1px solid var(--line);font:600 10.5px var(--mono);color:var(--muted);}
+  .lgm-cols span{position:absolute;top:4px;text-align:center;white-space:nowrap;overflow:hidden;}
+  .lgm-q{flex:none;min-width:0;max-height:48dvh;overflow-y:auto;overscroll-behavior:contain;}
+  .lgm-q .qz-question{padding:9px 12px;font-size:13px;line-height:1.45;}
+  .lgm-q .qz-choices{margin-top:8px;gap:6px;}
+  .lgm-q .qz-footer{position:sticky;bottom:0;background:var(--bg);margin-top:6px;padding:6px 0 0;}
+  .lgm-q .qz-feedback{margin-top:8px;}
+}
+@media (max-width:720px){
+  .cg-close{min-height:40px;padding:8px 14px;}
+  .qz-choice{min-height:44px;font-size:13px;display:flex;align-items:center;}
+  .cg-hand{flex-direction:column;gap:6px;}
+  .cg-card{width:auto;padding:10px 12px;}
+  .cg-card-name{font-size:13px;}
+  .cg-card-desc{font-size:11.5px;}
+  #cgDrillBtn,.cg-actions .study-btn{min-height:44px;}
+}
 </style>
 <div id="logGameModal" role="dialog" aria-modal="true" aria-label="Lire un log">
   <div class="qz-header" style="max-width:980px;">
@@ -7793,7 +7820,7 @@ function _doStartGame(){
       <div class="qz-choices" id="lgmChoices" style="margin-top:12px;"></div>
       <div class="qz-feedback" id="lgmFeedback"></div>
       <div class="qz-footer"><button class="study-btn" id="lgmNext" style="display:none;">Suite →</button><span style="font-size:11px;color:var(--muted);" id="lgmScore"></span></div>
-      <div class="lgm-hint" id="lgmHint">Chaque log vient d'un puits tiré au hasard (bassin et seed différents). Les courbes : GR en vert, résistivité en rouge (trait plein : profonde, pointillé : peu profonde), densité en rouge et neutron en bleu pointillé (le jaune signale un croisement), sonique en violet. La colonne de gauche donne les couches, sans leur nom.</div>
+      <details class="lgm-det" id="lgmDet"><summary>Légende et aide</summary><div class="lgm-hint" id="lgmHint">Chaque log vient d'un puits tiré au hasard (bassin et seed différents). Les courbes : GR en vert, résistivité en rouge (trait plein : profonde, pointillé : peu profonde), densité en rouge et neutron en bleu pointillé (le jaune signale un croisement), sonique en violet. La colonne de gauche donne les couches, sans leur nom.</div></details>
     </div>
   </div>
 </div>
@@ -7857,6 +7884,7 @@ function _doStartGame(){
         const ys = z => top + (z-g.z0)/span*plotH;
         const mark = (z, tag) => { const y = ys(z).toFixed(1); return `<line x1="${left-7}" y1="${y}" x2="${right}" y2="${y}" stroke="#d4380d" stroke-width="1.1" stroke-dasharray="4,2.5"/><polygon points="${left-7},${(+y-6).toFixed(1)} ${left-7},${(+y+6).toFixed(1)} ${left+3},${y}" fill="#d4380d"/><circle cx="${right+0}" cy="${y}" r="7" fill="#d4380d"/><text x="${right}" y="${(+y+3.6).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${tag}</text>`; };
         html = html.replace('</svg>', mark(zA,'A') + mark(zB,'B') + '</svg>');
+        const yA = ys(zA), yB = ys(zB);
         // question 1 : lithologie en A
         const truthA = wlLithClass(A.h);
         const fam = FAMILY.find(f=>f.includes(truthA)) || [];
@@ -7864,12 +7892,12 @@ function _doStartGame(){
         const far = shuffle(Object.keys(LABEL).filter(c=>c!==truthA && !fam.includes(c)));
         const optsA = shuffle([truthA, ...near.slice(0,2), ...far].slice(0,4));
         // pour le sel et les évaporites : jamais plus d'un intrus de la même famille que l'on ne pourrait départager
-        const q1 = { text:'À la profondeur repérée par A (' + Math.round(zA) + ' m), quelle est la lithologie ?', opts:optsA.map(c=>({k:c, t:LABEL[c]})), good:truthA,
+        const q1 = { text:'À la profondeur repérée par A (' + Math.round(zA) + ' m), quelle est la lithologie ?', opts:optsA.map(c=>({k:c, t:LABEL[c]})), good:truthA, y:yA,
           why:`C'était : <b>${LABEL[truthA].toLowerCase()}</b>. Indices : ${CUE[truthA]}` };
         // question 2 : fluide du réservoir en B
         const gasCase = hc && b.isGas, oilCase = hc && !b.isGas;
         const good2 = gasCase ? 'gaz' : oilCase ? 'huile' : 'eau';
-        const q2 = { text:'En B, dans le réservoir (couche poreuse à ' + Math.round(zB) + ' m), que contient la roche ?', opts:[{k:'gaz',t:'Gaz'},{k:'huile',t:'Huile'},{k:'eau',t:'Eau salée seule (réservoir aquifère)'}], good:good2,
+        const q2 = { text:'En B, dans le réservoir (couche poreuse à ' + Math.round(zB) + ' m), que contient la roche ?', opts:[{k:'gaz',t:'Gaz'},{k:'huile',t:'Huile'},{k:'eau',t:'Eau salée seule (réservoir aquifère)'}], good:good2, y:yB,
           why: gasCase ? 'C\'était du <b>gaz</b> : résistivité profonde élevée et surtout croisement densité-neutron (le neutron lit moins que la densité), signature classique du gaz.'
              : oilCase ? 'C\'était de l\'<b>huile</b> : résistivité profonde élevée dans la roche poreuse, mais sans croisement densité-neutron (pas d\'effet gaz).'
              : 'C\'était de l\'<b>eau salée</b> : résistivité basse dans la roche poreuse (l\'eau de formation conduit), pas de croisement densité-neutron. Un puits sec peut avoir un réservoir parfaitement poreux.' };
@@ -7881,11 +7909,22 @@ function _doStartGame(){
     }
   }
 
+  // Téléphone : la colonne de titres reste collée en haut du log, et le log défile de lui-même jusqu'au repère de la question (A ou B)
+  function lgmFocus(q){
+    const pane = document.getElementById('lgmLog'); pane.scrollTop = 0;
+    if(!window.matchMedia('(max-width:720px)').matches) return;
+    const svg = pane.querySelector('.wl-svg'); if(!svg) return;
+    const cols = ['GR','Résistivité','ρb / NPHI','Sonique'].map((t,k)=>`<span style="left:${((52+k*82)/382*100).toFixed(2)}%;width:${(78/382*100).toFixed(2)}%">${t}</span>`).join('');
+    pane.insertAdjacentHTML('afterbegin', `<div class="lgm-cols" aria-hidden="true">${cols}</div>`);
+    requestAnimationFrame(()=>{ const sc = svg.getBoundingClientRect().width/382, top = svg.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
+      pane.scrollTop = Math.max(0, top + q.y*sc - pane.clientHeight/2); });
+  }
   function render(){
     if(logIdx >= rounds.length) return finish();
     const R = rounds[logIdx], q = R.qs[qIdx];
     cur = q;
     document.getElementById('lgmLog').innerHTML = R.html;
+    lgmFocus(q);
     document.getElementById('lgmQuestion').textContent = q.text;
     document.getElementById('lgmFeedback').classList.remove('show');
     const nb = document.getElementById('lgmNext'); nb.style.display = 'none';
@@ -7924,6 +7963,7 @@ function _doStartGame(){
     if(!rounds.length) return;
     logIdx = 0; qIdx = 0; score = 0; asked = 0;
     document.getElementById('logGameModal').classList.add('open');
+    document.getElementById('lgmDet').open = !window.matchMedia('(max-width:720px)').matches;
     render();
   }
   document.getElementById('logGameOpenBtn').addEventListener('click', open);
