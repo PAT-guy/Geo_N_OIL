@@ -1,5 +1,5 @@
 // Épaisseurs variables des couches (option du labo) : variation réelle, cohérence des piles, cartes inchangées hors épaisseur
-const LABO = 'file://' + require('path').resolve(__dirname, '../../labo-sismique.html');
+const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
 const { chromium } = require('playwright');
 (async()=>{ const br=await chromium.launch(); const pg=await br.newPage({viewport:{width:1400,height:900}}); const errs=[]; pg.on('pageerror',e=>errs.push(e.message)); pg.on('console',m=>{ if(m.type()==='error'&&!/height/.test(m.text())) errs.push('console: '+m.text()); });
 await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1');localStorage.setItem('geoexplorer_menu','full')}catch(e){}});

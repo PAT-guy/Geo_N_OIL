@@ -1,5 +1,5 @@
 // Trait de coupe cliquable avec flèche sur la carte ; finance dans les options de la partie
-const LABO = 'file://' + require('path').resolve(__dirname, '../../labo-sismique.html');
+const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
 const { chromium } = require('playwright');
 (async()=>{ const br=await chromium.launch(); const ctx=await br.newContext({viewport:{width:1400,height:900}}); const pg=await ctx.newPage(); const errs=[]; pg.on('pageerror',e=>errs.push(e.message)); pg.on('console',m=>{ if(m.type()==='error'&&!/height/.test(m.text())) errs.push('console: '+m.text()); });
 await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1');localStorage.setItem('geoexplorer_menu','full')}catch(e){}});
@@ -10,7 +10,7 @@ async function start(finance){
   const ligne = await pg.evaluate(()=>!!document.querySelector('#labOptModal input[onchange*="finance"]'));
   if(finance===false) await pg.evaluate(()=>labOptSet('finance', false));
   const coche = await pg.evaluate(()=>labOptDraft.finance);
-  await pg.click('#labOptGo'); await pg.waitForTimeout(500);
+  await pg.evaluate(()=>labOptPreset('complet')); await pg.click('#labOptGo'); await pg.waitForTimeout(500);
   return { ligne, coche, G: await pg.evaluate(()=>G.financeMode), financeTab: await pg.evaluate(()=>getComputedStyle(document.querySelector('[data-tab="finance"]')||document.body).display) };
 }
 out.defaut = await start();

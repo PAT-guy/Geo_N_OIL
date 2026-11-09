@@ -1,12 +1,12 @@
 // Trait de coupe : case à cocher (mémorisée), conservation en pointillé pendant une nouvelle coupe, blocs encore cliquables, sauvegarde/chargement
-const LABO = 'file://' + require('path').resolve(__dirname, '../../labo-sismique.html');
+const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
 const { chromium } = require('playwright');
 (async()=>{ const br=await chromium.launch(); const ctx=await br.newContext({viewport:{width:1400,height:900}}); const pg=await ctx.newPage(); const errs=[]; pg.on('pageerror',e=>errs.push(e.message)); pg.on('console',m=>{ if(m.type()==='error'&&!/height/.test(m.text())) errs.push('console: '+m.text()); });
 await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1');localStorage.setItem('geoexplorer_menu','full')}catch(e){}});
 const out={};
 async function start(){
   await pg.goto(LABO); await pg.waitForTimeout(300);
-  await pg.click('.menu-tab[data-tab="world"]'); await pg.click('#basinPicker button[data-val="paris"]'); await pg.fill('#geoSeed','2024'); await pg.click('#startBtn'); await pg.click('#labOptGo'); await pg.waitForTimeout(500);
+  await pg.click('.menu-tab[data-tab="world"]'); await pg.click('#basinPicker button[data-val="paris"]'); await pg.fill('#geoSeed','2024'); await pg.click('#startBtn'); await pg.evaluate(()=>labOptPreset('complet')); await pg.click('#labOptGo'); await pg.waitForTimeout(500);
   await pg.evaluate(()=>{ setSpeed(0); G.budget=30e6; performStudy(null,'gravity'); const land=blocks.filter(b=>!b.isOffshore); const rows={}; land.forEach(b=>(rows[b.y]=rows[b.y]||[]).push(b)); const r=Object.values(rows).sort((a,z)=>z.length-a.length)[0].sort((a,z)=>a.x-z.x); window.__row=r.map(b=>b.id); });
 }
 const trait = ()=>pg.evaluate(()=>{ const s=document.getElementById('secLineSvg'); if(!s) return null; const v=s.querySelectorAll('line')[1]; return { fantome: !!v.getAttribute('stroke-dasharray'), cliquable: getComputedStyle(s.querySelector('.hit')).pointerEvents }; });
