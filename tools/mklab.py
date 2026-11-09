@@ -179,8 +179,8 @@ rep("""  <clipPath id="sectionPlotClip"><rect x="${MARG.l}" y="${MARG.t}" width=
     if(url) svg += `<image href="${url}" clip-path="url(#labClipU)" x="${xOf(0).toFixed(1)}" y="${MARG.t}" width="${(xOf(1)-xOf(0)).toFixed(1)}" height="${PH}" preserveAspectRatio="none"/>`;
   }""")
 # 3) polygones de lithologie : seulement dans les zones dévoilées
-rep("""        svg += `<path d="${dPoly}" fill="${col}" fill-opacity="${opacity.toFixed(2)}" stroke="var(--sec-ink-edge)" stroke-width=".4" stroke-linejoin="round" class="sec-layer-poly" data-layer-name="${(refLayer.name||'').replace(/"/g,'&quot;')}" style="cursor:pointer;"/>`;
-        svg += figOverlay(refLayer, dPoly, 0.5 + avgConf*0.45);""", """        const polyStr = `<path d="${dPoly}" fill="${col}" fill-opacity="${opacity.toFixed(2)}" stroke="var(--sec-ink-edge)" stroke-width=".4" stroke-linejoin="round" class="sec-layer-poly" data-layer-name="${(refLayer.name||'').replace(/"/g,'&quot;')}" style="cursor:pointer;"/>` + figOverlay(refLayer, dPoly, 0.5 + avgConf*0.45);
+rep("""        svg += `<path d="${dPoly}" fill="${col}" fill-opacity="${opacity.toFixed(2)}" stroke="var(--sec-ink-edge)" stroke-width=".4" stroke-linejoin="round" data-li="${li}" data-prof='${JSON.stringify(group.filter(({bd})=>bd.layers[li]).map(({bd})=>[+bd.t.toFixed(4), Math.round(bd.layers[li].top), Math.round(bd.layers[li].top+bd.layers[li].thickness)]))}' class="sec-layer-poly" data-layer-name="${(refLayer.name||'').replace(/"/g,'&quot;')}" style="cursor:pointer;"/>`;
+        svg += figOverlay(refLayer, dPoly, 0.5 + avgConf*0.45);""", """        const polyStr = `<path d="${dPoly}" fill="${col}" fill-opacity="${opacity.toFixed(2)}" stroke="var(--sec-ink-edge)" stroke-width=".4" stroke-linejoin="round" data-li="${li}" data-prof='${JSON.stringify(group.filter(({bd})=>bd.layers[li]).map(({bd})=>[+bd.t.toFixed(4), Math.round(bd.layers[li].top), Math.round(bd.layers[li].top+bd.layers[li].thickness)]))}' class="sec-layer-poly" data-layer-name="${(refLayer.name||'').replace(/"/g,'&quot;')}" style="cursor:pointer;"/>` + figOverlay(refLayer, dPoly, 0.5 + avgConf*0.45);
         if(LAB_ON){ [0,1,2,3].forEach(k=>{ svg += `<g clip-path="url(#labClip${k})" opacity="${[1,.82,.62,.46][k]}">${polyStr}</g>`; }); }
         else svg += polyStr;""")
 # 4) horizons : traits uniformes en mode labo (ne désignent pas le réservoir)
@@ -707,6 +707,23 @@ rep("return labCalOk(b) ? `Puits (${b.x}, ${b.y}) : <b>calé</b> ✓ `", "return
 rep("Calé, il étend sa lithologie aux blocs voisins du profil (jusqu'aux failles et aux limites de province).", "Calé, il étend sa lithologie aux blocs voisins du profil (jusqu'aux failles et aux limites de province). Une carotte (onglet Études, après un forage ou un sondage) cale le puits d'office et double la portée de sa lithologie.")
 rep("` Le bloc reste forable.`;", "` Le bloc reste forable. Onglet Études : carotte (cale le puits et double la portée de sa lithologie sur la coupe) et Rock-Eval (géochimie de la roche-mère).`;")
 rep("Aucune production possible, aucune information sur les hydrocarbures. Le bloc reste forable ensuite.", "Aucune production possible, aucune information sur les hydrocarbures. Carotte et Rock-Eval possibles ensuite. Le bloc reste forable.")
+
+
+# ====================== Cible désignée : toute la couche est surlignée (toit, mur, biseaux), pas seulement le toit ======================
+rep("  if(!LAB.truth && G.labPick!=null){\n    const pts = [];", """  if(!LAB.truth && G.labPick!=null){
+    // bande entière de la couche visée : toit et mur, avec amincissement jusqu'à la pointe aux biseaux ; une couche qui disparaît coupe la bande
+    { const runs = []; let cur = [];
+      const flushRun = (endIdx)=>{ if(cur.length){ const first = cur[0].idx, last = cur[cur.length-1].idx;
+          const pts = cur.map(c=>({x:xOf(dispData[c.idx].t), yt:yOf(c.l.top), yb:yOf(Math.min(c.l.top + c.l.thickness, dMax))}));
+          const tip = (i)=>{ const nb = dispData[i], nl = nb && nb.layers && nb.layers[G.labPick]; return nl ? { x:xOf(nb.t), yt:yOf(clamp(nl.top, dMin, dMax)), yb:yOf(clamp(nl.top, dMin, dMax)) } : null; };
+          const t0 = first>0 ? tip(first-1) : null, t1 = last<dispData.length-1 ? tip(last+1) : null;
+          if(t0) pts.unshift(t0); if(t1) pts.push(t1);
+          if(pts.length>=2) runs.push(pts); } cur = []; };
+      dispData.forEach((bd,i)=>{ const l = bd.layers && bd.layers[G.labPick]; if(l && l.thickness>=1) cur.push({idx:i, l}); else flushRun(i); });
+      flushRun(dispData.length);
+      runs.forEach(r=>{ const top = r.map(p=>({x:p.x, y:p.yt})), base = r.map(p=>({x:p.x, y:p.yb})).reverse();
+        svg += `<path d="M${top[0].x.toFixed(1)},${top[0].y.toFixed(1)}${secSmoothPath(top, faultPx)} L${base[0].x.toFixed(1)},${base[0].y.toFixed(1)}${secSmoothPath(base, faultPx)} Z" fill="var(--amber)" fill-opacity=".22" stroke="var(--amber)" stroke-width="1" pointer-events="none"/>`; }); }
+    const pts = [];""")
 
 open(dst, 'w', encoding='utf-8').write(s)
 print('ok', len(s))
