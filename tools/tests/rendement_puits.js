@@ -8,7 +8,7 @@ const res = await pg.evaluate(()=>{ document.getElementById('tutorialModal').sty
  for(let seed=1;seed<=30;seed++){ Math.random=mulberry(seed*101*7919+13); LABOPT=labNormOpt({...LAB_PRESETS.decouverte.o}); menuConfig.seed=seed*101; menuConfig.mode='junior'; menuConfig.basinType='random'; menuConfig.gridSize=12; menuConfig.offshore=true; menuConfig.financeMode=false; _doStartGame(); setSpeed(0);
    blocks.forEach(b=>{ const res=b.horizons.find(l=>l.role==='reservoir'); if(!res||res.thicknessLocal<3||b.inSalt) return;
      const q=b.trueQuality, th=res.thicknessLocal; const p0=(q/100)*th*PROD_BASE*prodSite(b); // barils/mois (ou Mcf)
-     const depth=b.topOfReservoir; const cost=depth*EQUIPMENT.standard.costM*(b.isOffshore?OFFSHORE_COST_MULT:1);
+     const depth=b.topOfReservoir; const cost=depth*EQUIPMENT.standard.costM*siteCost(b);
      let cumB=0, V=0, months=0; const fixed=b.isOffshore?OFFSHORE_OPEX:8000, varOp=(b.isOffshore?14:4)+6; const price=70;
      for(let m=0;m<400;m++){ const p=p0*declineFactor(m); const net=p*price-fixed-p*varOp; if(net<=0||p<5) break; cumB+=p; V+=net; months=m+1; }
      rows.push({p0, bbld:p0/30.4, cumB, V, cost, months, off:b.isOffshore, p:b.trueProbability, depth}); }); }
