@@ -630,5 +630,39 @@ rep("    month:0, speed:1, paused:false, labPick:null, labCal:{}, labOpt:{ ...LA
 rep("  // Surface\n  const ySurf = yOf(0);", "  if(LAB_ON && LABOPT.real){ const twt = labTwtFn(dispData); const tTop = twt(dMin), tBot = twt(dMax); svg += `<text x=\"${MARG.l+PW+4}\" y=\"${MARG.t-8}\" font-size=\"7\" fill=\"var(--muted)\">ms</text>`;\n    for(let ms = Math.ceil(tTop/200)*200; ms < tBot; ms += 200){ let lo = dMin, hi = dMax; for(let it=0; it<24; it++){ const mid = (lo+hi)/2; if(twt(mid) < ms) lo = mid; else hi = mid; } const y = yOf((lo+hi)/2); if(y<MARG.t || y>MARG.t+PH) continue; svg += `<line x1=\"${MARG.l+PW}\" y1=\"${y.toFixed(1)}\" x2=\"${MARG.l+PW+3}\" y2=\"${y.toFixed(1)}\" stroke=\"var(--line)\"/><text x=\"${MARG.l+PW+5}\" y=\"${(y+3).toFixed(1)}\" font-size=\"7\" fill=\"var(--muted)\">${ms}</text>`; } }\n  // Surface\n  const ySurf = yOf(0);")
 rep("<b>LABO sismique, phase 3</b>", "<b>LABO sismique, phase 4</b>")
 
+
+# ====================== PHASE 5 : trait de coupe cliquable sur la carte + finance dans les options ======================
+PHASE6_JS = r"""
+// ---------- Trait de coupe cliquable sur la carte (flèche A vers B) ----------
+function labDrawSecLine(){
+  const grid = document.getElementById('grid'); if(!grid) return;
+  let svg = document.getElementById('secLineSvg');
+  if(G.sectionA==null || G.sectionB==null || grid.offsetParent===null){ if(svg) svg.remove(); return; }
+  const ea = grid.querySelector(`.block[data-id="${G.sectionA}"]`), eb = grid.querySelector(`.block[data-id="${G.sectionB}"]`);
+  if(!ea || !eb){ if(svg) svg.remove(); return; }
+  const NS = 'http://www.w3.org/2000/svg';
+  if(!svg){ svg = document.createElementNS(NS, 'svg'); svg.id = 'secLineSvg'; }
+  if(svg.parentNode !== grid) grid.appendChild(svg);
+  svg.setAttribute('width', grid.scrollWidth); svg.setAttribute('height', grid.scrollHeight);
+  const c = e => ({ x: e.offsetLeft + e.offsetWidth/2, y: e.offsetTop + e.offsetHeight/2 });
+  const A = c(ea), B = c(eb), dx = B.x-A.x, dy = B.y-A.y, len = Math.hypot(dx, dy) || 1, u = { x:dx/len, y:dy/len };
+  const off = Math.min(len*0.4, ea.offsetWidth*0.34);
+  const x1 = A.x + u.x*off, y1 = A.y + u.y*off, x2 = B.x - u.x*off, y2 = B.y - u.y*off;
+  const a = blocks[G.sectionA], b = blocks[G.sectionB];
+  svg.innerHTML = `<defs><marker id="secArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--amber)"/></marker></defs>
+    <line class="hit" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="transparent" stroke-width="18" stroke-linecap="round"><title>Coupe A (${a.x}, ${a.y}) vers B (${b.x}, ${b.y}) : cliquer pour revoir la coupe</title></line>
+    <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--amber)" stroke-width="3" stroke-linecap="round" marker-end="url(#secArrow)" opacity=".92" pointer-events="none"/>`;
+  svg.querySelector('.hit').addEventListener('click', ev=>{ ev.stopPropagation(); labGoSection(); renderSection(); });
+}
+"""
+rep("function rerenderAllBlocks(){\n  applyGridTemplate();\n  blocks.forEach(renderBlock);\n  if(typeof renderGuide==='function') renderGuide();\n}", PHASE6_JS + "\nfunction rerenderAllBlocks(){\n  applyGridTemplate();\n  blocks.forEach(renderBlock);\n  labDrawSecLine();\n  if(typeof renderGuide==='function') renderGuide();\n}")
+rep("  if(name!=='map') switchTab(name);\n  renderMobileSheet();", "  if(name!=='map') switchTab(name);\n  renderMobileSheet();\n  if(name==='map') labDrawSecLine();")
+rep(".grid{display:grid; gap:2px; width:fit-content;}", ".grid{display:grid; gap:2px; width:fit-content; position:relative;}\n#secLineSvg{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;z-index:6;}\n#secLineSvg .hit{pointer-events:stroke;cursor:pointer;}")
+# finance dans les options de la partie
+rep("const LAB_DEFAULT_OPT = { mute:true,", "const LAB_DEFAULT_OPT = { finance:true, mute:true,")
+rep("  labOptMode = mode; labOptDraft = { ...LABOPT, locked:false };", "  labOptMode = mode; labOptDraft = { ...LABOPT, locked:false, finance: mode==='start' ? !!menuConfig.financeMode : !!G.financeMode };")
+rep("    ${row('mute', 'Sismique muette',", "    ${row('finance', 'Mode finance', 'Emprunts, stockage du pétrole, couverture du prix (hedging), récupération assistée, accidents. ' + (labOptMode==='start' ? 'Désactivé : partie centrée sur la géologie et le budget.' : 'Choisi au lancement : non modifiable en cours de partie.'), labOptMode!=='start')}\n    ${row('mute', 'Sismique muette',")
+rep("  LABOPT = labNormOpt(labOptDraft);\n", "  LABOPT = labNormOpt(labOptDraft);\n  if(labOptMode==='start') menuConfig.financeMode = !!LABOPT.finance; else LABOPT.finance = !!G.financeMode;\n")
+
 open(dst, 'w', encoding='utf-8').write(s)
 print('ok', len(s))

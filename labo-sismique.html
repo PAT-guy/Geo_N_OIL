@@ -108,7 +108,9 @@ main{flex:1; display:grid; grid-template-columns:1fr var(--right-w, 380px); over
 .map-toolbar{display:flex; gap:12px; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; flex-shrink:0; background:var(--panel2);}
 .map-toolbar > span{font-size:12.5px; color:var(--muted);}
 #mapWrap{flex:1; min-height:0; overflow:auto; position:relative; padding:14px 14px 14px 18px;}
-.grid{display:grid; gap:2px; width:fit-content;}
+.grid{display:grid; gap:2px; width:fit-content; position:relative;}
+#secLineSvg{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;z-index:6;}
+#secLineSvg .hit{pointer-events:stroke;cursor:pointer;}
 .axl{font-family:var(--mono); font-size:10px; color:var(--muted); display:flex; align-items:center; justify-content:center;}
 .block{
   width:44px; height:44px; border:1px solid var(--line-strong); cursor:pointer;
@@ -3546,9 +3548,33 @@ function structColor(t, est, offshore, inSalt){
   return dark ? `hsl(${hue},45%,${20+p*12}%)` : `hsl(${hue},50%,${82-p*16}%)`;
 }
 
+
+// ---------- Trait de coupe cliquable sur la carte (flèche A vers B) ----------
+function labDrawSecLine(){
+  const grid = document.getElementById('grid'); if(!grid) return;
+  let svg = document.getElementById('secLineSvg');
+  if(G.sectionA==null || G.sectionB==null || grid.offsetParent===null){ if(svg) svg.remove(); return; }
+  const ea = grid.querySelector(`.block[data-id="${G.sectionA}"]`), eb = grid.querySelector(`.block[data-id="${G.sectionB}"]`);
+  if(!ea || !eb){ if(svg) svg.remove(); return; }
+  const NS = 'http://www.w3.org/2000/svg';
+  if(!svg){ svg = document.createElementNS(NS, 'svg'); svg.id = 'secLineSvg'; }
+  if(svg.parentNode !== grid) grid.appendChild(svg);
+  svg.setAttribute('width', grid.scrollWidth); svg.setAttribute('height', grid.scrollHeight);
+  const c = e => ({ x: e.offsetLeft + e.offsetWidth/2, y: e.offsetTop + e.offsetHeight/2 });
+  const A = c(ea), B = c(eb), dx = B.x-A.x, dy = B.y-A.y, len = Math.hypot(dx, dy) || 1, u = { x:dx/len, y:dy/len };
+  const off = Math.min(len*0.4, ea.offsetWidth*0.34);
+  const x1 = A.x + u.x*off, y1 = A.y + u.y*off, x2 = B.x - u.x*off, y2 = B.y - u.y*off;
+  const a = blocks[G.sectionA], b = blocks[G.sectionB];
+  svg.innerHTML = `<defs><marker id="secArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--amber)"/></marker></defs>
+    <line class="hit" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="transparent" stroke-width="18" stroke-linecap="round"><title>Coupe A (${a.x}, ${a.y}) vers B (${b.x}, ${b.y}) : cliquer pour revoir la coupe</title></line>
+    <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--amber)" stroke-width="3" stroke-linecap="round" marker-end="url(#secArrow)" opacity=".92" pointer-events="none"/>`;
+  svg.querySelector('.hit').addEventListener('click', ev=>{ ev.stopPropagation(); labGoSection(); renderSection(); });
+}
+
 function rerenderAllBlocks(){
   applyGridTemplate();
   blocks.forEach(renderBlock);
+  labDrawSecLine();
   if(typeof renderGuide==='function') renderGuide();
 }
 
@@ -4481,7 +4507,7 @@ function secSmoothPath(pts, faultPx){
 // =====================================================================
 
 // ---------- OPTIONS DU LABO (écran avant la partie, verrouillables) + SONDAGE STRATIGRAPHIQUE ----------
-const LAB_DEFAULT_OPT = { mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true, locked:false };
+const LAB_DEFAULT_OPT = { finance:true, mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true, locked:false };
 const LAB_PRESETS = {
   decouverte: { label:'Découverte', d:'Coupe lisible comme dans le jeu principal, aucune contrainte.', o:{ mute:false, pick:false, cal:false, strati:true, dhi:false, real:false, cheat:true } },
   inter:      { label:'Intermédiaire', d:'Sismique muette et cible à désigner, calage non exigé.', o:{ mute:true, pick:true, cal:false, strati:true, dhi:false, real:false, cheat:true } },
@@ -4499,7 +4525,7 @@ function labApplyOpt(){
 }
 let labOptDraft = null, labOptMode = 'start';
 function labOptOpen(mode){
-  labOptMode = mode; labOptDraft = { ...LABOPT, locked:false };
+  labOptMode = mode; labOptDraft = { ...LABOPT, locked:false, finance: mode==='start' ? !!menuConfig.financeMode : !!G.financeMode };
   let el = document.getElementById('labOptModal');
   if(!el){ el = document.createElement('div'); el.id = 'labOptModal'; document.body.appendChild(el); }
   el.classList.add('open'); labOptRender();
@@ -4513,6 +4539,7 @@ function labOptRender(){
   el.innerHTML = `<div class="lab-cal-box"><b style="font-size:15px;">Options de la partie</b>
     <div class="lab-note" style="margin-top:2px;">Réglez les règles du labo avant de commencer. Vous pouvez les verrouiller pour toute la partie.</div>
     <div class="lab-chips">${Object.entries(LAB_PRESETS).map(([k,p])=>`<button class="lab-pick" title="${p.d}" onclick="labOptPreset('${k}')">${p.label}</button>`).join('')}</div>
+    ${row('finance', 'Mode finance', 'Emprunts, stockage du pétrole, couverture du prix (hedging), récupération assistée, accidents. ' + (labOptMode==='start' ? 'Désactivé : partie centrée sur la géologie et le budget.' : 'Choisi au lancement : non modifiable en cours de partie.'), labOptMode!=='start')}
     ${row('mute', 'Sismique muette', 'La sismique ne montre que des contrastes (bleu : l\'impédance augmente, rouge : elle diminue), jamais les roches. La lithologie n\'apparaît sur la coupe qu\'après un forage et un log. Désactivée : la coupe affiche les lithologies comme dans le jeu principal.')}
     ${row('pick', 'Désigner la cible soi-même', 'Le jeu ne dit pas quel horizon est le réservoir. Il faut le viser sur la coupe avant de forer : un mauvais choix donne un puits sec, un bon choix rapporte un bonus.')}
     ${row('cal', 'Calage puits-sismique obligatoire', 'Un puits ne propage sa lithologie le long du profil qu\'une fois calé (mini-jeu vitesse moyenne). Sans calage, il ne dévoile que sa propre colonne. Demande la sismique muette.', !o.mute)}
@@ -4526,6 +4553,7 @@ function labOptRender(){
 function labOptCancel(){ labOptClose(); }
 function labOptValidate(){
   LABOPT = labNormOpt(labOptDraft);
+  if(labOptMode==='start') menuConfig.financeMode = !!LABOPT.finance; else LABOPT.finance = !!G.financeMode;
   try { localStorage.setItem('geoexplorer_labopt', JSON.stringify({ ...LABOPT, locked:false })); } catch(e){}
   labOptClose();
   if(labOptMode==='start'){ labOptLaunch(); return; }
@@ -5994,6 +6022,7 @@ function showMobileScreen(name){
   document.querySelectorAll('#mobileScreenBar button').forEach(b=>b.classList.toggle('active', b.dataset.screen===name));
   if(name!=='map') switchTab(name);
   renderMobileSheet();
+  if(name==='map') labDrawSecLine();
 }
 document.querySelectorAll('#mobileScreenBar button[data-screen]').forEach(btn=>{
   btn.addEventListener('click', ()=>showMobileScreen(btn.dataset.screen));
