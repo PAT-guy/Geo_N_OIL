@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.36</title>
+<title>GeoExplorer V4.37</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -1136,7 +1136,7 @@ body.mobile-layout #priceSparkline{display:none;}
       <div id="sectionTools" style="display:none;text-align:right;padding:6px 8px;"><button class="study-btn study-btn-compact" onclick="openBigView('section')">⤢ <span class="i18n" data-fr="Agrandir la coupe" data-en="Enlarge section">Agrandir la coupe</span></button> <button class="study-btn study-btn-compact" onclick="openLithoLib()">📚 <span class="i18n" data-fr="Lithologies" data-en="Lithologies">Lithologies</span></button> <button class="study-btn study-btn-compact" id="labTruthBtn" onclick="LAB.truth=!LAB.truth; this.textContent = LAB.truth ? '🙈 Cacher la vérité' : '👁 Voir la vérité (triche)'; renderSection();">👁 Voir la vérité (triche)</button> <button class="study-btn study-btn-compact" id="labOptBtn" onclick="labOptOpen('game')">⚙ Options</button></div>
       <svg id="sectionSvg" style="display:none;"></svg>
       <div class="section-legend" id="sectionLegend" style="display:none;"></div>
-      <div id="sectionInterpret" style="display:none; padding:8px; background:rgba(13,17,23,0.6); border-top:1px solid var(--line); font-size:11px; line-height:1.6;"></div>
+      <div id="sectionInterpret" style="display:none; padding:10px 12px 12px; background:var(--panel); border-top:1px solid var(--line); font-size:12px; line-height:1.6; color:var(--text);"></div>
     </div>
 
     <!-- ÉTUDES -->
@@ -4708,11 +4708,24 @@ function labReprocess(){
 function labProcHtml(){
   if(!LABOPT.real) return '';
   const q = labProcQ();
-  return `<div class="lab-note"><b>Traitement de cette sismique : ${labProcLabel(q)}.</b> ` + (q<0.95 ? `Une mauvaise qualité donne moins de résolution et plus de bruit, surtout en profondeur. <button class="lab-pick" onclick="labReprocess()">Retraiter · ${G.mode==='sandbox'?'gratuit':formatM(LAB_PROC_COST)}</button>` : `Résolution et bruit au meilleur niveau possible.`) + `</div>`;
+  return `<span class="lab-chip">Traitement : <b>${labProcLabel(q)}</b></span>` + (q<0.95 ? `<button class="lab-pick" onclick="labReprocess()">Retraiter · ${G.mode==='sandbox'?'gratuit':formatM(LAB_PROC_COST)}</button>` : '');
 }
-function labRealNote(){
-  if(!LABOPT.real && !LABOPT.dhi) return '';
-  return `<div class="lab-note"><b>Lire l'image.</b> ` + (LABOPT.real ? `Plus on descend, plus l'image est bruitée et faible. Un <b>multiple</b> est un faux réflecteur : il reproduit un contraste fort et proche de la surface au double de sa profondeur, avec la polarité inversée. Avant de pointer un horizon profond, vérifiez qu'il n'est pas le multiple d'un horizon superficiel. L'axe de droite donne le temps double en millisecondes. ` : '') + (LABOPT.dhi ? `Une <b>tache brillante</b> (amplitude anormalement forte sur un horizon, surtout là où une sismique 3D a été faite) peut signaler du gaz ou de l'huile. Elle peut aussi venir de charbon, d'un calcaire serré ou d'un faux signal : la sismique 3D ne donne plus qu'une classe d'anomalie, à croiser avec le reste.` : '') + `</div>`;
+// Aide repliable : les explications longues ne mangent plus la place du tableau
+function labHelpHtml(){
+  const parts = [];
+  parts.push(`<div class="lab-note"><b>Lire ce tableau.</b> Vitesse lente (moins de 3 000 m/s) : roches peu compactées, argiles, charbon. Vitesse très rapide (plus de 5 200) : anhydrite, dolomie, calcaire compact. Le sel est un cas à part : vitesse élevée (autour de 4 500) mais densité très basse, donc contraste d'impédance faible. <b>Contraste (+)</b> : le matériau sous l'interface est plus « dur » acoustiquement (impédance plus haute) ; <b>(−)</b> : plus mou. Ce n'est ni une densité, ni une lithologie : une même roche peut donner (+) ou (−) selon celle qui la recouvre.</div>`);
+  if(LABOPT.real || LABOPT.dhi) parts.push(`<div class="lab-note"><b>Lire l'image.</b> ` + (LABOPT.real ? `Plus on descend, plus l'image est bruitée et faible. Un <b>multiple</b> est un faux réflecteur : il reproduit un contraste fort et proche de la surface au double de sa profondeur, avec la polarité inversée. Avant de pointer un horizon profond, vérifiez qu'il n'est pas le multiple d'un horizon superficiel. L'axe de droite donne le temps double en millisecondes. ` : '') + (LABOPT.dhi ? `Une <b>tache brillante</b> (amplitude anormalement forte sur un horizon, surtout là où une sismique 3D a été faite) peut signaler du gaz ou de l'huile. Elle peut aussi venir de charbon, d'un calcaire serré ou d'un faux signal : la sismique 3D ne donne plus qu'une classe d'anomalie, à croiser avec le reste.` : '') + `</div>`);
+  parts.push(`<div class="lab-note"><b>Quel horizon est le réservoir ?</b> La sismique ne le dit pas : repérez les plis, les failles et les contrastes, croisez avec la vitesse (un réservoir de grès ou de calcaire est plus « dur » que l'argile qui le scelle, donc plutôt un contraste (+) à son toit).</div>`);
+  if(LABOPT.cal) parts.push(`<div class="lab-note"><b>Calage.</b> Un puits non calé ne dévoile que sa propre colonne. Calé, il étend sa lithologie aux blocs voisins du profil (jusqu'aux failles et aux limites de province). Une carotte (onglet Études, après un forage ou un sondage) cale le puits d'office et double la portée de sa lithologie.</div>`);
+  if(LABOPT.real) parts.push(`<div class="lab-note"><b>Traitement.</b> Une mauvaise qualité de traitement donne moins de résolution et plus de bruit, surtout en profondeur. Le retraitement la porte au meilleur niveau.</div>`);
+  return `<details class="lab-help"><summary>Comment lire cette sismique</summary>${parts.join('')}</details>`;
+}
+// Rappel d'une ligne sur la cible
+function labTipHtml(){
+  if(!LABOPT.pick) return '';
+  return G.labPick==null
+    ? `<div class="lab-tip">🎯 <b>Désignez votre cible</b> : cliquez sur la sismique ou sur « viser » dans le tableau. Forer le mauvais horizon donne un puits sec ; un bon choix rapporte ${formatM(LAB_PICK_BONUS)}.</div>`
+    : `<div class="lab-tip">🎯 <b>Cible : H${G.labPick+1}</b>. Les forages la visent. Cliquez sur une autre ligne pour changer, ou sur « cible » pour la retirer.</div>`;
 }
 // temps double moyen en millisecondes en fonction de la profondeur (modèle de vitesse moyen du profil)
 function labTwtFn(dispData){
@@ -4855,11 +4868,9 @@ function labHorizonTable(dispData, lv){
   const rc = r => { const a = Math.abs(r); return (a>0.15?'fort':a>0.06?'moyen':'faible') + (r>=0?' (+)':' (−)'); };
   const vc = v => v<3000 ? 'lent' : v<4200 ? 'moyen' : v<5200 ? 'rapide' : 'très rapide';
   const fr = x => Math.round(x).toLocaleString('fr-FR');
-  return `<div style="overflow-x:auto;"><table class="lab-tab"><thead><tr><th>Horizon</th><th>Prof. toit</th><th>Épaisseur</th><th>Vitesse d'intervalle (±8 %)</th><th>Contraste au toit</th><th>Lithologie</th><th>Cible</th></tr></thead><tbody>${rows.map(r=>
-    `<tr><td><b>H${r.li+1}</b></td><td>${fr(r.top)} m</td><td>${fr(r.th)} m</td><td>${fr(r.v)} m/s <span class="lab-mut">(${vc(r.v)})</span></td><td>${r.li===0?'—':rc(r.R)}</td><td>${r.name?`<b>${r.name}</b>`:'<span class="lab-mut">?</span>'}</td><td><button class="lab-pick ${G.labPick===r.li?'sel':''}" onclick="labSetPick(${r.li})">${G.labPick===r.li?'🎯 cible':'viser'}</button></td></tr>`).join('')}</tbody></table></div>
-    <div class="lab-note"><b>Lire ce tableau.</b> Vitesse lente (moins de 3 000 m/s) : roches peu compactées, argiles, charbon. Vitesse très rapide (plus de 5 200) : anhydrite, dolomie, calcaire compact. Le sel est un cas à part : vitesse élevée (autour de 4 500) mais densité très basse, donc contraste d'impédance faible. <b>Contraste (+)</b> : le matériau sous l'interface est plus « dur » acoustiquement (impédance plus haute) ; <b>(−)</b> : plus mou. Ce n'est ni une densité, ni une lithologie : une même roche peut donner (+) ou (−) selon celle qui la recouvre.</div>`;
+  return `<div style="overflow-x:auto;"><table class="lab-tab"><thead><tr><th>Horizon</th><th>Prof. toit</th><th>Épaisseur</th><th>Vitesse (±8 %)</th><th>Contraste au toit</th><th>Lithologie</th><th>Cible</th></tr></thead><tbody>${rows.map(r=>
+    `<tr class="${G.labPick===r.li?'lab-sel':''}"><td><b>H${r.li+1}</b></td><td>${fr(r.top)} m</td><td>${fr(r.th)} m</td><td>${fr(r.v)} m/s <span class="lab-mut">(${vc(r.v)})</span></td><td>${r.li===0?'—':rc(r.R)}</td><td>${r.name?`<b>${r.name}</b>`:'<span class="lab-mut">?</span>'}</td><td><button class="lab-pick ${G.labPick===r.li?'sel':''}" onclick="labSetPick(${r.li})">${G.labPick===r.li?'🎯 cible':'viser'}</button></td></tr>`).join('')}</tbody></table></div>`;
 }
-
 
 // ---------- PHASE 2 : désigner l'horizon cible ----------
 // Le jeu ne dit plus quel horizon est le réservoir. Le joueur vise un horizon (clic sur la sismique ou bouton du
@@ -4974,8 +4985,10 @@ function labCalValidate(){
 function labWellList(dispData, lv){
   if(!LABOPT.cal) return '';
   const ws = dispData.map((d,i)=>({d,i})).filter(o=>o.d.b && labDrilled(o.d.b));
-  if(!ws.length) return `<div class="lab-note"><b>Calage.</b> Aucun puits sur ce profil. Un puits foré puis calé permet d'étendre la lithologie le long de la coupe.</div>`;
-  return `<div class="lab-note"><b>Calage puits-sismique.</b> ` + ws.map(o=>{ const b = o.d.b; return labCalOk(b) ? `Puits (${b.x}, ${b.y}) : <b>calé</b>${labCored(b) ? ' par la carotte' : ''} ✓ ` : `Puits (${b.x}, ${b.y}) : <button class="lab-pick" onclick="labOpenCal(${b.id})">caler</button> `; }).join(' · ') + `<br>Un puits non calé ne dévoile que sa propre colonne. Calé, il étend sa lithologie aux blocs voisins du profil (jusqu'aux failles et aux limites de province). Une carotte (onglet Études, après un forage ou un sondage) cale le puits d'office et double la portée de sa lithologie.</div>`;
+  if(!ws.length) return `<span class="lab-chip">Calage : aucun puits sur ce profil</span>`;
+  return ws.map(o=>{ const b = o.d.b; return labCalOk(b)
+    ? `<span class="lab-chip">Puits (${b.x}, ${b.y}) : <b>calé</b>${labCored(b) ? ' par la carotte' : ''} ✓</span>`
+    : `<span class="lab-chip">Puits (${b.x}, ${b.y}) : non calé</span><button class="lab-pick" onclick="labOpenCal(${b.id})">Caler</button>`; }).join('');
 }
 
 function renderSection(){
@@ -5554,7 +5567,7 @@ function renderSection(){
   // Analyse le profil des données estimées pour identifier la géométrie
   if(LAB_ON || (!LAB.truth && (LABOPT.pick || LABOPT.cal))){
     const ip = document.getElementById('sectionInterpret');
-    if(ip){ ip.style.display = 'block'; ip.innerHTML = `<b style="color:var(--amber);">Traitement et interprétation</b>` + labHorizonTable(dispData, labLv) + `${labWellList(dispData, labLv)}${labProcHtml()}${labRealNote()}<div class="lab-note"><b>Quel horizon est le réservoir ?</b> La sismique ne le dit pas : repérez les plis, les failles et les contrastes, croisez avec la vitesse (un réservoir de grès ou de calcaire est plus « dur » que l'argile qui le scelle, donc plutôt un contraste (+) à son toit), puis <b>désignez votre cible</b> par un clic sur la sismique ou le bouton « viser ». Forer le mauvais horizon donne un puits sec, mais le log vous apprend où était le réservoir ; un bon choix rapporte ${formatM(LAB_PICK_BONUS)}.</div>`; }
+    if(ip){ ip.style.display = 'block'; ip.innerHTML = `<div class="lab-ihead">Traitement et interprétation</div>` + labHorizonTable(dispData, labLv) + `<div class="lab-status">${labProcHtml()}${labWellList(dispData, labLv)}</div>${labTipHtml()}${labHelpHtml()}`; }
   } else interpretSection(blockData, profileBlocks);
 
   // ── Légende ── énumère les lithologies RÉELLEMENT présentes sur ce profil,
@@ -7874,7 +7887,22 @@ function _doStartGame(){
 .lab-cal-box{background:var(--panel);color:var(--text);border-radius:10px;padding:14px;max-width:560px;width:100%;max-height:96vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.4);}
 .lab-pick{padding:3px 9px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:999px;font-size:11px;cursor:pointer;font-family:var(--sans);}
 .lab-pick.sel{background:var(--amber);color:#fff;border-color:var(--amber);font-weight:600;}
-.lab-note{font-size:11px;line-height:1.55;color:var(--muted);margin-top:6px;}
+.lab-note{font-size:12px;line-height:1.6;color:var(--text);opacity:.88;margin-top:8px;}
+.lab-ihead{font-weight:700;color:var(--amber);font-size:13.5px;margin-bottom:6px;}
+.lab-tab{font-size:12.5px;margin:4px 0 6px;}
+.lab-tab th{text-transform:uppercase;letter-spacing:.04em;font-size:10px;font-weight:600;padding:6px 10px;}
+.lab-tab td{padding:8px 10px;}
+.lab-tab tbody tr:nth-child(even) td{background:rgba(0,0,0,.03);}
+.lab-tab tbody tr.lab-sel td{background:rgba(176,96,18,.14);}
+.lab-tab td:first-child{font-weight:700;}
+.lab-tab th, .lab-tab td{white-space:normal;}
+.lab-tab td:nth-child(-n+3), .lab-tab th:nth-child(-n+3){white-space:nowrap;}
+.lab-tab td .lab-mut{white-space:nowrap;}
+.lab-status{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 6px;}
+.lab-chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--text);}
+.lab-tip{background:rgba(176,96,18,.09);border:1px solid rgba(176,96,18,.35);border-radius:8px;padding:9px 12px;margin:8px 0;font-size:12.5px;line-height:1.55;}
+.lab-help{margin-top:8px;border-top:1px solid var(--line);padding-top:6px;}
+.lab-help summary{cursor:pointer;font-weight:600;color:var(--amber);padding:5px 0;}
 </style>
 </body>
 </html>
