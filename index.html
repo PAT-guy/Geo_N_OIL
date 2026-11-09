@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.41</title>
+<title>GeoExplorer V4.42</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3014,13 +3014,37 @@ function triggerAccident(w, type){
 // =====================================================================
 // MÉCANIQUES FINANCIÈRES
 // =====================================================================
+// Capital restant dû d'un emprunt à annuités constantes (taux mensuel de 7 %/12)
+const loanBalance = l => { const r = 0.07/12; return l.monthlyPayment * (1 - Math.pow(1+r, -l.monthsLeft)) / r; };
+const debtTotal = () => (G.loans||[]).reduce((s,l)=>s+loanBalance(l), 0);
+// Valeur nette : l'argent en caisse moins la dette. La victoire se juge là-dessus : avant, trois emprunts de 10 M$
+// suffisaient à franchir l'objectif de 40 M$ et à gagner immédiatement.
+const netWorth = () => G.budget - (G.financeMode ? debtTotal() : 0);
+// Capacité d'emprunt : une ligne non garantie (25 % du budget de départ) plus 50 % de la valeur sur trois ans du
+// flux net des puits en production, comme un crédit adossé aux réserves. Sans puits, la banque prête peu.
+function loanCapacity(){
+  const unsecured = 0.25 * (MODES[G.mode].budget || 0);
+  const secured = 0.5 * G.wells.filter(w=>w.status==='producing').reduce((s,w)=>s + Math.max(0, wellEconomics(w).net) * 36, 0);
+  return unsecured + secured;
+}
+const loanAvailable = () => Math.max(0, loanCapacity() - debtTotal());
 function takeLoan(amount){
+  if(amount > loanAvailable() + 1){
+    const m = `Capacité d'emprunt insuffisante : ${formatM(loanAvailable())} disponibles.`; addLog(m, 'bad'); if(typeof toast==='function') toast(m); return;
+  }
   const rate = 0.07;
   const months = 36;
   const monthly = amount*(rate/12)/(1-Math.pow(1+rate/12,-months));
   G.loans.push({amount, monthlyPayment:monthly, monthsLeft:months});
   G.budget += amount;
   addLog(`💳 Emprunt ${formatM(amount)} à 7%/an : remboursement ${formatM(monthly)}/mois pendant ${months} mois.`, 'ev');
+  updateHud(); renderFinancePanel();
+}
+function repayLoan(i){
+  const l = G.loans[i]; if(!l) return; const due = loanBalance(l);
+  if(G.budget < due){ const m = `Il faut ${formatM(due)} pour solder cet emprunt.`; addLog(m, 'bad'); if(typeof toast==='function') toast(m); return; }
+  G.budget -= due; G.loans.splice(i,1);
+  addLog(`💳 Emprunt soldé par anticipation : ${formatM(due)} remboursés, plus d'intérêts à payer.`, 'ev');
   updateHud(); renderFinancePanel();
 }
 
@@ -3157,14 +3181,18 @@ function renderFinancePanel(){
   html += `<div class="ps-section" style="margin-top:10px;">Emprunts</div>`;
   if(G.loans.length>0){
     G.loans.forEach((l,i)=>{
-      html += infoRow(`Emprunt ${i+1}`, `${formatM(l.monthlyPayment)}/mois × ${l.monthsLeft} mois restants`);
+      html += infoRow(`Emprunt ${i+1}`, `${formatM(l.monthlyPayment)}/mois × ${l.monthsLeft} mois · reste ${formatM(loanBalance(l))} <button class="study-btn study-btn-compact" style="margin-left:6px;" onclick="repayLoan(${i})" ${G.budget>=loanBalance(l)?'':'disabled'}>Solder</button>`);
     });
     html += infoRow('Total remboursement/mois', `<span style="color:var(--red);">${formatM(loansTotal)}</span>`);
+    html += infoRow('Dette restante', `<span style="color:var(--red);">${formatM(debtTotal())}</span>`);
   }
+  const avail = loanAvailable();
   const loanAmounts = [2e6,5e6,10e6];
-  html += `<div style="font-size:10px;color:var(--muted);margin:4px 0 6px;">7%/an, remboursement 36 mois</div>
-  <div style="display:flex;gap:4px;">
-    ${loanAmounts.map(a=>`<button class="study-btn" style="flex:1;font-size:10px;padding:6px;" onclick="takeLoan(${a})">${formatM(a)}</button>`).join('')}
+  html += infoRow('Capacité d\'emprunt', `<b>${formatM(avail)}</b> disponibles`);
+  html += `<div style="font-size:10px;color:var(--muted);margin:4px 0 6px;">7 %/an, remboursement sur 36 mois. La capacité dépend de vos puits en production (la banque prête surtout sur des revenus) et la dette restante compte contre votre valeur nette pour la victoire.</div>
+  <div style="display:flex;gap:4px;flex-wrap:wrap;">
+    ${loanAmounts.map(a=>`<button class="study-btn" style="flex:1;font-size:10px;padding:6px;" onclick="takeLoan(${a})" ${a<=avail+1?'':'disabled'}>${formatM(a)}</button>`).join('')}
+    <button class="study-btn" style="flex:1;font-size:10px;padding:6px;" onclick="takeLoan(${Math.floor(avail/1e5)*1e5})" ${avail>=5e5?'':'disabled'}>Tout : ${formatM(Math.floor(avail/1e5)*1e5)}</button>
   </div>`;
 
   // EOR sur puits actifs
@@ -3322,9 +3350,9 @@ function checkEndConditions(){
   if(m.bankruptcyEnabled && G.budget<0 && G.wells.filter(w=>w.status==='producing').length===0 && G.drilling.length===0){
     showEnd('bankrupt'); return;
   }
-  if(m.winGoal>0 && G.budget>=m.winGoal){ showEnd('win'); return; }
+  if(m.winGoal>0 && netWorth()>=m.winGoal){ showEnd('win'); return; }
   const years = G.month/12;
-  if(m.maxYears>0 && years>=m.maxYears){ showEnd('time'); }
+  if(m.maxYears>0 && years>=m.maxYears && !LABOPT.nolimit){ showEnd('time'); }
 }
 
 function showEnd(reason){
@@ -3344,6 +3372,7 @@ function showEnd(reason){
   const totalProd = G.totalRevenue!==undefined ? G.totalRevenue : G.history.reduce((a,h)=>a+(h.cf>0?h.cf:0),0);
   document.getElementById('endStats').innerHTML = `
     <div><span class="end-lbl">Budget final</span><br><strong>${formatM(G.budget)}</strong></div>
+    ${G.financeMode && debtTotal()>1000 ? `<div><span class="end-lbl">Dette restante</span><br><strong>${formatM(debtTotal())}</strong></div>` : ''}
     <div><span class="end-lbl">Budget initial</span><br><strong>${formatM(MODES[G.mode].budget)}</strong></div>
     <div><span class="end-lbl">Durée de partie</span><br><strong>${(G.month/12).toFixed(1)} ans</strong></div>
     <div><span class="end-lbl">Puits forés</span><br><strong>${G.wells.length + blocks.filter(b=>b.dryHole).length} (${G.wells.length} productifs, ${blocks.filter(b=>b.dryHole).length} secs, ${G.wells.filter(w=>w.status==='producing').length} encore actifs)</strong></div>
@@ -4692,7 +4721,7 @@ function labThickFactor(i, x, y, g, structureMap){
   const ang = h2*Math.PI*2, drift = ((x/g - .5)*Math.cos(ang) + (y/g - .5)*Math.sin(ang)) * 0.35 * (h3 - 0.25)*2;
   return clamp(1 + 0.12*Math.tanh(structureMap/400)*sens + drift, 0.6, 1.4);
 }
-const LAB_DEFAULT_OPT = { finance:true, thick:true, mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true, locked:false };
+const LAB_DEFAULT_OPT = { finance:true, thick:true, nolimit:false, mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true, locked:false };
 const LAB_PRESETS = {
   decouverte: { label:'Découverte', d:'Coupe lisible comme dans les règles d\'origine, aucune contrainte.', o:{ mute:false, pick:false, cal:false, strati:true, dhi:false, real:false, thick:false, cheat:true } },
   inter:      { label:'Intermédiaire', d:'Sismique muette et cible à désigner, calage non exigé.', o:{ mute:true, pick:true, cal:false, strati:true, dhi:false, real:false, thick:true, cheat:true } },
@@ -4730,12 +4759,13 @@ function labOptRender(){
     <div class="lab-chips">${Object.entries(LAB_PRESETS).map(([k,p])=>`<button class="lab-pick" title="${p.d}" onclick="labOptPreset('${k}')">${p.label}</button>`).join('')}</div>
     ${row('finance', 'Mode finance', 'Emprunts, stockage du pétrole, couverture du prix (hedging), récupération assistée, accidents. ' + (labOptMode==='start' ? 'Désactivé : partie centrée sur la géologie et le budget.' : 'Choisi au lancement : non modifiable en cours de partie.'), labOptMode!=='start')}
     ${row('mute', 'Sismique muette', 'La sismique ne montre que des contrastes (bleu : l\'impédance augmente, rouge : elle diminue), jamais les roches. La lithologie n\'apparaît sur la coupe qu\'après un forage et un log. Désactivée : la coupe affiche les lithologies comme dans les règles d\'origine.')}
-    ${row('pick', 'Désigner la cible soi-même', 'Le jeu ne dit pas quel horizon est le réservoir. Il faut le viser sur la coupe avant de forer : un mauvais choix donne un puits sec, un bon choix rapporte un bonus.')}
+    ${row('pick', 'Désigner la cible soi-même', 'Le jeu ne dit pas quel horizon est le réservoir. Il faut le viser sur la coupe avant de forer : un mauvais choix donne un puits sec, un bon choix rapporte un bonus (une fois par province).')}
     ${row('cal', 'Calage puits-sismique obligatoire', 'Un puits ne propage sa lithologie le long du profil qu\'une fois calé (mini-jeu vitesse moyenne). Sans calage, il ne dévoile que sa propre colonne. Demande la sismique muette.', !o.mute)}
     ${row('strati', 'Sondage stratigraphique disponible', 'Forage carotté moins cher (environ 30 % d\'un forage classique), qui donne le log et la lithologie mais ne peut jamais produire.')}
     ${row('dhi', 'Indices de fluides à interpréter', 'La sismique 3D ne donne plus un pourcentage précis mais une classe d\'anomalie d\'amplitude (nulle, faible, modérée, forte), visible sur la coupe comme une tache brillante. Les faux positifs existent : gaz, charbon, calcaire serré.')}
     ${row('real', 'Imagerie sismique réaliste', 'Bruit croissant avec la profondeur, multiples (faux réflecteurs), qualité de traitement variable selon la ligne (retraitement payant), axe de temps double en ms.')}
     ${row('thick', 'Épaisseurs variables des couches', 'Une couche n\'a plus la même épaisseur partout : plus épaisse dans les bas structuraux, plus mince sur les hauts, avec une dérive latérale propre à chaque couche. Désactivée : épaisseur constante dans une province, comme dans les règles d\'origine. Attention : la carte générée pour une même graine n\'est pas la même selon ce réglage.', labOptMode!=='start')}
+    ${row('nolimit', 'Aucune limite de temps', 'La partie ne s\'arrête pas à la fin de la durée prévue du niveau (20, 25 ou 35 ans) : elle ne se termine que par la victoire ou la faillite. Modifiable en cours de partie tant que les options ne sont pas verrouillées.')}
     ${row('cheat', 'Bouton « Voir la vérité » (triche)', 'Affiche la vraie coupe géologique à tout moment.')}
     <label class="lab-opt-row" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px;"><input type="checkbox" ${o.locked?'checked':''} onchange="labOptSet('locked', this.checked)"><span><b>🔒 Verrouiller ces options</b><br><span class="lab-mut">Aucune modification possible en cours de partie, et le bouton « vérité » est retiré.</span></span></label>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;position:sticky;bottom:-14px;background:var(--panel);padding:10px 0 4px;"><button class="lab-pick" onclick="labOptCancel()">${labOptMode==='start'?'Retour':'Annuler'}</button><button class="lab-pick sel" id="labOptGo" onclick="labOptValidate()">${labOptMode==='start'?'Lancer la partie':'Appliquer'}</button></div></div>`;
@@ -4813,7 +4843,7 @@ function labHelpHtml(){
 function labTipHtml(){
   if(!LABOPT.pick) return '';
   return G.labPick==null
-    ? `<div class="lab-tip">🎯 <b>Désignez votre cible</b> : cliquez sur la sismique ou sur « viser » dans le tableau. Forer le mauvais horizon donne un puits sec ; un bon choix rapporte ${formatM(LAB_PICK_BONUS)}.</div>`
+    ? `<div class="lab-tip">🎯 <b>Désignez votre cible</b> : cliquez sur la sismique ou sur « viser » dans le tableau. Forer le mauvais horizon donne un puits sec ; un bon choix rapporte ${formatM(LAB_PICK_BONUS)}, une fois par province.</div>`
     : `<div class="lab-tip">🎯 <b>Cible : H${G.labPick+1}</b>. Les forages la visent. Cliquez sur une autre ligne pour changer, ou sur « cible » pour la retirer.</div>`;
 }
 // temps double moyen en millisecondes en fonction de la profondeur (modèle de vitesse moyen du profil)
@@ -4991,9 +5021,13 @@ function labResultHtml(b, missed, resIdx){
   if(G.labPick==null) return '';
   const real = b.horizons[resIdx], mine = b.horizons[G.labPick];
   if(missed) return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><b>Cible manquée.</b> Vous visiez H${G.labPick+1} (${mine?mine.name:'?'}). Le réservoir était H${resIdx+1} (${real?real.name:'?'}). Le log de ce puits vous donne la lithologie de la colonne : recalez votre interprétation sur la coupe, puis visez de nouveau.</div>`;
-  if(G.mode!=='sandbox') G.budget += LAB_PICK_BONUS;
-  addLog('🎯 Interprétation juste : H' + (resIdx+1) + ' est bien le réservoir (+' + formatM(LAB_PICK_BONUS) + ').', 'good');
-  return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><b>Interprétation juste</b> : H${resIdx+1} (${real?real.name:'?'}) est bien le réservoir. Bonus : <b>+${formatM(LAB_PICK_BONUS)}</b>.</div>`;
+  // Le bonus d'interprétation n'est versé qu'une fois par province : la première fois qu'on identifie juste le réservoir
+  // d'une province, pas à chaque puits (il pesait trop pour un joueur très actif).
+  G.labPickBonusProv = G.labPickBonusProv || {};
+  const prov = b.provinceIdx ?? 0, first = !G.labPickBonusProv[prov];
+  if(first){ G.labPickBonusProv[prov] = true; if(G.mode!=='sandbox') G.budget += LAB_PICK_BONUS; }
+  addLog('🎯 Interprétation juste : H' + (resIdx+1) + ' est bien le réservoir' + (first ? ' (+' + formatM(LAB_PICK_BONUS) + ', premier succès dans cette province).' : ' (bonus déjà perçu pour cette province).'), 'good');
+  return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><b>Interprétation juste</b> : H${resIdx+1} (${real?real.name:'?'}) est bien le réservoir. ` + (first ? `Bonus : <b>+${formatM(LAB_PICK_BONUS)}</b> (une fois par province).` : `Bonus déjà perçu pour cette province.`) + `</div>`;
 }
 
 
@@ -5767,7 +5801,7 @@ function updateHud(){
   document.getElementById('hudWells').textContent=G.wells.filter(w=>w.status==='producing').length;
   if(m.winGoal>0){
     document.getElementById('hudGoalWrap').style.display='';
-    const pct=Math.min(100,Math.max(0,(G.budget/m.winGoal*100))).toFixed(0);
+    const pct=Math.min(100,Math.max(0,(netWorth()/m.winGoal*100))).toFixed(0);
     const goalEl=document.getElementById('hudGoal');
     goalEl.textContent=pct+'%';
     goalEl.style.color=pct>=80?'var(--green)':pct>=40?'var(--amber)':'var(--text)';
@@ -5873,6 +5907,22 @@ function guideCompute(){
     return {cur:4, text:capTxt + `le moins mauvais est le bloc (${b.x}, ${b.y}), gain net espéré ${formatM(e.ev)}. Forer est alors un pari raisonné, plutôt que de dépenser le reste en études.`,
             act:{label:`Forer le bloc (${b.x}, ${b.y}) par pari`, call:`guideDo('drill',${b.id})`, ok, why:`Budget insuffisant pour parier en gardant une réserve (${formatM(0.25*initBudget)}).`}};
   }
+  // Extension : un puits productif relève la probabilité de ses voisins (effet de voisinage). Tant qu'aucun bloc étudié
+  // n'est rentable sur le papier, le guide propose d'étudier (2D + 3D) le voisin le plus proche d'une découverte.
+  if(!capped && !ranked.some(x=>x.e.ev > 0)){
+    const found = blocks.filter(b=>b.well);
+    if(found.length){
+      const near = b => Math.min(...found.map(w=>Math.hypot(w.x-b.x, w.y-b.y)));
+      const nb = blocks.filter(b=>free(b) && !b.inSalt && !b.studies.some(st=>st.type==='seismic3d') && near(b) <= 2.5)
+                       .sort((a,z)=>near(a)-near(z) || (z.estimate?.structPos??0)-(a.estimate?.structPos??0))[0];
+      if(nb){
+        const c = (STUDIES.seismic2d.cost*(nb.isOffshore?STUDIES.seismic2d.offMult:1)) + (STUDIES.seismic3d.cost*(nb.isOffshore?STUDIES.seismic3d.offMult:1));
+        const boost = Math.round((discoveryBoost(nb)-1)*100);
+        return {cur:3, text:`Votre découverte rend le bloc (${nb.x}, ${nb.y}) plus prometteur (${boost>0?'+':''}${boost} % de probabilité). Une sismique 2D puis 3D y précisera la profondeur et les indices de fluides.`,
+                act:{label:`Étudier le bloc (${nb.x}, ${nb.y}) en 2D et 3D · ${formatM(c)}`, call:`guideDo('ext',${nb.id})`, ok:money(c), why:`Budget insuffisant (${formatM(c)} requis).`}};
+      }
+    }
+  }
   if(!hasProf && !capped){
     if(G.tool==='section' && G.sectionA!==null)
       return {cur:1, text:`Bloc A posé en (${blocks[G.sectionA].x}, ${blocks[G.sectionA].y}). Cliquez maintenant le bloc B pour terminer la coupe.`, act:null};
@@ -5917,8 +5967,15 @@ function guideCompute(){
     const canDrill = G.mode==='sandbox' || (cheapest!==null && G.budget>=cheapest);
     const why = cheapest===null ? `Aucun matériel n'atteint la profondeur estimée (${Math.round(depth)} m).`
       : `Budget insuffisant : forage estimé à ${formatM(cheapest)}, disponible ${formatM(G.budget)}.${G.financeMode?' Un emprunt (onglet Finance) peut combler l\'écart.':''}`;
+    // Forage rentable mais non finançable : avec le mode Finance, le guide propose l'emprunt qui comble l'écart
+    let drillAct = {label:`Forer le bloc (${b.x}, ${b.y})`, call:`guideDo('drill',${b.id})`, ok:canDrill, why};
+    if(!canDrill && G.financeMode && cheapest!==null){
+      const need = cheapest - G.budget, amount = Math.ceil((need + 2e5)/5e5)*5e5, avail = loanAvailable();
+      if(amount <= avail + 1) drillAct = {label:`Emprunter ${formatM(amount)} (7 %/an, 36 mois) pour forer le bloc (${b.x}, ${b.y})`, call:`guideDo('loan',${amount})`, ok:true};
+      else drillAct.why = `Budget insuffisant : forage estimé à ${formatM(cheapest)}, disponible ${formatM(G.budget)}. Capacité d'emprunt : ${formatM(avail)}, trop juste.`;
+    }
     return {cur:4, text:`Bloc (${b.x}, ${b.y}) : probabilité estimée ${Math.round(b.estimate.prob*100)} %, gain net espéré ${formatM(ranked[0].e.ev)} sur 10 ans. Forer est le seul moyen de savoir : le puits sera productif ou sec.`,
-            act:{label:`Forer le bloc (${b.x}, ${b.y})`, call:`guideDo('drill',${b.id})`, ok:canDrill, why}};
+            act:drillAct};
   }
   const best = ranked[0] ? `meilleur gain net espéré ${formatM(ranked[0].e.ev)} sur 10 ans, forage non rentable` : 'aucun bloc étudié en 3D';
   return {cur:1, text:`Les blocs étudiés ne rapportent pas assez (${best}). Cherchez ailleurs avec une nouvelle coupe.`,
@@ -5967,6 +6024,13 @@ function guideDo(kind, id){
   if(kind==='section'){ setTool('section'); return; }
   if(kind==='seismic2d'){ performStudy(G.sectionA,'seismic2d'); return; }
   if(kind==='seismic3d'){ performStudy(id,'seismic3d'); guideSelect(id); return; }
+  if(kind==='loan'){ takeLoan(id); return; }
+  if(kind==='ext'){
+    // 2D réduite au seul bloc visé, sans toucher à la coupe affichée
+    const a = G.sectionA, bb = G.sectionB;
+    G.sectionA = G.sectionB = id; performStudy(id,'seismic2d'); G.sectionA = a; G.sectionB = bb;
+    performStudy(id,'seismic3d'); guideSelect(id); return;
+  }
   if(kind==='drill'){
     guideSelect(id);
     if(isMobileLayout()) showMobileScreen('studies'); else switchTab('studies');
@@ -6955,7 +7019,7 @@ function _doStartGame(){
     uncertaintyLevel: menuConfig.uncertainty,
     budget:         m.budget,
     month:0, speed:1, paused:false, labPick:null, labCal:{}, labProc:{}, labSecPrev:null, labOpt:{ ...LABOPT },
-    price:80, priceHistory:[80], priceAlerts:[],
+    price:80, priceHistory:[80], priceAlerts:[], labPickBonusProv:{},
     wells:[], drilling:[], sectionA:null, sectionB:null,
     tool:'select', history:[], lastCF:0, lastRevenue:0, lastOpex:0, lastLoanPayment:0,
     priceTrend:0, priceTrendTarget:0, revealFieldsMode:false,
@@ -7619,7 +7683,7 @@ function _doStartGame(){
     },
     {
       title: 'Argent et imprévus',
-      body: `Avec le mode Finance (activé par défaut), vous pouvez emprunter (7 % par an), stocker la production,
+      body: `Avec le mode Finance (activé par défaut), vous pouvez emprunter (7 % par an, dans la limite d'une capacité qui grandit avec vos puits en production ; la dette restante compte contre votre valeur nette pour gagner), stocker la production,
         couvrir un prix et relancer un puits par récupération assistée (EOR).<br><br>
         Des accidents sont possibles : éruption, grève, incident environnemental. Le jeu s'arrête alors et une
         fenêtre explique les conséquences, vous reprenez quand vous voulez. Le mode TP coupe la finance : seul

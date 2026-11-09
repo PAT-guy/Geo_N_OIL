@@ -33,6 +33,7 @@ cd /tmp && node /chemin/vers/Geo_N_OIL/tools/tests/chk_lab.js
 - `voisinage.js` : effet de voisinage autour d'une découverte (probabilité estimée et réelle des blocs proches).
 - `audit_contraste.js` : contraste du texte (WCAG AA) sur les écrans principaux, ordinateur et téléphone simulé.
 - `quiz_tuto.js` : quiz sismique et tutoriel de l'accueil.
+- `pret_guide.js` : emprunt (capacité, valeur nette, remboursement), bonus de cible par province, option sans limite de temps, guide (extension, emprunt).
 - `alertes_prix.js` : prix de départ 80 $, alertes de prix (création, franchissement, pause, répétition, sauvegarde).
 - `diag_guide.js` : le guide est-il bien calibré ? espérance de gain du guide contre espérance vraie sur les blocs étudiés en 3D.
 - `fusion.js` : préréglage par niveau, Découverte par défaut, ancienne sauvegarde, redirection de l'ancien lien du labo.
