@@ -2,6 +2,7 @@
 // Usage : node sim_lab.js <parties> <préréglages> <stratégies> [<mode>]
 //   5e argument facultatif : objectif de victoire en M$ (par défaut celui du niveau) ; 6e : multiplicateur du coût des études ; 7e : multiplicateur du coût des forages
 //   préréglages : decouverte,inter,complet,expert (suffixes -nodhi, -nopick, -nocal, -noreal pour couper une règle)      stratégies : oracle,sism100,sism60,sism30,random
+//   guide / guideNN = joueur docile qui exécute à chaque étape l'action recommandée par le guide du jeu (NN % de bonnes cibles)
 //   sismNN = joueur qui étudie (2D + 3D) puis fore les meilleurs blocs, avec NN % de chances de désigner le bon horizon
 //   (après un puits manqué, il apprend le bon horizon grâce au log). oracle = connaît les vraies valeurs.
 const { chromium } = require('playwright');
@@ -49,7 +50,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       if(typeof ADV!=='undefined') ADV.drillCostMult = drillMult ? +drillMult : 1;
       _doStartGame(); setSpeed(0);
       const resIdx = STRAT.findIndex(l=>l.role==='reservoir');
-      const acc = strat==='sismB' ? 1 : strat.startsWith('sism') ? +strat.slice(4)/100 : strat==='oracle' ? 1 : 0;
+      const acc = strat.startsWith('guide') ? (strat.length>5 ? +strat.slice(5)/100 : 1) : strat==='sismB' ? 1 : strat.startsWith('sism') ? +strat.slice(4)/100 : strat==='oracle' ? 1 : 0;
       let learned = false;
       const choosePick = ()=> (learned || Math.random() < acc) ? resIdx : Math.floor(Math.random()*STRAT.length);
       if(LABOPT.pick) G.labPick = strat==='random' ? Math.floor(Math.random()*STRAT.length) : choosePick();
@@ -64,9 +65,31 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
         if(paid>0){ st.drillSpend+=paid; st.drilled++; if(LABOPT.pick && G.labPick!==resIdx) st.missed++; return true; } return false;
       };
       const undrilled = ()=>blocks.filter(b=>!b.well && !b.dryHole && !G.drilling.some(d=>d.blockId===b.id));
+      // ---- joueur docile : suit le guide du jeu (guideCompute) à la lettre, comme un joueur qui clique toujours sur l'action proposée ----
+      const usedLines = new Set(); const GSZ = G.gridSize;
+      const chooseProfile = ()=>{ // le joueur trace la coupe à travers les blocs les plus hauts (ocre foncé), en évitant les lignes déjà tracées
+        const lines = []; for(let k=0;k<GSZ;k++){ lines.push({key:'r'+k, a:blocks[k*GSZ], b:blocks[k*GSZ+GSZ-1]}); lines.push({key:'c'+k, a:blocks[k], b:blocks[(GSZ-1)*GSZ+k]}); }
+        const score = ln => { const pb = getProfileBlocks(ln.a.id, ln.b.id); const v = pb.map(o=>o.b.estimate?.structPos).filter(x=>x!==undefined); return v.length ? v.reduce((x,y)=>x+y,0)/v.length : -9; };
+        const best = lines.filter(l=>!usedLines.has(l.key)).sort((x,y)=>score(y)-score(x))[0]; if(!best) return false;
+        usedLines.add(best.key); G.sectionA = best.a.id; G.sectionB = best.b.id; return true; };
+      const guideStep = ()=>{
+        const g = guideCompute(); if(!g || !g.act || !g.act.ok) return false;
+        const m = /guideDo\('(\w+)'(?:,(\d+))?\)/.exec(g.act.call);
+        if(m){ const [, kind, id] = m; const b0 = G.budget;
+          if(kind==='gravity'){ performStudy(null,'gravity'); st.studySpend += b0-G.budget; return true; }
+          if(kind==='section'){ if(G.budget < 2.5e6) return false; return chooseProfile(); }
+          if(kind==='seismic2d'){ if(G.budget < 1.5e6) return false; performStudy(G.sectionA,'seismic2d'); st.studySpend += b0-G.budget; return G.budget < b0; }
+          if(kind==='seismic3d'){ if(G.budget < 1.5e6) return false; performStudy(+id,'seismic3d'); st.studySpend += b0-G.budget; return G.budget < b0; }
+          if(kind==='drill'){ const b = blocks[+id]; const depth = drillDepthEstimate(b); const equip = depth > EQUIPMENT.standard.maxDepth ? 'renforce' : 'standard'; return drillOne(b, {equip}); }
+          return false; }
+        if(g.act.call==='labGoSection()'){ if(LABOPT.pick && G.labPick==null){ G.labPick = choosePick(); return true; } return false; }
+        const c = /labOpenCal\((\d+)\)/.exec(g.act.call); if(c){ const b = blocks[+c[1]]; if(labCalOk(b)) return false; G.labCal = G.labCal||{}; G.labCal[b.id] = true; G.budget += LAB_CAL_BONUS; st.calBonus += LAB_CAL_BONUS; return true; }
+        return false; };
+
       const act = ()=>{
         let slots = 3 - G.drilling.length; if(slots<=0) return;
         const cand = undrilled();
+        if(strat.startsWith('guide')){ for(let k=0;k<20;k++){ if(!guideStep()) break; } return; }
         if(strat==='random'){
           for(let k=0;k<slots;k++){ const b = cand[Math.floor(Math.random()*cand.length)]; if(!b) break;
             const d = bestDrill(b, 0.12, 50, false); if(!d || !canAfford(d.cost)) continue; drillOne(b,d); }
