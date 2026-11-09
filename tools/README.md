@@ -28,6 +28,7 @@ cd /tmp && node /chemin/vers/Geo_N_OIL/tools/tests/chk_lab.js
 - `lab438.js` : épaisseurs variables des couches (option du labo) : variation, cohérence des piles, cartes identiques hors épaisseur.
 - `coupe_points.js` : rangée de points des blocs sous la coupe (visible, cliquable), trait vertical du bloc sélectionné, forage visé dans le labo.
 - `tactile_mobile.js` : téléphone simulé (iPhone 13, 390 et 360 px) : cibles tactiles >= 40 px, en-tête sans chevauchement ni rognage, guide replié par défaut, tap décalé sur un point de coupe.
+- `pwa_hors_ligne.js` : installation et hors ligne : manifeste, icônes, service worker, rechargement du jeu sans réseau (serveur http local).
 - `minijeux_tel.js` : mini-jeux sur téléphone simulé (390, 360 et 320 px) : log avec fenêtre défilante recadrée sur A ou B, question et réponses toujours visibles, cartes du prospect en colonne, boutons >= 40 px, quiz >= 44 px ; contrôle de non-régression sur ordinateur.
 - `sim_lab.js` : simulation d'équilibrage (parties de 25 ans jouées par des robots).
 - `guide_plafond.js` : plafond d'études du guide (35 % du budget de départ), pari raisonné ou attente selon les puits.
@@ -49,4 +50,5 @@ Commande : `node tools/tests/sim_lab.js 60 decouverte,inter,complet,expert oracl
 - Désigner la mauvaise cible coûte en moyenne 0,4 à 0,6 puits par partie, car après un puits manqué le log apprend le bon horizon.
 - Bonus de calage : environ 0,33 M$ par partie pour un robot à 4 puits, à comparer à l'objectif de 40 M$.
 - Indices de fluides (classes au lieu du pourcentage fin) : environ 11 % de forages en moins (4,6 contre 4,1) et 24 % de puits producteurs en moins (1,7 contre 1,3) pour le robot, sans effet mesurable sur le taux de victoire.
+- V4.45 (rappel léger du prix vers 80 $, `PRICE_REVERT` = 0,003, finance activée, 60 parties, Découverte) : prudent 33 %, guide 20 %, parfait 77 %, hasard 7 %. Parties de 25 ans passant plus de 5 ans sous 40 $ : 5,3 % avant, 1,4 % après (simulation du seul prix, 4000 tirages).
 - Non mesuré : le sondage stratigraphique (le robot n'en tire aucun avantage), l'effet du bruit, des multiples et du retraitement (aucun effet économique dans le simulateur), la lisibilité pour un humain.

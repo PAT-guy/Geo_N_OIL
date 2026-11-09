@@ -19,7 +19,7 @@ const path = require('path');
   // second clic : désélection
   await pg.mouse.click(pt.x, pt.y); await pg.waitForTimeout(150);
   out.apresSecondClic = await pg.evaluate(()=>selectedBlock);
-  await pg.locator('#tab-section').screenshot({path:'coupe_points_'+nom+'.png'});
+  await pg.locator('#tab-section').screenshot({path:'/tmp/coupe_points_'+nom+'.png'});
   await pg.mouse.click(pt.x, pt.y); await pg.waitForTimeout(150);
-  await pg.evaluate(()=>openBigView('section')); await pg.waitForTimeout(300); await pg.screenshot({path:'coupe_points_'+nom+'_grande.png'});
+  await pg.evaluate(()=>openBigView('section')); await pg.waitForTimeout(300); await pg.screenshot({path:'/tmp/coupe_points_'+nom+'_grande.png'});
   console.log(JSON.stringify(out)); console.log('erreurs',errs); await br.close(); } })();

@@ -3,10 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.44</title>
+<title>GeoExplorer V4.45</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#F4EFE1">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="GeoExplorer">
 <style>
 :root{
   /* Kit visuel (refonte) : papier, encre et rouille. Les noms historiques
@@ -274,7 +279,7 @@ body.mobile-layout #mapPanel.has-sheet #mapWrap{padding-bottom:150px;}
 .info-row .il{color:var(--muted);}
 
 /* ── COUPE STRUCTURALE ── */
-#sectionSvg{width:100%; display:block;}
+#sectionSvg{width:100%; height:auto; display:block;}
 .section-hint{font-size:11px; color:var(--muted); text-align:center; padding:20px; line-height:1.6;}
 .section-legend{display:flex; flex-wrap:wrap; gap:8px; padding:8px 0; font-size:10px;}
 .sec-layer-poly:hover{filter:brightness(1.15);}
@@ -590,6 +595,8 @@ body.mobile-layout .guide-mini{cursor:pointer; min-height:36px;}
 body.mobile-layout .guide-mini::after{content:'Détails ▾'; margin-left:auto; color:var(--text); font-weight:600;}
 body.mobile-layout #guideBar.open .guide-mini::after{content:'Réduire ▴';}
 body.mobile-layout .guide-act{min-height:42px;}
+/* V4.45 : le guide ne s'affiche que sur la carte ; les autres écrans (coupe, études, puits...) gagnent environ 300 px */
+body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
 </style>
 </head>
 <body>
@@ -3350,6 +3357,7 @@ function priceAlertRender(){
     ${list.length ? list.map((a,i)=>`<div class="pa-item"><span>${a.dir==='above'?'↗ au-dessus de':'↘ sous'} <b>${a.value} $</b>${a.pause?' · pause':''}${a.repeat?' · répétée':''}</span><button class="lab-pick" onclick="priceAlertRemove(${i})">Supprimer</button></div>`).join('') : '<div class="lab-note">Aucune alerte.</div>'}
   </div>`;
 }
+const PRICE_REVERT = 0.003;
 function stepPrice(){
   if(!G.priceTrendTarget) G.priceTrendTarget=0;
   if(Math.random()<.05) G.priceTrendTarget=(Math.random()-.5)*.7;
@@ -3361,7 +3369,8 @@ function stepPrice(){
     if(Math.abs(shock)>10) addLog(`⚠ Choc de marché : cours ${shock>0?'en hausse':'en baisse'} brutale.`,'ev');
   }
   const prevPrice = G.price;
-  G.price = clamp(G.price+G.priceTrend+noise+shock, 20, 140);
+  // Rappel léger vers 80 $ (V4.45) : évite les longues périodes sous 40 $ (5,3 % des parties de 25 ans, 1,4 % avec ce rappel) sans supprimer la volatilité.
+  G.price = clamp(G.price+G.priceTrend+noise+shock+PRICE_REVERT*(80-G.price), 20, 140);
   priceAlertCheck(prevPrice, G.price);
   G.priceHistory.push(G.price);
   if(G.priceHistory.length>60) G.priceHistory.shift();
@@ -5180,7 +5189,7 @@ function renderSection(){
   const W=secDims?.W ?? 460, H=secDims?.H ?? (TOUCH?340:320), MARG={t:38, b:(TOUCH?54:34), l:52, r:30};
   const PW = W-MARG.l-MARG.r, PH = H-MARG.t-MARG.b;
   svgEl.setAttribute('viewBox',`0 0 ${W} ${H}`);
-  svgEl.setAttribute('width','100%'); svgEl.setAttribute('height','auto');
+  svgEl.setAttribute('width','100%'); svgEl.removeAttribute('height'); // hauteur : CSS (auto). L'attribut height="auto" donnait 474 px au lieu de 270 sur téléphone, avec du blanc autour du dessin
 
   // ── Collecter tous les blocs du profil + leurs données estimées ──
   const profileBlocks = getProfileBlocks(G.sectionA, G.sectionB);
@@ -6365,13 +6374,16 @@ function updateMobileLayoutClass(){
 function updateGuideHeight(){
   const bar = document.getElementById('guideBar');
   let h = 0;
-  if(bar && bar.style.display!=='none' && document.body.classList.contains('mobile-layout')) h = bar.getBoundingClientRect().height + 10;
+  if(bar && bar.style.display!=='none' && document.body.classList.contains('mobile-layout') && getComputedStyle(bar).display!=='none') h = bar.getBoundingClientRect().height + 10;
   document.documentElement.style.setProperty('--guide-h', h+'px');
 }
 let currentMobileScreen = 'map';
+document.body.dataset.mscreen = 'map';
 function showMobileScreen(name){
   hideTip();
   currentMobileScreen = name;
+  document.body.dataset.mscreen = name;
+  updateGuideHeight();
   document.getElementById('mapPanel').classList.toggle('mscreen-active', name==='map');
   document.getElementById('rightPanel').classList.toggle('mscreen-active', name!=='map');
   document.querySelectorAll('#mobileScreenBar button').forEach(b=>b.classList.toggle('active', b.dataset.screen===name));
@@ -8205,5 +8217,11 @@ function _doStartGame(){
 .lab-help{margin-top:8px;border-top:1px solid var(--line);padding-top:6px;}
 .lab-help summary{cursor:pointer;font-weight:600;color:var(--amber);padding:5px 0;}
 </style>
+<script>
+// Hors ligne et installation sur l'écran d'accueil (V4.45). Uniquement en http(s) : le fichier ouvert en local n'enregistre rien.
+if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
+</script>
 </body>
 </html>
