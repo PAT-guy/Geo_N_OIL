@@ -2398,7 +2398,7 @@ function performStudy(blockId, studyKey){
   if(st.requires && b.studyLevel < st.requires){
     addLog(`Impossible : "${st.name}" nécessite une étude préalable de niveau supérieur.`, 'bad'); return;
   }
-  if(st.requiresDrilled && !b.well && !b.dryHole){
+  if(st.requiresDrilled && !b.well && !b.dryHole && !b.strati){
     addLog(`Impossible : "${st.name}" nécessite un échantillon physique de roche, donc un forage réel sur ce bloc.`, 'bad'); return;
   }
   if(b.studies.some(s=>s.type===studyKey)){
@@ -3629,7 +3629,7 @@ function blockKnowledge(b){
 
 // Liste compacte des études applicables à ce bloc, avec la prochaine étape recommandée.
 function blockStudiesHtml(b){
-  const drilled = !!(b.well || b.dryHole);
+  const drilled = !!(b.well || b.dryHole || b.strati);
   const sbx = G.mode==='sandbox';
   const gravDone = blocks.some(x=>x.studies.some(st=>st.type==='gravity'));
   const has = k => b.studies.some(st=>st.type===k);
@@ -3729,6 +3729,7 @@ function renderGeoPanel(b){
     html+=infoRow('Vshale',`${c.vshale.toFixed(0)} %`);
     html+=infoRow('Granulométrie',c.grain);
     html+=infoRow('Ciment',c.cement);
+    if(b.strati && !b.well && !b.dryHole) html+=`<div style="color:var(--muted);font-size:11px;margin-top:6px;">Sondage stratigraphique : foré hors du sommet du piège, il ne renseigne pas sur les fluides.</div>`;
     if(c.hcSaturation) html+=infoRow('Saturation HC',`${c.hcSaturation} %`);
     if(c.odour) html+=`<div style="color:var(--amber);font-size:11px;margin-top:6px;">${c.odour}</div>`;
   }
@@ -4116,8 +4117,8 @@ function renderStudiesPanel(b){
 
   // CAROTTE ET GÉOCHIMIE ROCK-EVAL : nécessitent un échantillon physique de
   // roche, donc un forage réel sur ce bloc (succès ou échec, peu importe :
-  // même un puits sec ramène des cuttings/une carotte exploitables).
-  const drilled = !!(b.well || b.dryHole);
+  // même un puits sec ramène des cuttings/une carotte exploitables). Un sondage stratigraphique aussi.
+  const drilled = !!(b.well || b.dryHole || b.strati);
   const coreDone=b.studies.find(s=>s.type==='core');
   const coreCost=STUDIES.core.cost*(b.isOffshore?STUDIES.core.offMult:1);
   const canCore=!coreDone&&drilled&&(G.budget>=coreCost||G.mode==='sandbox');
@@ -4227,7 +4228,7 @@ function updateDrillSummary(blockId){
   }
 
   if(method==='strati'){
-    summary.innerHTML=`<div class="tr"><span class="tl">Coût du sondage</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}${b.isOffshore?' (offshore)':''}</span></div><div class="ds-warn" style="margin-top:4px;">Carottes et log : la lithologie de la colonne est dévoilée. Aucune production possible, aucune information sur les hydrocarbures. Le bloc reste forable ensuite.</div>`;
+    summary.innerHTML=`<div class="tr"><span class="tl">Coût du sondage</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}${b.isOffshore?' (offshore)':''}</span></div><div class="ds-warn" style="margin-top:4px;">Carottes et log : la lithologie de la colonne est dévoilée. Aucune production possible, aucune information sur les hydrocarbures. Carotte et Rock-Eval possibles ensuite. Le bloc reste forable.</div>`;
     if(drillBtn) drillBtn.disabled=!canAfford;
     return;
   }
@@ -4598,7 +4599,7 @@ function labResolveStrati(d){
   const b = blocks[d.blockId]; b.el?.classList.remove('drilling');
   b.strati = true; labInjectStratiLog(b); updateBlockEstimate(b);
   addLog(`🧪 Sondage stratigraphique terminé : bloc (${b.x},${b.y}). Log et carottes récupérés, lithologie de la colonne dévoilée.`, 'good');
-  const html = `Le sondage a traversé la colonne et ramené la lithologie. Il ne peut pas produire et ne dit rien sur la présence d'hydrocarbures.` + (LABOPT.cal && LABOPT.mute && !labCalOk(b) ? ` Calez-le sur la sismique pour étendre la lithologie le long du profil.` : '') + ` Le bloc reste forable.`;
+  const html = `Le sondage a traversé la colonne et ramené la lithologie. Il ne peut pas produire et ne dit rien sur la présence d'hydrocarbures.` + (LABOPT.cal && LABOPT.mute && !labCalOk(b) ? ` Calez-le sur la sismique pour étendre la lithologie le long du profil.` : '') + ` Le bloc reste forable. Onglet Études : carotte (cale le puits et double la portée de sa lithologie sur la coupe) et Rock-Eval (géochimie de la roche-mère).`;
   renderBlock(b); updateHud();
   if(selectedBlock===d.blockId){ renderGeoPanel(b); renderStudiesPanel(b); }
   showDrillReveal(b, false, true, 'strati', html);
@@ -4639,6 +4640,7 @@ function labTwtFn(dispData){
 
 const LAB = { truth:false, freq:28 };
 const labDrilled = b => !!(b && (b.well || b.dryHole || b.strati));
+const labCored = b => !!(b && b.studies && b.studies.some(s=>s.type==='core'));
 // Niveau de dévoilement de chaque bloc du profil : 0 = puits, 1 à 3 = extrapolé (voisin proche à lointain), -1 = inconnu
 function labLevels(dispData){
   const lv = dispData.map(()=>-1), dr = [];
@@ -4647,7 +4649,7 @@ function labLevels(dispData){
   dispData.forEach((bd,i)=>{
     if(lv[i]===0 || !bd.b) return;
     let bestD = Infinity;
-    dr.forEach(j=>{ const d = Math.abs(i-j); if(d<bestD && dispData[j].b.provinceIdx===bd.b.provinceIdx && !faultBetween(i,j)) bestD = d; });
+    dr.forEach(j=>{ const d = Math.abs(i-j) / (labCored(dispData[j].b) ? 2 : 1); if(d<bestD && dispData[j].b.provinceIdx===bd.b.provinceIdx && !faultBetween(i,j)) bestD = d; });
     if(bestD < Infinity) lv[i] = bestD<=2 ? 1 : bestD<=4 ? 2 : 3;
   });
   return lv;
@@ -4814,7 +4816,7 @@ function labResultHtml(b, missed, resIdx){
 // le sismogramme synthétique du puits se superpose à la trace sismique. Un puits calé étend sa lithologie le long du
 // profil ; un puits non calé ne dévoile que sa propre colonne.
 const LAB_CAL_BONUS = 80000;
-const labCalOk = b => !!(b && (G.mode==='sandbox' || !LABOPT.cal || (G.labCal && G.labCal[b.id])));
+const labCalOk = b => !!(b && (G.mode==='sandbox' || !LABOPT.cal || labCored(b) || (G.labCal && G.labCal[b.id])));
 const labRicker = (t, f) => { const a = Math.PI*f*t; return (1-2*a*a)*Math.exp(-a*a); };
 function labCalModel(b){
   const L = getBlockLayerData(b); if(!L) return null;
@@ -4887,7 +4889,7 @@ function labWellList(dispData, lv){
   if(!LABOPT.cal) return '';
   const ws = dispData.map((d,i)=>({d,i})).filter(o=>o.d.b && labDrilled(o.d.b));
   if(!ws.length) return `<div class="lab-note"><b>Calage.</b> Aucun puits sur ce profil. Un puits foré puis calé permet d'étendre la lithologie le long de la coupe.</div>`;
-  return `<div class="lab-note"><b>Calage puits-sismique.</b> ` + ws.map(o=>{ const b = o.d.b; return labCalOk(b) ? `Puits (${b.x}, ${b.y}) : <b>calé</b> ✓ ` : `Puits (${b.x}, ${b.y}) : <button class="lab-pick" onclick="labOpenCal(${b.id})">caler</button> `; }).join(' · ') + `<br>Un puits non calé ne dévoile que sa propre colonne. Calé, il étend sa lithologie aux blocs voisins du profil (jusqu'aux failles et aux limites de province).</div>`;
+  return `<div class="lab-note"><b>Calage puits-sismique.</b> ` + ws.map(o=>{ const b = o.d.b; return labCalOk(b) ? `Puits (${b.x}, ${b.y}) : <b>calé</b>${labCored(b) ? ' par la carotte' : ''} ✓ ` : `Puits (${b.x}, ${b.y}) : <button class="lab-pick" onclick="labOpenCal(${b.id})">caler</button> `; }).join(' · ') + `<br>Un puits non calé ne dévoile que sa propre colonne. Calé, il étend sa lithologie aux blocs voisins du profil (jusqu'aux failles et aux limites de province). Une carotte (onglet Études, après un forage ou un sondage) cale le puits d'office et double la portée de sa lithologie.</div>`;
 }
 
 function renderSection(){

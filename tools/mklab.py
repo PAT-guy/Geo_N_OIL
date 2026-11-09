@@ -693,5 +693,20 @@ rep("#secLineSvg .hit{pointer-events:stroke;cursor:pointer;}", "#secLineSvg .hit
 
 rep("  setSpeed(G.paused ? 0 : (G.speed || 1));\n  if(typeof updateMobileLayoutClass==='function') updateMobileLayoutClass();\n}", "  setSpeed(G.paused ? 0 : (G.speed || 1));\n  if(typeof updateMobileLayoutClass==='function') updateMobileLayoutClass();\n  labDrawSecLine(); // le trait de coupe est redessiné après chargement\n}")
 
+
+# ====================== Sondage stratigraphique : carotte et Rock-Eval, avantage pour la coupe ======================
+rep("  if(st.requiresDrilled && !b.well && !b.dryHole){", "  if(st.requiresDrilled && !b.well && !b.dryHole && !b.strati){")
+rep("function blockStudiesHtml(b){\n  const drilled = !!(b.well || b.dryHole);", "function blockStudiesHtml(b){\n  const drilled = !!(b.well || b.dryHole || b.strati);")
+rep("  // même un puits sec ramène des cuttings/une carotte exploitables).\n  const drilled = !!(b.well || b.dryHole);", "  // même un puits sec ramène des cuttings/une carotte exploitables). Un sondage stratigraphique aussi.\n  const drilled = !!(b.well || b.dryHole || b.strati);")
+rep("    html+=infoRow('Ciment',c.cement);\n", "    html+=infoRow('Ciment',c.cement);\n    if(b.strati && !b.well && !b.dryHole) html+=`<div style=\"color:var(--muted);font-size:11px;margin-top:6px;\">Sondage stratigraphique : foré hors du sommet du piège, il ne renseigne pas sur les fluides.</div>`;\n")
+# la carotte cale le puits d'office et double la portée de sa lithologie
+rep("const labDrilled = b => !!(b && (b.well || b.dryHole || b.strati));", "const labDrilled = b => !!(b && (b.well || b.dryHole || b.strati));\nconst labCored = b => !!(b && b.studies && b.studies.some(s=>s.type==='core'));")
+rep("const labCalOk = b => !!(b && (G.mode==='sandbox' || !LABOPT.cal || (G.labCal && G.labCal[b.id])));", "const labCalOk = b => !!(b && (G.mode==='sandbox' || !LABOPT.cal || labCored(b) || (G.labCal && G.labCal[b.id])));")
+rep("dr.forEach(j=>{ const d = Math.abs(i-j); if(d<bestD", "dr.forEach(j=>{ const d = Math.abs(i-j) / (labCored(dispData[j].b) ? 2 : 1); if(d<bestD")
+rep("return labCalOk(b) ? `Puits (${b.x}, ${b.y}) : <b>calé</b> ✓ `", "return labCalOk(b) ? `Puits (${b.x}, ${b.y}) : <b>calé</b>${labCored(b) ? ' par la carotte' : ''} ✓ `")
+rep("Calé, il étend sa lithologie aux blocs voisins du profil (jusqu'aux failles et aux limites de province).", "Calé, il étend sa lithologie aux blocs voisins du profil (jusqu'aux failles et aux limites de province). Une carotte (onglet Études, après un forage ou un sondage) cale le puits d'office et double la portée de sa lithologie.")
+rep("` Le bloc reste forable.`;", "` Le bloc reste forable. Onglet Études : carotte (cale le puits et double la portée de sa lithologie sur la coupe) et Rock-Eval (géochimie de la roche-mère).`;")
+rep("Aucune production possible, aucune information sur les hydrocarbures. Le bloc reste forable ensuite.", "Aucune production possible, aucune information sur les hydrocarbures. Carotte et Rock-Eval possibles ensuite. Le bloc reste forable.")
+
 open(dst, 'w', encoding='utf-8').write(s)
 print('ok', len(s))
