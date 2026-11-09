@@ -2471,6 +2471,11 @@ function updateBlockEstimate(b){
   if(rockevalStudy){
     est.rockeval = rockevalStudy.result;
   }
+  if(LABOPT.dhi && !logStudy && seis3dStudy && est.prob!==undefined){
+    const pf = est.prob, cls = pf<0.08?0:pf<0.18?1:pf<0.32?2:3;
+    est.probFine = pf; est.dhiClass = cls; est.prob = [0.04,0.13,0.25,0.42][cls]; est.probErr = 0.08;
+    est.amplitude = ['pas d\'anomalie d\'amplitude','faible anomalie d\'amplitude','anomalie d\'amplitude modérée','forte anomalie d\'amplitude (tache brillante)'][cls];
+  }
   b.estimate = Object.keys(est).length ? est : null;
 }
 
@@ -4476,12 +4481,12 @@ function secSmoothPath(pts, faultPx){
 // =====================================================================
 
 // ---------- OPTIONS DU LABO (écran avant la partie, verrouillables) + SONDAGE STRATIGRAPHIQUE ----------
-const LAB_DEFAULT_OPT = { mute:true, pick:true, cal:true, strati:true, cheat:true, locked:false };
+const LAB_DEFAULT_OPT = { mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true, locked:false };
 const LAB_PRESETS = {
-  decouverte: { label:'Découverte', d:'Coupe lisible comme dans le jeu principal, aucune contrainte.', o:{ mute:false, pick:false, cal:false, strati:true, cheat:true } },
-  inter:      { label:'Intermédiaire', d:'Sismique muette et cible à désigner, calage non exigé.', o:{ mute:true, pick:true, cal:false, strati:true, cheat:true } },
-  complet:    { label:'Labo complet', d:'Toutes les règles du labo, bouton « vérité » disponible.', o:{ mute:true, pick:true, cal:true, strati:true, cheat:true } },
-  expert:     { label:'Expert', d:'Toutes les règles, sans bouton « vérité ».', o:{ mute:true, pick:true, cal:true, strati:true, cheat:false } },
+  decouverte: { label:'Découverte', d:'Coupe lisible comme dans le jeu principal, aucune contrainte.', o:{ mute:false, pick:false, cal:false, strati:true, dhi:false, real:false, cheat:true } },
+  inter:      { label:'Intermédiaire', d:'Sismique muette et cible à désigner, calage non exigé.', o:{ mute:true, pick:true, cal:false, strati:true, dhi:false, real:false, cheat:true } },
+  complet:    { label:'Labo complet', d:'Toutes les règles du labo, bouton « vérité » disponible.', o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true } },
+  expert:     { label:'Expert', d:'Toutes les règles, sans bouton « vérité ».', o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:false } },
 };
 let LABOPT = { ...LAB_DEFAULT_OPT };
 try { const r = JSON.parse(localStorage.getItem('geoexplorer_labopt')||'null'); if(r && typeof r==='object') LABOPT = { ...LAB_DEFAULT_OPT, ...r, locked:false }; } catch(e){}
@@ -4512,6 +4517,8 @@ function labOptRender(){
     ${row('pick', 'Désigner la cible soi-même', 'Le jeu ne dit pas quel horizon est le réservoir. Il faut le viser sur la coupe avant de forer : un mauvais choix donne un puits sec, un bon choix rapporte un bonus.')}
     ${row('cal', 'Calage puits-sismique obligatoire', 'Un puits ne propage sa lithologie le long du profil qu\'une fois calé (mini-jeu vitesse moyenne). Sans calage, il ne dévoile que sa propre colonne. Demande la sismique muette.', !o.mute)}
     ${row('strati', 'Sondage stratigraphique disponible', 'Forage carotté moins cher (environ 30 % d\'un forage classique), qui donne le log et la lithologie mais ne peut jamais produire.')}
+    ${row('dhi', 'Indices de fluides à interpréter', 'La sismique 3D ne donne plus un pourcentage précis mais une classe d\'anomalie d\'amplitude (nulle, faible, modérée, forte), visible sur la coupe comme une tache brillante. Les faux positifs existent : gaz, charbon, calcaire serré.')}
+    ${row('real', 'Imagerie sismique réaliste', 'Bruit croissant avec la profondeur, multiples (faux réflecteurs), qualité de traitement variable selon la ligne (retraitement payant), axe de temps double en ms.')}
     ${row('cheat', 'Bouton « Voir la vérité » (triche)', 'Affiche la vraie coupe géologique à tout moment.')}
     <label class="lab-opt-row" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px;"><input type="checkbox" ${o.locked?'checked':''} onchange="labOptSet('locked', this.checked)"><span><b>🔒 Verrouiller ces options</b><br><span class="lab-mut">Aucune modification possible en cours de partie, et le bouton « vérité » est retiré.</span></span></label>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;"><button class="lab-pick" onclick="labOptCancel()">${labOptMode==='start'?'Retour':'Annuler'}</button><button class="lab-pick sel" id="labOptGo" onclick="labOptValidate()">${labOptMode==='start'?'Lancer la partie':'Appliquer'}</button></div></div>`;
@@ -4553,6 +4560,39 @@ function labResolveStrati(d){
   renderBlock(b); updateHud();
   if(selectedBlock===d.blockId){ renderGeoPanel(b); renderStudiesPanel(b); }
   showDrillReveal(b, false, true, 'strati', html);
+}
+
+
+// ---------- Indices directs de fluides (DHI) et imagerie réaliste ----------
+const LAB_PROC_COST = 60000;
+const labSecKey = () => G.sectionA + '-' + G.sectionB;
+function labProcQ(){ if(!LABOPT.real) return 1; if(G.labProc && G.labProc[labSecKey()]) return 1; return 0.35 + 0.55*labHash((G.sectionA||0)*31 + (G.sectionB||0)*17 + 3); }
+function labProcLabel(q){ return q>=0.95 ? 'optimal' : q>=0.7 ? 'bon' : q>=0.5 ? 'moyen' : 'médiocre'; }
+function labReprocess(){
+  const k = labSecKey(); if(G.labProc && G.labProc[k]) return;
+  if(G.mode!=='sandbox' && G.budget < LAB_PROC_COST){ toast('Budget insuffisant pour retraiter la sismique.'); return; }
+  if(G.mode!=='sandbox') G.budget -= LAB_PROC_COST;
+  G.labProc = G.labProc || {}; G.labProc[k] = true;
+  addLog('🛠 Sismique du profil retraitée (-' + formatM(LAB_PROC_COST) + ') : meilleure résolution, moins de bruit.', 'ev');
+  updateHud(); renderSection(); if(typeof bigView!=='undefined' && bigView.open) bvRender();
+}
+function labProcHtml(){
+  if(!LABOPT.real) return '';
+  const q = labProcQ();
+  return `<div class="lab-note"><b>Traitement de cette sismique : ${labProcLabel(q)}.</b> ` + (q<0.95 ? `Une mauvaise qualité donne moins de résolution et plus de bruit, surtout en profondeur. <button class="lab-pick" onclick="labReprocess()">Retraiter · ${G.mode==='sandbox'?'gratuit':formatM(LAB_PROC_COST)}</button>` : `Résolution et bruit au meilleur niveau possible.`) + `</div>`;
+}
+function labRealNote(){
+  if(!LABOPT.real && !LABOPT.dhi) return '';
+  return `<div class="lab-note"><b>Lire l'image.</b> ` + (LABOPT.real ? `Plus on descend, plus l'image est bruitée et faible. Un <b>multiple</b> est un faux réflecteur : il reproduit un contraste fort et proche de la surface au double de sa profondeur, avec la polarité inversée. Avant de pointer un horizon profond, vérifiez qu'il n'est pas le multiple d'un horizon superficiel. L'axe de droite donne le temps double en millisecondes. ` : '') + (LABOPT.dhi ? `Une <b>tache brillante</b> (amplitude anormalement forte sur un horizon, surtout là où une sismique 3D a été faite) peut signaler du gaz ou de l'huile. Elle peut aussi venir de charbon, d'un calcaire serré ou d'un faux signal : la sismique 3D ne donne plus qu'une classe d'anomalie, à croiser avec le reste.` : '') + `</div>`;
+}
+// temps double moyen en millisecondes en fonction de la profondeur (modèle de vitesse moyen du profil)
+function labTwtFn(dispData){
+  const nL = STRAT.length, rows = [];
+  for(let li=0; li<nL; li++){ let n=0, top=0, th=0, v=0;
+    dispData.forEach(bd=>{ if(!bd.layers) return; const l = bd.layers[li], h = bd.b.horizons[li]; if(!l || !h || l.thickness<1) return; n++; top += l.top; th += l.thickness; v += labAcoustic(h, l.top + l.thickness/2).v; });
+    if(n) rows.push({top:top/n, th:th/n, v:v/n}); }
+  rows.sort((a,b)=>a.top-b.top); if(!rows.length) return z=>2000*z/3000;
+  return z => { let t = 2*Math.min(z, rows[0].top)/rows[0].v; rows.forEach(r=>{ const d = Math.max(0, Math.min(z - r.top, r.th)); t += 2*d/r.v; }); const last = rows[rows.length-1], zb = last.top + last.th; if(z>zb) t += 2*(z-zb)/last.v; return t*1000; };
 }
 
 const LAB = { truth:false, freq:28 };
@@ -4604,7 +4644,8 @@ function labSeismicImage(dispData, dMin, dMax){
   const idx = dispData.map((bd,i)=>i).filter(i=>ok[i]);
   if(idx.length<2) return null;
   const ts = idx.map(i=>dispData[i].t);
-  const f = LAB.freq;
+  const Q = labProcQ(), f = LABOPT.real ? 20 + 10*Q : LAB.freq, resLi = STRAT.findIndex(l=>l.role==='reservoir');
+  const sBlk = idx.map(i=>{ const bb = dispData[i].b; const pf = bb && bb.estimate && bb.estimate.probFine!==undefined ? bb.estimate.probFine : null; return (LABOPT.dhi && pf!==null) ? clamp((pf-0.08)/0.35, 0, 1) : 0; });
   // couches par bloc : sommet, base, impédance
   const tops = Array.from({length:nL},(_,li)=>idx.map(i=>dispData[i].layers[li]?.top ?? NaN));
   const bases = Array.from({length:nL},(_,li)=>idx.map(i=>{ const l = dispData[i].layers[li]; return l ? l.top + l.thickness : NaN; }));
@@ -4621,20 +4662,27 @@ function labSeismicImage(dispData, dMin, dMax){
     for(let li=0; li<nL; li++){
       const a = acou[li][near]; if(!a) continue;
       const top = labInterp(tops[li].map((v,k)=>isNaN(v)?tops[li][near]:v), ts, t), base = labInterp(bases[li].map((v,k)=>isNaN(v)?bases[li][near]:v), ts, t);
-      if(base-top < 1) continue; layers.push({top, base, a});
+      if(base-top < 1) continue; layers.push({top, base, a, li});
     }
     layers.sort((p,q)=>p.top-q.top);
+    const sCol = sBlk.length ? labInterp(sBlk, ts, t) : 0; let mult = null;
     for(let k=1;k<layers.length;k++){
-      const A = layers[k-1].a, B = layers[k].a, R = (B.z-A.z)/(B.z+A.z), z0 = layers[k].top, V = (A.v+B.v)/2;
+      const A = layers[k-1].a, B = layers[k].a, z0 = layers[k].top, V = (A.v+B.v)/2;
+      let R = (B.z-A.z)/(B.z+A.z);
+      if(layers[k].li===resLi && sCol>0.001) R = R*(1+1.4*sCol) - 0.4*sCol; // tache brillante : l'impédance chute au toit du réservoir chargé
+      if(LABOPT.real){ R *= Math.exp(-(z0-dMin)/4200); if(z0 < dMin + 0.45*(dMax-dMin) && (!mult || Math.abs(R)>Math.abs(mult.R))) mult = {R, z0, V}; }
       const half = Math.min(nz, Math.ceil(V/(2*f)*1.6/dz)); // fenêtre de l'ondelette en échantillons
       const c0 = Math.round((z0-dMin)/dz);
       for(let j=Math.max(0,c0-half); j<=Math.min(nz-1,c0+half); j++){ const dzm = (j-c0)*dz; amp[c*nz+j] += R*ricker(2*dzm/V); }
     }
+    if(LABOPT.real && mult && Math.abs(mult.R) > 0.10){ const zm = dMin + 2*(mult.z0 - dMin), Rm = -mult.R*Math.abs(mult.R)*2.2, V = mult.V;
+      if(zm < dMax){ const half = Math.min(nz, Math.ceil(V/(2*f)*1.6/dz)), c0 = Math.round((zm-dMin)/dz); for(let j=Math.max(0,c0-half); j<=Math.min(nz-1,c0+half); j++){ const dzm = (j-c0)*dz; amp[c*nz+j] += Rm*ricker(2*dzm/V); } } }
   }
+  // (les multiples sont ajoutés dans la boucle colonne ci-dessous)
   // normalisation sur le 97e centile, bruit lisse (reproductible)
   const vals = []; for(let c=0;c<ncol;c++) if(has[c]) for(let j=0;j<nz;j+=3) vals.push(Math.abs(amp[c*nz+j]));
   vals.sort((a,b)=>a-b); const ref = vals[Math.floor(vals.length*0.97)] || 1;
-  const noiseAmp = 0.07*(typeof uncertaintyMult==='function' ? uncertaintyMult() : 1);
+  const noiseAmp = 0.07*(typeof uncertaintyMult==='function' ? uncertaintyMult() : 1)*(LABOPT.real ? 2.0*(1.7 - 0.9*Q) : 1);
   const cv = document.createElement('canvas'); cv.width = ncol; cv.height = nz; const ctx = cv.getContext('2d'); const img = ctx.createImageData(ncol, nz);
   const col = v => { // bleu = l'impédance augmente en descendant (pic), rouge = elle diminue (creux)
     const a = Math.min(1, Math.abs(v)); const base = [247,244,236];
@@ -4650,8 +4698,8 @@ function labSeismicImage(dispData, dMin, dMax){
   for(let c=0;c<ncol;c++) for(let j=0;j<nz;j++){
     const p = (j*ncol+c)*4;
     if(!has[c]){ img.data[p+3] = 0; continue; }
-    const n = nz2(c, j)*noiseAmp*2;
-    const v = clamp(amp[c*nz+j]/ref*1.05 + n, -1, 1);
+    const n = nz2(c, j)*noiseAmp*2*(LABOPT.real ? (0.55 + 1.2*j/nz) : 1);
+    const v = clamp(amp[c*nz+j]/ref*(LABOPT.dhi ? 0.72 : 1.05) + n, -1, 1);
     const rgb = col(v); img.data[p]=rgb[0]; img.data[p+1]=rgb[1]; img.data[p+2]=rgb[2]; img.data[p+3]=255;
   }
   ctx.putImageData(img, 0, 0);
@@ -5292,6 +5340,8 @@ function renderSection(){
       font-size="7.5" fill="var(--muted)" text-anchor="end">${d}m</text>`;
   }
 
+  if(LAB_ON && LABOPT.real){ const twt = labTwtFn(dispData); const tTop = twt(dMin), tBot = twt(dMax); svg += `<text x="${MARG.l+PW+4}" y="${MARG.t-8}" font-size="7" fill="var(--muted)">ms</text>`;
+    for(let ms = Math.ceil(tTop/200)*200; ms < tBot; ms += 200){ let lo = dMin, hi = dMax; for(let it=0; it<24; it++){ const mid = (lo+hi)/2; if(twt(mid) < ms) lo = mid; else hi = mid; } const y = yOf((lo+hi)/2); if(y<MARG.t || y>MARG.t+PH) continue; svg += `<line x1="${MARG.l+PW}" y1="${y.toFixed(1)}" x2="${MARG.l+PW+3}" y2="${y.toFixed(1)}" stroke="var(--line)"/><text x="${MARG.l+PW+5}" y="${(y+3).toFixed(1)}" font-size="7" fill="var(--muted)">${ms}</text>`; } }
   // Surface
   const ySurf = yOf(0);
   if(ySurf >= MARG.t && ySurf <= MARG.t+PH){
@@ -5341,7 +5391,7 @@ function renderSection(){
   // Analyse le profil des données estimées pour identifier la géométrie
   if(LAB_ON || (!LAB.truth && (LABOPT.pick || LABOPT.cal))){
     const ip = document.getElementById('sectionInterpret');
-    if(ip){ ip.style.display = 'block'; ip.innerHTML = `<b style="color:var(--amber);">Traitement et interprétation</b>` + labHorizonTable(dispData, labLv) + `${labWellList(dispData, labLv)}<div class="lab-note"><b>Quel horizon est le réservoir ?</b> La sismique ne le dit pas : repérez les plis, les failles et les contrastes, croisez avec la vitesse (un réservoir de grès ou de calcaire est plus « dur » que l'argile qui le scelle, donc plutôt un contraste (+) à son toit), puis <b>désignez votre cible</b> par un clic sur la sismique ou le bouton « viser ». Forer le mauvais horizon donne un puits sec, mais le log vous apprend où était le réservoir ; un bon choix rapporte ${formatM(LAB_PICK_BONUS)}.</div>`; }
+    if(ip){ ip.style.display = 'block'; ip.innerHTML = `<b style="color:var(--amber);">Traitement et interprétation</b>` + labHorizonTable(dispData, labLv) + `${labWellList(dispData, labLv)}${labProcHtml()}${labRealNote()}<div class="lab-note"><b>Quel horizon est le réservoir ?</b> La sismique ne le dit pas : repérez les plis, les failles et les contrastes, croisez avec la vitesse (un réservoir de grès ou de calcaire est plus « dur » que l'argile qui le scelle, donc plutôt un contraste (+) à son toit), puis <b>désignez votre cible</b> par un clic sur la sismique ou le bouton « viser ». Forer le mauvais horizon donne un puits sec, mais le log vous apprend où était le réservoir ; un bon choix rapporte ${formatM(LAB_PICK_BONUS)}.</div>`; }
   } else interpretSection(blockData, profileBlocks);
 
   // ── Légende ── énumère les lithologies RÉELLEMENT présentes sur ce profil,
@@ -6610,7 +6660,7 @@ function _doStartGame(){
     financeMode:    menuConfig.financeMode,
     uncertaintyLevel: menuConfig.uncertainty,
     budget:         m.budget,
-    month:0, speed:1, paused:false, labPick:null, labCal:{}, labOpt:{ ...LABOPT },
+    month:0, speed:1, paused:false, labPick:null, labCal:{}, labProc:{}, labOpt:{ ...LABOPT },
     price:70, priceHistory:[70],
     wells:[], drilling:[], sectionA:null, sectionB:null,
     tool:'select', history:[], lastCF:0, lastRevenue:0, lastOpex:0, lastLoanPayment:0,
@@ -7641,6 +7691,6 @@ function _doStartGame(){
 #labBadge{position:fixed;right:10px;bottom:62px;z-index:900;background:var(--ink);color:var(--on-ink);font-size:11px;padding:6px 10px;border-radius:8px;opacity:.88;max-width:260px;line-height:1.4;}
 body.mobile-layout #labBadge{bottom:64px;}
 </style>
-<div id="labBadge"><b>LABO sismique, phase 3</b> : la sismique ne montre plus les roches ni le réservoir. Désignez votre cible, forez, loguez, puis calez le puits sur la sismique pour étendre la lithologie. Sauvegarde séparée du jeu principal.</div>
+<div id="labBadge"><b>LABO sismique, phase 4</b> : la sismique ne montre plus les roches ni le réservoir. Désignez votre cible, forez, loguez, puis calez le puits sur la sismique pour étendre la lithologie. Sauvegarde séparée du jeu principal.</div>
 </body>
 </html>
