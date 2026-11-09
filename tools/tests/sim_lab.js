@@ -5,7 +5,7 @@
 //   (après un puits manqué, il apprend le bon horizon grâce au log). oracle = connaît les vraies valeurs.
 const { chromium } = require('playwright');
 const [,, nGames='20', presets='decouverte,inter,complet', strategies='oracle,sism100,sism60,sism30,random', mode='junior'] = process.argv;
-const LABO = 'file://' + require('path').resolve(__dirname, '../../labo-sismique.html');
+const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
 (async()=>{
   const br = await chromium.launch(); const pg = await br.newPage();
   const errs=[]; pg.on('pageerror',e=>errs.push(e.message));

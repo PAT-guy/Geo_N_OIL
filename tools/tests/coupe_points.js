@@ -1,11 +1,11 @@
 // Points des blocs sur la coupe : visibles, cliquables, bloc sélectionné repéré par un trait vertical (jeu principal et labo)
 const { chromium } = require('playwright');
 const path = require('path');
-(async()=>{ for(const [nom, file, labo] of [['jeu','index.html',false],['labo','labo-sismique.html',true]]){
+(async()=>{ for(const [nom, file, labo] of [['jeu','index.html',false],['labo','index.html',true]]){
   const br=await chromium.launch(); const pg=await br.newPage({viewport:{width:1400,height:900}}); const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
   await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1');localStorage.setItem('geoexplorer_menu','full')}catch(e){}});
   await pg.goto('file://'+path.resolve(__dirname,'../../'+file)); await pg.waitForTimeout(300);
-  await pg.click('.menu-tab[data-tab="world"]'); await pg.click('#basinPicker button[data-val="paris"]'); await pg.fill('#geoSeed','2024'); await pg.click('#startBtn'); if(labo) await pg.click('#labOptGo'); await pg.waitForTimeout(500);
+  await pg.click('.menu-tab[data-tab="world"]'); await pg.click('#basinPicker button[data-val="paris"]'); await pg.fill('#geoSeed','2024'); await pg.click('#startBtn'); await pg.evaluate(()=>labOptPreset('complet')); await pg.click('#labOptGo'); await pg.waitForTimeout(500);
   await pg.evaluate(()=>{ setSpeed(0); G.budget=30e6; performStudy(null,'gravity'); const land=blocks.filter(b=>!b.isOffshore); const rows={}; land.forEach(b=>(rows[b.y]=rows[b.y]||[]).push(b)); const r=Object.values(rows).sort((a,z)=>z.length-a.length)[0].sort((a,z)=>a.x-z.x); G.sectionA=r[0].id; G.sectionB=r[r.length-1].id; window.__row=r.map(b=>b.id); performStudy(null,'seismic2d'); switchTab('section'); renderSection(); if(window.labSetPick) labSetPick(3); });
   const out={ nom };
   // les points de la rangée sont visibles : hors du groupe écrêté et au-dessus de tout autre élément à leur position

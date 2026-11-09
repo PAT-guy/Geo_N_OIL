@@ -1,27 +1,22 @@
-# Outils du labo sismique
+# Outils de test et d'équilibrage
 
-`labo-sismique.html` n'est pas édité à la main : il est généré à partir de `index.html` par un script de patchs.
+Tests Playwright et simulateur d'équilibrage du jeu (`index.html`). Le jeu est un fichier unique édité directement.
 
-## Régénérer le labo
+## Historique : le labo est fusionné dans le jeu (V4.33)
 
-```bash
-python3 tools/mklab.py
-```
+Jusqu'à la V4.32, `labo-sismique.html` était généré à partir de `index.html` par `tools/archive/mklab.py`. Depuis la V4.33, ces règles font partie du jeu : `index.html` contient tout le code (objet d'options `LABOPT`, écran d'options de la partie, préréglages Découverte, Intermédiaire, Complet et Expert). `tools/archive/mklab.py` et `tools/archive/merge_labo.py` sont conservés pour l'historique seulement : ne pas les relancer sur l'index.html actuel (leurs remplacements exacts ne correspondent plus). `labo-sismique.html` n'est plus qu'une redirection vers le jeu.
 
-Le script lit `index.html`, applique une série de remplacements exacts (`rep(ancien, nouveau)`) et écrit `labo-sismique.html`. Chaque remplacement vérifie que le texte ancien existe une seule fois. Si `index.html` change dans une zone patchée, le script s'arrête en indiquant quel remplacement a échoué : il faut alors adapter l'ancre dans `mklab.py`.
-
-Ne jamais modifier `labo-sismique.html` directement : la prochaine régénération écraserait la modification.
+Préréglage proposé par niveau (modifiable dans l'écran d'options, mémorisé par niveau) : Junior en Découverte, Senior en Intermédiaire, Grande exploration en Complet. Une sauvegarde d'avant la V4.33 se recharge en Découverte (règles d'origine).
 
 ## Tests
 
-Les tests utilisent Playwright (Chromium) et écrivent leurs captures d'écran dans le dossier courant : les lancer depuis un dossier temporaire.
+Les tests utilisent Playwright (Chromium) sur `index.html` et écrivent leurs captures d'écran dans le dossier courant : les lancer depuis un dossier temporaire. Ils choisissent le préréglage Complet avant de lancer la partie (le défaut du niveau Junior est Découverte).
 
 ```bash
 cd /tmp && node /chemin/vers/Geo_N_OIL/tools/tests/chk_lab.js
 ```
 
 - `chk_lab.js` : chargement sans erreur JS.
-- `lab430.js`, `lab430b.js` : sismique muette, dévoilement de la lithologie, recherche de fuites.
 - `lab431.js` : désignation de la cible (phase 2).
 - `lab432.js` : calage puits-sismique (phase 3).
 - `lab433.js` : écran d'options, préréglages, verrouillage, sondage stratigraphique.
@@ -33,6 +28,7 @@ cd /tmp && node /chemin/vers/Geo_N_OIL/tools/tests/chk_lab.js
 - `lab438.js` : épaisseurs variables des couches (option du labo) : variation, cohérence des piles, cartes identiques hors épaisseur.
 - `coupe_points.js` : rangée de points des blocs sous la coupe (visible, cliquable), trait vertical du bloc sélectionné, forage visé dans le labo.
 - `sim_lab.js` : simulation d'équilibrage (parties de 25 ans jouées par des robots).
+- `fusion.js` : préréglage par niveau, Découverte par défaut, ancienne sauvegarde, redirection de l'ancien lien du labo.
 
 ## Dernier bilan d'équilibrage (`sim_lab.js`, 60 à 150 parties par cellule, junior, 25 ans)
 

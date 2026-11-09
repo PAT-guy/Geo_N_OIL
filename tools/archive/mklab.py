@@ -1,7 +1,7 @@
 import os
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-src = os.path.join(ROOT, 'index.html')
-dst = os.path.join(ROOT, 'labo-sismique.html')
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+src = os.environ.get('MKLAB_SRC') or os.path.join(ROOT, 'index.html')
+dst = os.environ.get('MKLAB_OUT') or os.path.join(ROOT, 'labo-sismique.html')
 s = open(src, encoding='utf-8').read()
 def rep(old, new, cnt=1):
     global s

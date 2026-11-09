@@ -1,4 +1,4 @@
-const LABO = 'file://' + require('path').resolve(__dirname, '../../labo-sismique.html');
+const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
 const INDEX = 'file://' + require('path').resolve(__dirname, '../../index.html');
 const { chromium } = require('playwright');
 (async()=>{ const br=await chromium.launch(); const ctx=await br.newContext({viewport:{width:1400,height:900}}); const pg=await ctx.newPage(); const errs=[]; pg.on('pageerror',e=>errs.push(e.message)); pg.on('console',m=>{ if(m.type()==='error'&&!/height/.test(m.text())) errs.push('console: '+m.text()); });
@@ -8,7 +8,7 @@ async function start(preset, lock){
   await pg.goto(LABO); await pg.waitForTimeout(300);
   await pg.click('.menu-tab[data-tab="world"]'); await pg.click('#basinPicker button[data-val="paris"]'); await pg.fill('#geoSeed','2024'); await pg.click('#startBtn'); await pg.waitForTimeout(200);
   const vis = await pg.evaluate(()=>document.getElementById('labOptModal').classList.contains('open') && !document.getElementById('menu').classList.contains('hidden'));
-  if(preset) await pg.evaluate(p=>labOptPreset(p), preset);
+  await pg.evaluate(p=>labOptPreset(p||'complet'), preset);
   if(lock) await pg.evaluate(()=>labOptSet('locked',true));
   if(preset==='x') {}
   await pg.click('#labOptGo'); await pg.waitForTimeout(500);
