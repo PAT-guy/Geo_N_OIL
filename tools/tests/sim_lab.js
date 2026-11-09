@@ -21,7 +21,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
     const mulberry = (a)=>()=>{ a=(a+0x6D2B79F5)|0; let t=Math.imul(a^(a>>>15),1|a); t=(t+Math.imul(t^(t>>>7),61|t))^t; return((t^(t>>>14))>>>0)/4294967296; };
     const realRandom = Math.random;
     const lifetimeValue = (prod0, price, offshore, gas)=>{
-      const fixed=offshore?30000:8000, varOp=(offshore?14:4)+6; const pr = gas?price*.18:price; let v=0;
+      const fixed=offshore?OFFSHORE_OPEX:8000, varOp=(offshore?14:4)+6; const pr = gas?price*.18:price; let v=0;
       for(let m=0;m<400;m++){ const p=prod0*declineFactor(m); const net=p*pr - fixed - p*varOp; if(net<=0 || p<5) break; v+=net; }
       return v;
     };
@@ -34,7 +34,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       let best=null;
       Object.entries(EQUIPMENT).forEach(([k,eq])=>{
         if(depth>eq.maxDepth) return;
-        const cost = depth*eq.costM*(b.isOffshore?2.8:1);
+        const cost = depth*eq.costM*(b.isOffshore?OFFSHORE_COST_MULT:1);
         const ev = pEst*eq.reliability*V - cost;
         if(!best || ev>best.ev) best={equip:k, cost, ev, V};
       });
@@ -45,7 +45,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       Math.random = mulberry(seed*7919+13);
       const [base, ...flags] = preset.split('-'); const o = { ...LAB_PRESETS[base].o }; flags.forEach(f=>{ if(f.startsWith('no')) o[f.slice(2)] = false; });
       LABOPT = labNormOpt(o);
-      menuConfig.seed=seed; menuConfig.mode=mode; menuConfig.basinType='random'; menuConfig.offshore=true; menuConfig.gridSize = mode==='expedition' ? 30 : 12; if(EX.offshore!==undefined) menuConfig.offshore = EX.offshore; if(EX.budget) MODES[mode].budget = EX.budget*1e6; if(EX.years) MODES[mode].maxYears = EX.years; menuConfig.financeMode=false; menuConfig.uncertainty = EX.uncertainty || 'medium'; if(EX.reliab) Object.values(EQUIPMENT).forEach(e=>{ e.reliability = EX.reliab; }); if(EX.declMult && typeof DECL!=='undefined') DECL.Di = 0.015*EX.declMult; if(EX.offProd!==undefined) OFFSHORE_PROD_MULT = EX.offProd; if(EX.price0) G.price = EX.price0;
+      menuConfig.seed=seed; menuConfig.mode=mode; menuConfig.basinType='random'; menuConfig.offshore=true; menuConfig.gridSize = mode==='expedition' ? 30 : 12; if(EX.offshore!==undefined) menuConfig.offshore = EX.offshore; if(EX.budget) MODES[mode].budget = EX.budget*1e6; if(EX.years) MODES[mode].maxYears = EX.years; menuConfig.financeMode=false; menuConfig.uncertainty = EX.uncertainty || 'medium'; if(EX.reliab) Object.values(EQUIPMENT).forEach(e=>{ e.reliability = EX.reliab; }); if(EX.declMult && typeof DECL!=='undefined') DECL.Di = 0.015*EX.declMult; if(EX.offProd!==undefined) OFFSHORE_PROD_MULT = EX.offProd; if(EX.offCost!==undefined) OFFSHORE_COST_MULT = EX.offCost; if(EX.offOpex!==undefined) OFFSHORE_OPEX = EX.offOpex; if(EX.price0) G.price = EX.price0;
       if(goalM) MODES[mode].winGoal = +goalM*1e6;
       if(typeof ADV!=='undefined') ADV.studyCostMult = studyMult ? +studyMult : 1;
       if(typeof ADV!=='undefined') ADV.drillCostMult = drillMult ? +drillMult : 1;
@@ -102,7 +102,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
           const sorted = cand.filter(b=>b.estimate?.structPos!==undefined).sort((a,z)=>z.estimate.structPos-a.estimate.structPos);
           for(const b of sorted){ if(slots<=0) break; const d=bestDrill(b,0.12,50,false); if(!d||!canAfford(d.cost)) continue; if(drillOne(b,d)) slots--; }
         } else if(strat==='oracle'){
-          const scored = cand.map(b=>({b, d:bestDrill(b,b.trueProbability,b.trueQuality,true)})).filter(x=>x.d && canAfford(x.d.cost)).sort((a,z)=>z.d.ev-a.d.ev);
+          const scored = cand.map(b=>({b, d:bestDrill(b,Math.min(0.95,b.trueProbability*discoveryBoost(b)),b.trueQuality,true)})).filter(x=>x.d && canAfford(x.d.cost)).sort((a,z)=>z.d.ev-a.d.ev);
           for(const x of scored){ if(slots<=0) break; if(x.d.ev<=0) break; if(drillOne(x.b,x.d)) slots--; }
         } else {
           const done = cand.filter(b=>b.estimate?.prob!==undefined && b.studies.some(s=>s.type==='seismic3d'));

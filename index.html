@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.35</title>
+<title>GeoExplorer V4.36</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2438,6 +2438,30 @@ function getProfileBlocks(idA, idB){
   return result.sort((a,b)=>a.t-b.t);
 }
 
+// Effet de voisinage : un puits productif prouve qu'un système pétrolier fonctionne (roche-mère mature, réservoir, couverture,
+// migration) ; les blocs voisins, qui partagent souvent le même piège, la même charge et le même réservoir, deviennent plus
+// prometteurs (+60 % à une case, +31 % à deux, +16 % à trois). Un puits sec dont la géologie a vraiment été testée pèse
+// dans l'autre sens (-20 % à une case). Un échec technique ou un horizon mal visé ne prouve rien et n'est pas compté.
+const DISC_RADIUS = 3.5;
+function discoveryBoost(b){
+  let f = 1;
+  for(const o of blocks){
+    if(o===b) continue;
+    const productif = !!o.well, secUtile = !!o.dryHole && !o.wrongTarget && o.dryHoleInfo && !o.dryHoleInfo.techFail;
+    if(!productif && !secUtile) continue;
+    const d = Math.hypot(o.x-b.x, o.y-b.y); if(d > DISC_RADIUS) continue;
+    const k = Math.exp(-(d-1)/1.5);
+    f *= productif ? 1 + 0.6*k : 1 - 0.2*k;
+  }
+  return clamp(f, 0.5, 2.2);
+}
+function refreshNeighbors(b){
+  blocks.forEach(o=>{
+    if(o===b || o.well || o.dryHole || !o.studies.length) return;
+    if(Math.hypot(o.x-b.x, o.y-b.y) > DISC_RADIUS) return;
+    updateBlockEstimate(o); renderBlock(o);
+  });
+}
 function updateBlockEstimate(b){
   const logStudy  = b.studies.find(s=>s.type==='welllog');
   const seis3dStudy = b.studies.find(s=>s.type==='seismic3d');
@@ -2486,6 +2510,7 @@ function updateBlockEstimate(b){
     est.probFine = pf; est.dhiClass = cls; est.prob = [0.04,0.13,0.25,0.42][cls]; est.probErr = 0.08;
     est.amplitude = ['pas d\'anomalie d\'amplitude','faible anomalie d\'amplitude','anomalie d\'amplitude modérée','forte anomalie d\'amplitude (tache brillante)'][cls];
   }
+  if(est.prob!==undefined && !logStudy && !b.well && !b.dryHole) est.prob = clamp(est.prob*discoveryBoost(b), 0.005, 0.95);
   b.estimate = Object.keys(est).length ? est : null;
 }
 
@@ -2500,9 +2525,13 @@ function updateBlockEstimate(b){
 const PROD_BASE = 63;            // puits neuf (était 165 avec l'ancien déclin)
 const PROD_BASE_SIDETRACK = 51;  // side-track sur un 2e réservoir (était 135)
 // Un puits en mer produit beaucoup plus qu'un puits à terre : réservoirs plus épais et plus perméables, puits
-// complétés pour de gros débits. C'est ce qui justifie son prix (coût ×2,8, charges fixes ×3,75). Avant, il
-// produisait exactement comme un puits à terre : le puits en mer médian perdait de l'argent (valeur 0,2 fois son coût).
-let OFFSHORE_PROD_MULT = 3;
+// complétés pour de gros débits (en vrai de 500 à 3 000 bbl/j sur la plateforme continentale, contre quelques dizaines
+// à quelques centaines à terre). Ici ×8 (environ 340 bbl/j médian), pour un coût ×6 et 80 k$ de charges fixes par
+// mois : l'échelle monétaire du jeu ne permet pas les coûts réels (15 à 100 M$ par puits). Avant la V4.35, un puits
+// en mer produisait comme un puits à terre pour 2,8 fois le coût : le puits médian valait 0,2 fois son coût.
+let OFFSHORE_PROD_MULT = 8;
+// Coûts d'un site en mer : forage et charges fixes mensuelles (à terre : 8 k$ par mois)
+let OFFSHORE_COST_MULT = 6, OFFSHORE_OPEX = 80000;
 const prodSite = b => (b && b.isOffshore) ? OFFSHORE_PROD_MULT : 1;
 
 // Déclin de production : loi hyperbolique d'Arps, q(t) = q0 · (1 + b·Di·t)^(-1/b), t en mois.
@@ -2521,7 +2550,7 @@ function wellRate(w){
 // Projection d'un puits neuf : cumul net sur `months` mois (arrêt si le net devient négatif) et
 // délai de remboursement du coût de forage. Mêmes coûts d'exploitation que wellEconomics().
 function projectWell(q0, price, offshore, gas, cost, months){
-  const fixed = offshore?30000:8000, varOp = (offshore?14:4)+6, pr = gas?price*.18:price;
+  const fixed = offshore?OFFSHORE_OPEX:8000, varOp = (offshore?14:4)+6, pr = gas?price*.18:price;
   let cum = 0, payback = null;
   for(let m=0; m<(months||120); m++){
     const q = q0*declineFactor(m), net = q*(pr-varOp) - fixed;
@@ -2624,7 +2653,7 @@ function drillBlock(blockId, method, equip, est){
   const depth = drillDepthEstimate(b);
   const eq = EQUIPMENT[equip], me = METHODS[method];
   if(depth > eq.maxDepth){addLog(`Matériel insuffisant : profondeur estimée ${Math.round(depth)}m > max ${eq.maxDepth}m.`,'bad');return;}
-  const offMult = b.isOffshore ? 2.8 : 1.0;
+  const offMult = b.isOffshore ? OFFSHORE_COST_MULT : 1.0;
   const cost = depth * eq.costM * me.costMult * offMult;
   if(G.budget < cost && G.mode!=='sandbox'){addLog('Budget insuffisant pour ce forage.','bad');return;}
   G.budget -= cost;
@@ -2654,7 +2683,7 @@ function resolveDrilling(d){
   const b = blocks[d.blockId];
   b.el?.classList.remove('drilling');
   const eq = EQUIPMENT[d.equip], me = METHODS[d.method];
-  let geoOk  = Math.random() < b.trueProbability;
+  let geoOk  = Math.random() < clamp(b.trueProbability*discoveryBoost(b), 0, 0.95);
   const labResIdx = STRAT.findIndex(l=>l.role==='reservoir');
   const labMissed = G.labPick!=null && G.labPick!==labResIdx;
   if(labMissed) geoOk = false;
@@ -2663,7 +2692,7 @@ function resolveDrilling(d){
   // trou foré, on règle l'écart avec la profondeur réelle (dépassement ou
   // économie), et un matériel trop faible pour la vraie profondeur échoue.
   const trueDepth = (G.labPick!=null && b.horizons[G.labPick]) ? b.horizons[G.labPick].top : b.topOfReservoir;
-  const settleDelta = (trueDepth - d.depth) * eq.costM * me.costMult * (b.isOffshore ? 2.8 : 1);
+  const settleDelta = (trueDepth - d.depth) * eq.costM * me.costMult * (b.isOffshore ? OFFSHORE_COST_MULT : 1);
   if(Math.abs(settleDelta) > 1000){
     G.budget -= settleDelta; d.cost += settleDelta;
     addLog(settleDelta>0
@@ -2696,11 +2725,15 @@ function resolveDrilling(d){
     injectWellLog(b);
     revealTrueGeology(b);
     b.dryHole = true;
+    b.wrongTarget = !!labMissed;
     b.dryHoleInfo = {cost:d.cost, studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month, techFail: !geoOk ? false : true};
     b.el?.classList.add('dry-hole');
     const why = !geoOk ? 'aucun HC (puits sec)' : 'échec technique';
     addLog(`✗ Forage infructueux : bloc (${b.x},${b.y}), ${why}.`,'bad');
   }
+  refreshNeighbors(b);
+  if(b.well) addLog('🧭 Découverte : les blocs voisins (à moins de 3 cases) deviennent plus prometteurs.', 'ev');
+  else if(b.dryHoleInfo && !b.dryHoleInfo.techFail && !b.wrongTarget) addLog('Les blocs voisins sont un peu moins prometteurs.', 'ev');
   const calibHtml = (d.est ? applyCalibration(d.est, geoOk, prodOut, b) : '') + labResultHtml(b, labMissed, labResIdx);
   renderBlock(b);
   updateHud();
@@ -2744,7 +2777,7 @@ function launchSidetrack(blockId){
   // Coût réduit par rapport à un puits neuf : on réutilise le forage déjà en
   // place jusqu'à une certaine profondeur, seule la déviation latérale et la
   // complétion du second réservoir sont facturées en plus.
-  const cost = info.depth * EQUIPMENT.standard.costM * 0.45 * (b.isOffshore ? 2.8 : 1);
+  const cost = info.depth * EQUIPMENT.standard.costM * 0.45 * (b.isOffshore ? OFFSHORE_COST_MULT : 1);
   if(G.budget < cost && G.mode!=='sandbox'){ addLog(`Budget insuffisant pour ce side-track (${formatM(cost)}).`,'bad'); return; }
   if(G.mode!=='sandbox') G.budget -= cost;
   const months = Math.max(1, Math.round(info.depth/900));
@@ -2792,7 +2825,7 @@ function getSecondReservoirInfo(b){
 function wellEconomics(w){
   const prodEffective = w.production * (w.eorActive ? 1.35 : 1.0);
   const priceWell = w.isGas ? G.price*.18 : (G.financeMode && G.hedgeContract?.monthsLeft>0 ? G.hedgeContract.lockedPrice : G.price);
-  const fixedOp = w.offshore ? 30000 : 8000;
+  const fixedOp = w.offshore ? OFFSHORE_OPEX : 8000;
   const varOp   = (w.offshore?14:4) + 6;
   const revenue = prodEffective * priceWell;
   const opex    = fixedOp + prodEffective*varOp;
@@ -3695,7 +3728,7 @@ function renderGeoPanel(b){
       const n3d = b.studies.some(st=>st.type==='seismic3d');
       html += `<div class="pcard"><div class="pc-top"><span>Probabilité de succès estimée</span><span class="pc-val">${Math.round(pct)}<small> %</small></span></div>
         <div class="pc-bar"><i class="pc-band" style="left:${lo.toFixed(1)}%;width:${(hi-lo).toFixed(1)}%"></i><i class="pc-tick" style="left:${pct.toFixed(1)}%"></i></div>
-        <div class="pc-note">± ${Math.round(err)} points d'incertitude annoncée.${n3d ? ' Un faux signal d\'amplitude reste possible : cette marge ne le couvre pas.' : ''}</div></div>`;
+        <div class="pc-note">± ${Math.round(err)} points d'incertitude annoncée.${(()=>{ const x = discoveryBoost(b); return Math.abs(x-1) > 0.03 ? ` Effet de voisinage (puits proches) : ${x>1?'+':''}${Math.round((x-1)*100)} %.` : ''; })()}${n3d ? ' Un faux signal d\'amplitude reste possible : cette marge ne le couvre pas.' : ''}</div></div>`;
     } else {
       html += `<div class="pcard"><div class="pc-top"><span>Probabilité de succès</span><span class="pc-val" style="color:var(--muted)">?</span></div>
         <div class="pc-bar"></div><div class="pc-note">${e?.structPos!==undefined ? 'Inconnue. Une sismique 3D donnera une première estimation.' : 'Inconnue. Commencez par le levé gravimétrique.'}</div></div>`;
@@ -4190,7 +4223,7 @@ function renderStudiesPanel(b){
     if(stInProgress){
       html+=`<div style="color:var(--amber);font-size:11px;margin-top:8px;">⏳ Side-track en cours : fin mois ${stInProgress.endMonth} (encore ${stInProgress.endMonth-G.month} mois).</div>`;
     } else if(stInfo && !w.sidetrackDone){
-      const stCost = stInfo.depth * EQUIPMENT.standard.costM * 0.45 * (b.isOffshore?2.8:1);
+      const stCost = stInfo.depth * EQUIPMENT.standard.costM * 0.45 * (b.isOffshore?OFFSHORE_COST_MULT:1);
       html+=`<div class="ps-section" style="margin-top:10px;">Second réservoir détecté</div>
       <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:6px;">
         Un réservoir plus profond existe sous la roche-mère de ce bloc. Un side-track réutilise le forage déjà en
@@ -4225,7 +4258,7 @@ function updateDrillSummary(blockId){
   const equip=document.getElementById('drillEquip')?.value||'standard';
   const eq=EQUIPMENT[equip], me=METHODS[method];
   const depth=drillDepthEstimate(b);
-  const offMult=b.isOffshore?2.8:1;
+  const offMult=b.isOffshore?OFFSHORE_COST_MULT:1;
   const cost=depth*eq.costM*me.costMult*offMult;
   const deepOk=depth<=eq.maxDepth;
   const canAfford=G.budget>=cost||G.mode==='sandbox';
@@ -4251,7 +4284,7 @@ function updateDrillSummary(blockId){
   const nomRes=STRAT.find(l=>l.role==='reservoir');
   const estProd=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b);
   const proj=projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, G.mode==='sandbox'?0:cost, 120);
-  const netMonth=estProd*(b.estimate.isGas?G.price*.18:G.price)-(b.isOffshore?30000:8000)-estProd*((b.isOffshore?14:4)+6);
+  const netMonth=estProd*(b.estimate.isGas?G.price*.18:G.price)-(b.isOffshore?OFFSHORE_OPEX:8000)-estProd*((b.isOffshore?14:4)+6);
   const breakeven=proj.payback;
   const beClass=breakeven===null?'ds-bad':breakeven<18?'ds-good':breakeven<36?'ds-warn':'ds-bad';
   const beText=breakeven===null?'Non rentabilisé en 10 ans au cours actuel, même si le puits produit':`Rentabilisé en ~${breakeven} mois si le puits produit (déclin inclus)`;
@@ -5688,7 +5721,7 @@ function guideEV(b){
   const cum = projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, 0, 120).cum;
   let best = null;
   eqs.forEach(([k,e])=>{
-    const cost = depth*e.costM*METHODS.vertical.costMult*(b.isOffshore?2.8:1);
+    const cost = depth*e.costM*METHODS.vertical.costMult*(b.isOffshore?OFFSHORE_COST_MULT:1);
     const ev = b.estimate.prob*e.reliability*cum - cost;
     if(!best || ev>best.ev) best = {ev, cost, equip:k};
   });
@@ -5772,7 +5805,7 @@ function guideCompute(){
     // Coût du forage le moins cher possible pour ce bloc (matériel qui atteint la profondeur estimée) :
     // le guide ne doit pas proposer un forage que le joueur n'a pas les moyens de lancer.
     const depth = drillDepthEstimate(b);
-    const costs = Object.values(EQUIPMENT).filter(e=>depth<=e.maxDepth).map(e=>depth*e.costM*METHODS.vertical.costMult*(b.isOffshore?2.8:1));
+    const costs = Object.values(EQUIPMENT).filter(e=>depth<=e.maxDepth).map(e=>depth*e.costM*METHODS.vertical.costMult*(b.isOffshore?OFFSHORE_COST_MULT:1));
     const cheapest = costs.length ? Math.min(...costs) : null;
     const canDrill = G.mode==='sandbox' || (cheapest!==null && G.budget>=cheapest);
     const why = cheapest===null ? `Aucun matériel n'atteint la profondeur estimée (${Math.round(depth)} m).`
@@ -7399,7 +7432,7 @@ function _doStartGame(){
       title: 'Forer et produire',
       body: `Le résultat est binaire : puits productif ou sec, révélé après un court suspense, avec le facteur
         qui a le plus joué. Un puits décline ensuite : environ -12 % la première année, un peu plus de la moitié du débit
-        après 5 ans. Un puits en mer produit environ trois fois plus qu'un puits à terre, mais coûte bien plus cher. Fermez les puits marginaux depuis l'onglet <b>Gisements</b> quand ils coûtent plus
+        après 5 ans. Un puits en mer produit environ huit fois plus qu'un puits à terre, mais coûte six fois plus cher et supporte des charges fixes bien plus lourdes. Un puits productif rend ses voisins (à moins de trois cases) plus prometteurs ; un puits sec dont la géologie a vraiment été testée les rend un peu moins prometteurs. Fermez les puits marginaux depuis l'onglet <b>Gisements</b> quand ils coûtent plus
         qu'ils ne rapportent.<br><br>
         Si un second réservoir existe plus profond, un side-track l'exploite sans forer un nouveau trou.`,
     },
