@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.39</title>
+<title>GeoExplorer V4.41</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -650,6 +650,7 @@ body.mobile-layout #priceSparkline{display:none;}
         <button type="button" data-quiz="lithofacies">🪨 Quiz lithofaciès<i data-best="lithofacies">8 questions</i></button>
         <button type="button" data-quiz="maturation">🌡️ Quiz maturation<i data-best="maturation">8 questions</i></button>
         <button type="button" data-quiz="rockeval">🧪 Quiz Rock-Eval<i data-best="rockeval">8 questions</i></button>
+        <button type="button" data-quiz="seismic">📡 Quiz sismique<i data-best="seismic">8 questions</i></button>
         <button type="button" data-open="logs">📈 Lire un log<i data-best="logs">8 questions</i></button>
       </div>
       <button type="button" class="est-clear" id="menuCustomBtn" style="margin-top:14px;">⚙ <span class="i18n" data-fr="Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)" data-en="Customize (map, seed, difficulty, display, mini-games)">Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)</span></button>
@@ -817,6 +818,11 @@ body.mobile-layout #priceSparkline{display:none;}
       <div class="mode-card mg-card" data-quiz="rockeval" style="cursor:pointer;">
         <div class="mode-name">🧪 Quiz Rock-Eval</div>
         <div class="mode-desc">TOC, indice d'hydrogène, Tmax : entraînez-vous à interpréter ces trois mesures pour juger du potentiel générateur d'une roche-mère.</div>
+        <div class="mode-stats">Durée <span>~1 min</span> · Format <span>Quiz</span></div>
+      </div>
+      <div class="mode-card mg-card" data-quiz="seismic" style="cursor:pointer;">
+        <div class="mode-name">📡 Quiz Sismique</div>
+        <div class="mode-desc">Impédance, polarité, multiples, taches brillantes, calage puits-sismique : entraînez-vous à lire une sismique et à ne pas vous faire piéger.</div>
         <div class="mode-stats">Durée <span>~1 min</span> · Format <span>Quiz</span></div>
       </div>
     </div>
@@ -2539,6 +2545,13 @@ const PROD_BASE_SIDETRACK = 51;  // side-track sur un 2e réservoir (était 135)
 let OFFSHORE_PROD_MULT = 8;
 // Coûts d'un site en mer : forage et charges fixes mensuelles (à terre : 8 k$ par mois)
 let OFFSHORE_COST_MULT = 6, OFFSHORE_OPEX = 80000;
+// Coût des forages : les prix des services pétroliers (appareils de forage, équipes) suivent le cours du brut avec un
+// retard : quand le baril monte, forer coûte plus cher ; quand il s'effondre, les appareils se louent moins cher.
+// Sans cela, un baril à 80 $ rendait n'importe quel puits rentable en moyenne (forer au hasard devenait gagnant).
+// DRILL_COST_LEVEL cale le niveau de base au prix de départ (80 $) ; l'élasticité au prix est de 0,6.
+let DRILL_COST_LEVEL = 1.4;
+const drillCostFactor = () => DRILL_COST_LEVEL * clamp(Math.pow((G.price || 80)/80, 0.6), 0.7, 1.5);
+const siteCost = (b, cf) => (b && b.isOffshore ? OFFSHORE_COST_MULT : 1) * (cf ?? drillCostFactor());
 // À terre : ×1,2 depuis la V4.38 (environ 55 bbl/j médian au lieu de 46). Un puits conventionnel de bassin mature donne
 // plutôt de 30 à 150 bbl/j ; l'ancienne valeur était dans le bas de la fourchette.
 let ONSHORE_PROD_MULT = 1.2;
@@ -2663,14 +2676,15 @@ function drillBlock(blockId, method, equip, est){
   const depth = drillDepthEstimate(b);
   const eq = EQUIPMENT[equip], me = METHODS[method];
   if(depth > eq.maxDepth){addLog(`Matériel insuffisant : profondeur estimée ${Math.round(depth)}m > max ${eq.maxDepth}m.`,'bad');return;}
-  const offMult = b.isOffshore ? OFFSHORE_COST_MULT : 1.0;
+  const cf = drillCostFactor();
+  const offMult = siteCost(b, cf);
   const cost = depth * eq.costM * me.costMult * offMult;
   if(G.budget < cost && G.mode!=='sandbox'){addLog('Budget insuffisant pour ce forage.','bad');return;}
   G.budget -= cost;
   b.planned = false;
 
   const drillingMonths = method==='strati' ? Math.max(1, Math.round(depth/1200)) : Math.max(2, Math.round(depth/600));
-  G.drilling.push({blockId, method, equip, cost, depth, startMonth:G.month, endMonth:G.month+drillingMonths,
+  G.drilling.push({blockId, method, equip, cost, depth, cf, startMonth:G.month, endMonth:G.month+drillingMonths,
                    est: est && (est.p!==null || est.bucket!==null) ? {p:est.p, bucket:est.bucket} : null});
   b.el?.classList.add('drilling');
   if(method==='strati') addLog(`🧪 Sondage stratigraphique lancé : bloc (${b.x},${b.y}).`, 'ev');
@@ -2702,7 +2716,7 @@ function resolveDrilling(d){
   // trou foré, on règle l'écart avec la profondeur réelle (dépassement ou
   // économie), et un matériel trop faible pour la vraie profondeur échoue.
   const trueDepth = (G.labPick!=null && b.horizons[G.labPick]) ? b.horizons[G.labPick].top : b.topOfReservoir;
-  const settleDelta = (trueDepth - d.depth) * eq.costM * me.costMult * (b.isOffshore ? OFFSHORE_COST_MULT : 1);
+  const settleDelta = (trueDepth - d.depth) * eq.costM * me.costMult * siteCost(b, d.cf ?? 1);
   if(Math.abs(settleDelta) > 1000){
     G.budget -= settleDelta; d.cost += settleDelta;
     addLog(settleDelta>0
@@ -2787,7 +2801,7 @@ function launchSidetrack(blockId){
   // Coût réduit par rapport à un puits neuf : on réutilise le forage déjà en
   // place jusqu'à une certaine profondeur, seule la déviation latérale et la
   // complétion du second réservoir sont facturées en plus.
-  const cost = info.depth * EQUIPMENT.standard.costM * 0.45 * (b.isOffshore ? OFFSHORE_COST_MULT : 1);
+  const cost = info.depth * EQUIPMENT.standard.costM * 0.45 * siteCost(b);
   if(G.budget < cost && G.mode!=='sandbox'){ addLog(`Budget insuffisant pour ce side-track (${formatM(cost)}).`,'bad'); return; }
   if(G.mode!=='sandbox') G.budget -= cost;
   const months = Math.max(1, Math.round(info.depth/900));
@@ -4298,7 +4312,7 @@ function renderStudiesPanel(b){
     if(stInProgress){
       html+=`<div style="color:var(--amber);font-size:11px;margin-top:8px;">⏳ Side-track en cours : fin mois ${stInProgress.endMonth} (encore ${stInProgress.endMonth-G.month} mois).</div>`;
     } else if(stInfo && !w.sidetrackDone){
-      const stCost = stInfo.depth * EQUIPMENT.standard.costM * 0.45 * (b.isOffshore?OFFSHORE_COST_MULT:1);
+      const stCost = stInfo.depth * EQUIPMENT.standard.costM * 0.45 * siteCost(b);
       html+=`<div class="ps-section" style="margin-top:10px;">Second réservoir détecté</div>
       <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:6px;">
         Un réservoir plus profond existe sous la roche-mère de ce bloc. Un side-track réutilise le forage déjà en
@@ -4333,7 +4347,7 @@ function updateDrillSummary(blockId){
   const equip=document.getElementById('drillEquip')?.value||'standard';
   const eq=EQUIPMENT[equip], me=METHODS[method];
   const depth=drillDepthEstimate(b);
-  const offMult=b.isOffshore?OFFSHORE_COST_MULT:1;
+  const offMult=siteCost(b);
   const cost=depth*eq.costM*me.costMult*offMult;
   const deepOk=depth<=eq.maxDepth;
   const canAfford=G.budget>=cost||G.mode==='sandbox';
@@ -5814,7 +5828,7 @@ function guideEV(b){
   const cum = projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, 0, 120).cum;
   let best = null;
   eqs.forEach(([k,e])=>{
-    const cost = depth*e.costM*METHODS.vertical.costMult*(b.isOffshore?OFFSHORE_COST_MULT:1);
+    const cost = depth*e.costM*METHODS.vertical.costMult*siteCost(b);
     const ev = b.estimate.prob*e.reliability*cum - cost;
     if(!best || ev>best.ev) best = {ev, cost, equip:k};
   });
@@ -5898,7 +5912,7 @@ function guideCompute(){
     // Coût du forage le moins cher possible pour ce bloc (matériel qui atteint la profondeur estimée) :
     // le guide ne doit pas proposer un forage que le joueur n'a pas les moyens de lancer.
     const depth = drillDepthEstimate(b);
-    const costs = Object.values(EQUIPMENT).filter(e=>depth<=e.maxDepth).map(e=>depth*e.costM*METHODS.vertical.costMult*(b.isOffshore?OFFSHORE_COST_MULT:1));
+    const costs = Object.values(EQUIPMENT).filter(e=>depth<=e.maxDepth).map(e=>depth*e.costM*METHODS.vertical.costMult*siteCost(b));
     const cheapest = costs.length ? Math.min(...costs) : null;
     const canDrill = G.mode==='sandbox' || (cheapest!==null && G.budget>=cheapest);
     const why = cheapest===null ? `Aucun matériel n'atteint la profondeur estimée (${Math.round(depth)} m).`
@@ -7386,6 +7400,45 @@ function _doStartGame(){
     },
   };
 
+  QUIZ_BANKS.seismic = {
+      title: '📡 Quiz Sismique',
+      questions: [
+        {q:'Une interface où une couche dure (impédance plus haute) repose sous une couche molle. Quel est le signe du coefficient de réflexion en polarité normale ?',
+         choices:['Positif (pic)','Négatif (creux)','Nul'], correct:0,
+         explain:'R = (Z2 − Z1) / (Z2 + Z1) avec Z = densité × vitesse. Si l\'impédance augmente en descendant, R est positif.'},
+        {q:'L\'impédance acoustique d\'une roche est :',
+         choices:['La vitesse seule','Le produit densité × vitesse','Le rapport porosité / vitesse','La densité seule'], correct:1,
+         explain:'Seul un contraste d\'impédance (densité × vitesse) produit une réflexion. Deux roches très différentes peuvent avoir des impédances proches.'},
+        {q:'Le sel a une vitesse élevée (autour de 4 500 m/s) mais produit un contraste d\'impédance faible avec ses voisins. Pourquoi ?',
+         choices:['Il est trop épais','Sa densité est basse, ce qui compense sa vitesse','Il absorbe toute l\'onde','Il n\'a pas de vitesse mesurable'], correct:1,
+         explain:'Le sel est rapide mais léger : le produit densité × vitesse reste proche de celui des roches encaissantes, d\'où un contraste souvent faible.'},
+        {q:'Un horizon profond apparaît au double de la profondeur d\'un horizon superficiel très contrasté, avec la polarité inversée. Que suspecter ?',
+         choices:['Une faille','Un multiple (faux réflecteur)','Un réservoir de gaz','Un biseau'], correct:1,
+         explain:'Un multiple est une réflexion qui rebondit entre la surface et un interface fort : il reproduit l\'événement au double du temps, avec une polarité inversée. Il ne faut pas le pointer comme un vrai horizon.'},
+        {q:'Une tache brillante (amplitude anormalement forte sur un horizon) prouve la présence d\'hydrocarbures.',
+         choices:['Oui, toujours','Non : c\'est un indice à vérifier, du charbon, un calcaire serré ou un faux signal peuvent la produire','Oui, mais seulement pour le gaz','Non, elle ne signifie jamais rien'], correct:1,
+         explain:'Une anomalie d\'amplitude est un indicateur direct possible, pas une preuve. Les faux positifs existent, d\'où l\'intérêt de croiser avec la vitesse, la structure et le forage.'},
+        {q:'La sismique est enregistrée en temps double, le puits en profondeur. À quoi sert le calage puits-sismique ?',
+         choices:['À corriger la porosité','À relier profondeur et temps par une vitesse moyenne pour poser les horizons du puits sur la sismique','À supprimer le bruit','À mesurer la température'], correct:1,
+         explain:'Le calage convertit les profondeurs du log en temps, de façon que les tops de formation du puits correspondent aux réflecteurs de la trace sismique.'},
+        {q:'Dans un calage, les horizons du synthétique arrivent trop tard par rapport à la trace sismique. Comment corriger la vitesse moyenne ?',
+         choices:['L\'augmenter','La diminuer','La laisser telle quelle'], correct:0,
+         explain:'Le temps double vaut 2 × profondeur / vitesse : pour que les événements arrivent plus tôt, il faut une vitesse plus haute.'},
+        {q:'Quelle est l\'ordre de grandeur de la résolution verticale d\'une sismique ?',
+         choices:['Un dixième de la longueur d\'onde','Un quart de la longueur d\'onde','Deux longueurs d\'onde','Un mètre quelle que soit la fréquence'], correct:1,
+         explain:'La résolution verticale est de l\'ordre de λ/4. À grande profondeur, la vitesse est plus haute et la fréquence plus basse : la résolution se dégrade.'},
+        {q:'Une vitesse d\'intervalle inférieure à 3 000 m/s dans une couche suggère plutôt :',
+         choices:['De l\'anhydrite','Du calcaire compact','Des roches peu compactées, des argiles ou du charbon','Du sel'], correct:2,
+         explain:'Les roches peu compactées ont des vitesses lentes. L\'anhydrite, la dolomie et les calcaires compacts sont très rapides (plus de 5 000 m/s).'},
+        {q:'Pourquoi un puits productif rend-il ses voisins plus prometteurs ?',
+         choices:['Parce que la pression baisse','Parce qu\'il prouve qu\'un système pétrolier fonctionne (charge, réservoir, couverture) souvent partagé par les blocs proches','Parce que les prix montent','Par simple hasard'], correct:1,
+         explain:'Un champ s\'étend rarement à un seul bloc : la même roche-mère mature, le même réservoir et la même couverture se retrouvent à proximité.'},
+        {q:'Un sondage stratigraphique carotté, foré hors du sommet du piège, vous apprend surtout :',
+         choices:['S\'il y a du pétrole sous le piège','La lithologie, les âges et les épaisseurs de la colonne, pas la présence de fluides','La pression du réservoir','Le prix du brut'], correct:1,
+         explain:'Ce type de forage sert à caler la géologie (lithologie, âges, porosité) à moindre coût. Foré hors du sommet du piège, il ne renseigne pas sur les fluides.'},
+      ],
+  };
+
   let qzBank = null, qzKey = null, qzOrder = [], qzIdx = 0, qzScore = 0, qzAsked = 0;
   const QZ_ROUND = 8; // questions par manche, tirées au hasard sans répétition
 
@@ -7526,10 +7579,43 @@ function _doStartGame(){
     {
       title: 'Forer et produire',
       body: `Le résultat est binaire : puits productif ou sec, révélé après un court suspense, avec le facteur
-        qui a le plus joué. Un puits décline ensuite : environ -12 % la première année, un peu plus de la moitié du débit
-        après 5 ans. Un puits en mer produit environ sept fois plus qu'un puits à terre, mais coûte six fois plus cher et supporte des charges fixes bien plus lourdes. Un puits productif rend ses voisins (à moins de trois cases) plus prometteurs ; un puits sec dont la géologie a vraiment été testée les rend un peu moins prometteurs. Fermez les puits marginaux depuis l'onglet <b>Gisements</b> quand ils coûtent plus
-        qu'ils ne rapportent.<br><br>
+        qui a le plus joué. Un puits décline ensuite : environ -12 % la première année, un peu plus de la moitié
+        du débit après 5 ans.<br><br>
+        Un puits en mer produit environ sept fois plus qu'un puits à terre, mais coûte six fois plus cher et
+        supporte des charges fixes plus lourdes.<br><br>
+        Un puits productif rend ses voisins (à moins de trois cases) plus prometteurs. Un puits sec dont la
+        géologie a vraiment été testée les rend un peu moins prometteurs.<br><br>
+        Fermez les puits marginaux depuis l'onglet <b>Gisements</b> quand ils coûtent plus qu'ils ne rapportent.
         Si un second réservoir existe plus profond, un side-track l'exploite sans forer un nouveau trou.`,
+    },
+    {
+      title: 'Règles avancées',
+      body: `Au lancement, un écran d'options règle la difficulté de lecture. Quatre préréglages : <b>Découverte</b>
+        (les règles d'origine), <b>Intermédiaire</b>, <b>Complet</b> et <b>Expert</b>. Chaque niveau en propose un par défaut.
+        Vous pouvez tout modifier, et verrouiller les options pour la partie.<br><br>
+        <b style="color:var(--amber);">Sismique muette</b> : la sismique ne montre que des contrastes d'impédance (bleu : elle
+        augmente, rouge : elle diminue), jamais les roches. La lithologie n'apparaît qu'après un forage et un log.<br>
+        <b style="color:var(--amber);">Cible à désigner</b> : à vous de choisir l'horizon qui est le réservoir (clic sur la
+        sismique ou bouton « viser »). Un mauvais choix donne un puits sec.<br>
+        <b style="color:var(--amber);">Calage</b> : un mini-jeu relie le puits à la sismique en réglant une vitesse moyenne.
+        Un puits calé étend sa lithologie le long de la coupe.<br>
+        <b style="color:var(--amber);">Fluides, image, épaisseurs</b> : la 3D donne une classe d'anomalie (taches brillantes,
+        faux positifs possibles), l'image est bruitée avec des multiples, les couches changent d'épaisseur d'un bloc à l'autre.`,
+    },
+    {
+      title: 'Sondage, carotte et Rock-Eval',
+      body: `Un <b>sondage stratigraphique</b> coûte environ 30 % d'un forage classique. Il donne le log et la lithologie,
+        jamais de production. Il est foré hors du sommet du piège : il ne dit rien sur les fluides.<br><br>
+        Après un forage ou un sondage, l'onglet <b>Études</b> propose la <b>carotte</b> (porosité, perméabilité, pétrographie)
+        et la géochimie <b>Rock-Eval</b> (TOC, Tmax, potentiel de la roche-mère).<br><br>
+        Une carotte cale le puits d'office et double la portée de sa lithologie le long de la coupe.`,
+    },
+    {
+      title: 'Prix du brut et alertes',
+      body: `Le brut démarre à 80 $ et varie entre 20 et 140 $. Quand il monte, les appareils de forage coûtent plus cher ;
+        quand il s'effondre, ils se louent moins cher. Les charges fixes d'un puits pèsent plus lourd quand le prix baisse.<br><br>
+        La cloche 🔔 à côté du cours permet de poser des <b>alertes</b> : le jeu vous prévient, et peut se mettre en pause,
+        quand le brut passe au-dessus ou sous un seuil que vous choisissez.`,
     },
     {
       title: 'Argent et imprévus',
@@ -7542,7 +7628,7 @@ function _doStartGame(){
     {
       title: 'Prêt à jouer',
       body: `C'est tout pour la base. Le glossaire (menu pause) reste disponible à tout moment. Sur l'accueil,
-        la section <b>S'entraîner</b> propose un jeu de cartes, trois quiz (lithofaciès, maturation, Rock-Eval) et un jeu de lecture de logs
+        la section <b>S'entraîner</b> propose un jeu de cartes, quatre quiz (lithofaciès, maturation, Rock-Eval, sismique) et un jeu de lecture de logs
         pour travailler un point précis sans lancer une partie.<br><br>
         Conseil pour une première partie : bassin Parisien, niveau Junior. Bonne exploration.`,
     },

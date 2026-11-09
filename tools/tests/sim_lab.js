@@ -34,7 +34,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       let best=null;
       Object.entries(EQUIPMENT).forEach(([k,eq])=>{
         if(depth>eq.maxDepth) return;
-        const cost = depth*eq.costM*(b.isOffshore?OFFSHORE_COST_MULT:1);
+        const cost = depth*eq.costM*siteCost(b);
         const ev = pEst*eq.reliability*V - cost;
         if(!best || ev>best.ev) best={equip:k, cost, ev, V};
       });
@@ -45,7 +45,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       Math.random = mulberry(seed*7919+13);
       const [base, ...flags] = preset.split('-'); const o = { ...LAB_PRESETS[base].o }; flags.forEach(f=>{ if(f.startsWith('no')) o[f.slice(2)] = false; });
       LABOPT = labNormOpt(o);
-      menuConfig.seed=seed; menuConfig.mode=mode; menuConfig.basinType='random'; menuConfig.offshore=true; menuConfig.gridSize = mode==='expedition' ? 30 : 12; if(EX.offshore!==undefined) menuConfig.offshore = EX.offshore; if(EX.budget) MODES[mode].budget = EX.budget*1e6; if(EX.years) MODES[mode].maxYears = EX.years; menuConfig.financeMode=false; menuConfig.uncertainty = EX.uncertainty || 'medium'; if(EX.reliab) Object.values(EQUIPMENT).forEach(e=>{ e.reliability = EX.reliab; }); if(EX.declMult && typeof DECL!=='undefined') DECL.Di = 0.015*EX.declMult; if(EX.onProd!==undefined) ONSHORE_PROD_MULT = EX.onProd; if(EX.offProd!==undefined) OFFSHORE_PROD_MULT = EX.offProd; if(EX.offCost!==undefined) OFFSHORE_COST_MULT = EX.offCost; if(EX.offOpex!==undefined) OFFSHORE_OPEX = EX.offOpex; if(EX.price0) G.price = EX.price0;
+      menuConfig.seed=seed; menuConfig.mode=mode; menuConfig.basinType='random'; menuConfig.offshore=true; menuConfig.gridSize = mode==='expedition' ? 30 : 12; if(EX.offshore!==undefined) menuConfig.offshore = EX.offshore; if(EX.budget) MODES[mode].budget = EX.budget*1e6; if(EX.years) MODES[mode].maxYears = EX.years; menuConfig.financeMode=false; menuConfig.uncertainty = EX.uncertainty || 'medium'; if(EX.reliab) Object.values(EQUIPMENT).forEach(e=>{ e.reliability = EX.reliab; }); if(EX.declMult && typeof DECL!=='undefined') DECL.Di = 0.015*EX.declMult; if(EX.onProd!==undefined) ONSHORE_PROD_MULT = EX.onProd; if(EX.costLevel!==undefined) DRILL_COST_LEVEL = EX.costLevel; if(EX.offProd!==undefined) OFFSHORE_PROD_MULT = EX.offProd; if(EX.offCost!==undefined) OFFSHORE_COST_MULT = EX.offCost; if(EX.offOpex!==undefined) OFFSHORE_OPEX = EX.offOpex; if(EX.price0) G.price = EX.price0;
       if(goalM) MODES[mode].winGoal = +goalM*1e6;
       if(typeof ADV!=='undefined') ADV.studyCostMult = studyMult ? +studyMult : 1;
       if(typeof ADV!=='undefined') ADV.drillCostMult = drillMult ? +drillMult : 1;
