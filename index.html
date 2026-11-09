@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.42</title>
+<title>GeoExplorer V4.43</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -567,6 +567,29 @@ body.mobile-layout .hud-item:has(#hudCF){display:none;}
 body.mobile-layout header .sep{display:none;}
 body.mobile-layout #priceSparkline{display:none;}
 #mobilePanelToggle, #mobilePanelClose{display:none !important;} /* remplacés par la barre d'écrans */
+/* V4.43 : cibles tactiles d'au moins 40 px sur téléphone, en-tête sans chevauchement, guide replié */
+body.mobile-layout #btnPriceAlert{min-height:40px; min-width:40px; padding:6px 10px; justify-content:center; order:6;}
+body.mobile-layout #btnSpeedCycle{min-height:40px; min-width:48px;}
+body.mobile-layout #btnMenu{min-height:40px; min-width:44px; justify-content:center;}
+body.mobile-layout .lab-secchk{min-height:40px; padding:0 8px; gap:8px;}
+body.mobile-layout .lab-secchk input{width:22px; height:22px;}
+body.mobile-layout .lab-pick{min-height:40px; padding:8px 14px; font-size:12.5px;}
+body.mobile-layout .map-toolbar .btn, body.mobile-layout .map-toolbar .seg .btn{min-height:40px;}
+body.mobile-layout .tg button{min-height:40px; padding:8px 12px !important; font-size:12px !important;}
+body.mobile-layout .study-btn, body.mobile-layout .study-btn-compact{min-height:40px;}
+body.mobile-layout .lab-tab, body.mobile-layout .lab-ihead button{min-height:40px;}
+body.mobile-layout .hud-budget{overflow:hidden;}
+body.mobile-layout #hudBudget{font-size:17px; white-space:nowrap;}
+body.mobile-layout .hud-budget-top{gap:4px; flex-wrap:nowrap; min-width:0;}
+body.mobile-layout .brand-name{font-size:16px;}
+@media (max-width:370px){ body.mobile-layout .brand-name{display:none;} }
+body.mobile-layout .hud-goal-txt{white-space:normal; line-height:1.25; overflow:hidden; text-overflow:ellipsis;}
+body.mobile-layout .guide-text{display:none; min-width:0; flex-basis:100%;}
+body.mobile-layout #guideBar.open .guide-text{display:block;}
+body.mobile-layout .guide-mini{cursor:pointer; min-height:36px;}
+body.mobile-layout .guide-mini::after{content:'Détails ▾'; margin-left:auto; color:var(--text); font-weight:600;}
+body.mobile-layout #guideBar.open .guide-mini::after{content:'Réduire ▴';}
+body.mobile-layout .guide-act{min-height:42px;}
 </style>
 </head>
 <body>
@@ -5153,7 +5176,8 @@ function renderSection(){
   }
 
   const ba = blocks[G.sectionA], bb = blocks[G.sectionB];
-  const W=secDims?.W ?? 460, H=secDims?.H ?? 320, MARG={t:38, b:34, l:52, r:30};
+  const TOUCH = !secDims && document.body.classList.contains('mobile-layout'); // téléphone : marge basse plus haute pour des zones de frappe de 40 px
+  const W=secDims?.W ?? 460, H=secDims?.H ?? (TOUCH?340:320), MARG={t:38, b:(TOUCH?54:34), l:52, r:30};
   const PW = W-MARG.l-MARG.r, PH = H-MARG.t-MARG.b;
   svgEl.setAttribute('viewBox',`0 0 ${W} ${H}`);
   svgEl.setAttribute('width','100%'); svgEl.setAttribute('height','auto');
@@ -5581,17 +5605,22 @@ function renderSection(){
     if(sp){ const sx = xOf(sp.t);
       svg += `<line x1="${sx.toFixed(1)}" y1="${MARG.t}" x2="${sx.toFixed(1)}" y2="${selRowY.toFixed(1)}" stroke="var(--amber)" stroke-width="1.2" stroke-dasharray="4 3" pointer-events="none"/>`;
       svg += `<text x="${sx.toFixed(1)}" y="${(MARG.t-4).toFixed(1)}" font-size="8" font-weight="700" fill="var(--amber)" text-anchor="middle" pointer-events="none">Bloc (${sp.b.x}, ${sp.b.y})</text>`; } }
+  let selHits='', selDots='';
   profileBlocks.forEach(pb=>{
     const b = pb.b;
     const x = xOf(pb.t);
     const col = b.studyLevel>=3 ? 'var(--green)' : b.studyLevel>=2 ? 'var(--amber)' :
                 b.studyLevel>=1 ? '#a0a0ff' : 'var(--muted)';
     const isSel = selectedBlock===b.id;
-    svg += `<circle cx="${x.toFixed(1)}" cy="${selRowY.toFixed(1)}" r="${isSel?4.5:3.5}"
+    { const k = profileBlocks.indexOf(pb), xl = k>0 ? (x+xOf(profileBlocks[k-1].t))/2 : x-26, xr = k<profileBlocks.length-1 ? (x+xOf(profileBlocks[k+1].t))/2 : x+26;
+      const x0 = Math.max(x-26, xl), x1 = Math.min(x+26, xr);
+      selHits += `<rect class="sel-hit" x="${x0.toFixed(1)}" y="${(selRowY-12).toFixed(1)}" width="${(x1-x0).toFixed(1)}" height="${(H-selRowY+12).toFixed(1)}" fill="transparent" style="cursor:pointer" onclick="selectBlockFromSection(${b.id})"/>`; }
+    selDots += `<circle cx="${x.toFixed(1)}" cy="${selRowY.toFixed(1)}" r="${isSel?4.5:3.5}"
       fill="${col}" stroke="${isSel?'var(--sec-text-strong)':'var(--sec-paper)'}" stroke-width="1.2"
       style="cursor:pointer" onclick="selectBlockFromSection(${b.id})">
       <title>Bloc (${b.x},${b.y}) : cliquer pour sélectionner</title></circle>`;
   });
+  svg += selHits + selDots; // zones de frappe élargies d'abord (tactile), puis les points visibles par-dessus
   svg += `<g clip-path="url(#sectionPlotClip)">`;
 
   // Horizon visé : trait ambre sur toute sa longueur
@@ -6001,7 +6030,7 @@ function renderGuide(){
     const act = g.act ? `<button class="guide-act" onclick="${g.act.call}" ${g.act.ok?'':'disabled'}>${g.act.label}</button>` : '';
     const why = g.act && !g.act.ok && g.act.why ? `<div class="guide-why">${g.act.why}</div>` : '';
     html = `<ol class="guide-steps" aria-label="Étapes">${steps}</ol>
-      <div class="guide-mini"><span class="gm-bars">${bars}</span><span>${T('Étape','Step')} ${g.cur+1} ${T('sur','of')} 5 · ${stepName(g.cur)}</span></div>
+      <div class="guide-mini" onclick="document.getElementById('guideBar').classList.toggle('open'); if(typeof updateGuideHeight==='function') updateGuideHeight();"><span class="gm-bars">${bars}</span><span>${T('Étape','Step')} ${g.cur+1} ${T('sur','of')} 5 · ${stepName(g.cur)}</span></div>
       <div class="guide-text"><strong>${T('Étape','Step')} ${g.cur+1} :</strong> ${g.text}</div>${act}
       <button class="guide-hide" onclick="guideToggle()">${T('Masquer le guide','Hide guide')}</button>${why}`;
   }
