@@ -3,7 +3,7 @@
 const { chromium, devices } = require('playwright'); const path = require('path');
 (async()=>{ const br=await chromium.launch(); const errs=[]; let ko=0; const ok=(c,m)=>{ if(!c){ko++; console.log('ECHEC',m);} else console.log('ok',m); };
   const open = async (pg, sel)=>{ await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(250); const c=pg.locator('#menuCustomBtn'); if(await c.isVisible()) await c.tap(); await pg.locator('.menu-tab[data-tab="minigames"]').tap(); await pg.locator(sel).first().tap(); await pg.waitForTimeout(500); };
-  for(const [w,h] of [[390,844],[360,740],[320,640]]){
+  for(const [w,h] of [[390,844],[390,700],[360,740],[320,640]]){
     const ctx=await br.newContext({...devices['iPhone 13'],viewport:{width:w,height:h}}); const pg=await ctx.newPage(); pg.on('pageerror',e=>errs.push(e.message));
     await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}});
     await open(pg, '.mg-card#logGameOpenBtn');
@@ -21,6 +21,11 @@ const { chromium, devices } = require('playwright'); const path = require('path'
       await pg.locator('#lgmChoices .qz-choice').first().tap(); await pg.waitForTimeout(150);
       const s = await pg.evaluate(()=>{ const b=document.getElementById('lgmNext').getBoundingClientRect(), p=document.getElementById('lgmFeedback').getBoundingClientRect(); return { suite:[b.top>=0&&b.bottom<=innerHeight+0.5, b.height], fb:p.height }; });
       ok(s.suite[0] && s.suite[1]>=39.5, w+' q'+(q+1)+' : bouton Suite visible et >= 40 px après la réponse ('+Math.round(s.suite[1])+')');
+      // retour après réponse : verdict, texte de correction et tableau de lecture entièrement visibles, sans être recouverts par le bouton Suite
+      const v = await pg.evaluate(()=>{ const R=e=>e.getBoundingClientRect(); const fb=R(document.getElementById('lgmFeedback')), nx=R(document.getElementById('lgmNext')), vd=[...document.querySelectorAll('#lgmChoices .lgm-verdict')].map(R), tb=document.querySelector('#lgmFeedback table'), tr=tb?R(tb):null;
+        return { verdicts:vd.length, verdictsVisibles: vd.every(r=>r.top>=0 && r.bottom<=nx.top+1), texteVisible: fb.bottom<=nx.top+1 && fb.top>=0, tableau: !!tr && tr.bottom<=nx.top+1, boutonsRestants: document.querySelectorAll('#lgmChoices .qz-choice').length }; });
+      ok(v.verdicts>=1 && v.boutonsRestants===0, w+'x'+h+' q'+(q+1)+' : boutons remplacés par le verdict');
+      ok(v.verdictsVisibles && v.texteVisible && v.tableau, w+'x'+h+' q'+(q+1)+' : verdict, correction et tableau de lecture visibles sans défiler, non masqués par Suite ('+JSON.stringify(v)+')');
       await pg.locator('#lgmNext').tap();
     }
     await pg.waitForTimeout(300); if(w===390){ await pg.screenshot({path:'/tmp/mj_log_q3.png'}); }
