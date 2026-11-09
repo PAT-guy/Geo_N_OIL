@@ -4760,12 +4760,15 @@ function renderSection(){
     <line x1="0" y1="0" x2="0" y2="6" stroke="var(--sec-line-soft)" stroke-width="1"/>
   </pattern>
   <clipPath id="sectionPlotClip"><rect x="${MARG.l}" y="${MARG.t}" width="${PW}" height="${PH}"/></clipPath>
-  ${[0,1,2,3].map(k=>{ const rs = []; dispData.forEach((d,i)=>{ if(labLv[i]!==k) return; const x = xOf(d.t); const xl = i>0 ? (x + xOf(dispData[i-1].t))/2 : x - 8, xr = i<dispData.length-1 ? (x + xOf(dispData[i+1].t))/2 : x + 8; rs.push(`<rect x="${xl.toFixed(1)}" y="${MARG.t}" width="${(xr-xl).toFixed(1)}" height="${PH}"/>`); }); return `<clipPath id="labClip${k}">${rs.join('')}</clipPath>`; }).join('')}
+  ${[0,1,2,3,-1].map(k=>{ const rs = []; dispData.forEach((d,i)=>{ if(labLv[i]!==k) return; const x = xOf(d.t); const xl = i>0 ? (x + xOf(dispData[i-1].t))/2 : MARG.l, xr = i<dispData.length-1 ? (x + xOf(dispData[i+1].t))/2 : MARG.l+PW; rs.push(`<rect x="${xl.toFixed(1)}" y="${MARG.t}" width="${(xr-xl).toFixed(1)}" height="${PH}"/>`); }); return `<clipPath id="labClip${k<0?'U':k}">${rs.join('')}</clipPath>`; }).join('')}
   </defs>`;
   svg += `<g clip-path="url(#sectionPlotClip)">`;
   if(LAB_ON){
     const url = labSeismicImage(dispData, dMin, dMax);
-    if(url) svg += `<image href="${url}" x="${xOf(0).toFixed(1)}" y="${MARG.t}" width="${(xOf(1)-xOf(0)).toFixed(1)}" height="${PH}" preserveAspectRatio="none"/>`;
+    // La sismique n'est dessinée que là où la lithologie est INCONNUE : les deux vues ne se superposent jamais
+    // (superposées, elles brouillaient la lecture). Dans les colonnes dévoilées, seule la lithologie apparaît,
+    // d'autant plus pâle que l'extrapolation est lointaine.
+    if(url) svg += `<image href="${url}" clip-path="url(#labClipU)" x="${xOf(0).toFixed(1)}" y="${MARG.t}" width="${(xOf(1)-xOf(0)).toFixed(1)}" height="${PH}" preserveAspectRatio="none"/>`;
   }
 
   // Zone "zone inconnue" pour les blocs sans données du tout
@@ -5137,7 +5140,7 @@ function renderSection(){
     </div>`;
   });
   if(LAB_ON) legendHtml = `<div style="width:100%;"><div style="display:flex;align-items:center;gap:6px;font-size:10px;"><span style="color:#b2182b;">− l'impédance diminue</span><span style="flex:1;max-width:160px;height:9px;border:1px solid var(--line);background:linear-gradient(90deg,#b2182b,#f7f4ec,#2166ac);"></span><span style="color:#2166ac;">+ elle augmente</span></div>
-    <div class="lab-note" style="margin:4px 0 6px;">Amplitude des réflexions (polarité normale). Les couleurs montrent des CONTRASTES entre couches, pas des roches. Les roches n'apparaissent qu'aux puits (opaques) et, dégradées, jusqu'aux blocs voisins de la même province sans faille.</div>
+    <div class="lab-note" style="margin:4px 0 6px;">Amplitude des réflexions (polarité normale). Les couleurs montrent des CONTRASTES entre couches, pas des roches. Les roches n'apparaissent qu'aux puits (couleurs pleines) puis, de plus en plus pâles, jusqu'aux blocs voisins de la même province sans faille. Les deux vues ne se superposent jamais : là où la lithologie est connue, la sismique disparaît.</div>
     ${legendHtml ? '<div style="font-size:10px;color:var(--muted);">Lithologies débloquées :</div>' : '<div style="font-size:10px;color:var(--muted);">Aucune lithologie débloquée : forez et loguez.</div>'}</div>` + legendHtml;
   legendHtml += `<div class="sl-item">
     <div class="sl-swatch" style="background:none;border:1px solid var(--red);"></div>
