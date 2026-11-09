@@ -26,6 +26,7 @@ cd /tmp && node /chemin/vers/Geo_N_OIL/tools/tests/chk_lab.js
 - `lab432.js` : calage puits-sismique (phase 3).
 - `lab433.js` : écran d'options, préréglages, verrouillage, sondage stratigraphique.
 - `lab434.js` : indices de fluides et imagerie réaliste (phase 4).
+- `lab435.js` : trait de coupe cliquable avec flèche sur la carte, finance dans les options.
 - `sim_lab.js` : simulation d'équilibrage (parties de 25 ans jouées par des robots).
 
 ## Dernier bilan d'équilibrage (`sim_lab.js`, 60 à 150 parties par cellule, junior, 25 ans)
