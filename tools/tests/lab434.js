@@ -16,7 +16,7 @@ out.est = await pg.evaluate(()=>[3,4,5,6].map(i=>{ const b=blocks[window.__row[i
 await pg.evaluate(()=>openBigView('section')); await pg.waitForTimeout(300); await pg.screenshot({path:'lab_p4_3d.png'}); await pg.evaluate(()=>closeBigView());
 const b0 = await pg.evaluate(()=>G.budget);
 await pg.evaluate(()=>labReprocess()); await pg.waitForTimeout(200);
-out.retraite = { cout:Math.round(b0-(await pg.evaluate(()=>G.budget))), q: await pg.evaluate(()=>labProcQ()), bouton: await pg.evaluate(()=>!!document.querySelector('#sectionInterpret button[onclick="labReprocess()"]')), etat: await pg.evaluate(()=>/Traitement de cette sismique : [a-zé]+/.exec(document.getElementById('sectionInterpret').innerText)?.[0]) };
+out.retraite = { cout:Math.round(b0-(await pg.evaluate(()=>G.budget))), q: await pg.evaluate(()=>labProcQ()), bouton: await pg.evaluate(()=>!!document.querySelector('#sectionInterpret button[onclick="labReprocess()"]')), etat: await pg.evaluate(()=>/Traitement : [a-zé]+/.exec(document.getElementById('sectionInterpret').innerText)?.[0]) };
 await pg.evaluate(()=>openBigView('section')); await pg.waitForTimeout(300); await pg.screenshot({path:'lab_p4_retraite.png'}); await pg.evaluate(()=>closeBigView());
 out.axeMs = await pg.evaluate(()=>[...document.querySelectorAll('#sectionSvg text')].map(t=>t.textContent).filter(t=>/^\d+$/.test(t)).join(','));
 // Découverte : valeurs fines conservées
