@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.38</title>
+<title>GeoExplorer V4.39</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -89,6 +89,12 @@ header{
 .hud-goal-txt{font-size:11px; color:var(--muted);}
 .sep{width:1px; height:30px; background:var(--line);}
 #priceSparkline{height:28px; width:80px;}
+#btnPriceAlert{padding:2px 7px; min-width:0; font-size:13px; line-height:1.2;}
+#priceAlertModal{position:fixed;inset:0;z-index:1370;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:14px;}
+#priceAlertModal.open{display:flex;}
+.pa-form{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
+.pa-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12.5px;}
+.pa-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;}
 .btn{background:var(--panel2); border:1px solid var(--line-strong); color:var(--text); font-family:var(--sans); font-size:13px; padding:7px 13px; cursor:pointer; white-space:nowrap; border-radius:8px; display:inline-flex; align-items:center; line-height:1.2;}
 .btn:hover{border-color:var(--ink);}
 .btn.active{border-color:var(--ink); background:var(--ink); color:var(--on-ink);}
@@ -1026,9 +1032,10 @@ body.mobile-layout #priceSparkline{display:none;}
     </div>
     <div class="hud-item">
       <span class="hud-lbl">Brut</span>
-      <span class="hud-val"><span id="hudPrice">70,0</span><span class="hud-unit">$/bbl</span></span>
+      <span class="hud-val"><span id="hudPrice">80,0</span><span class="hud-unit">$/bbl</span></span>
     </div>
-    <canvas id="priceSparkline" width="80" height="28" title="Cours du brut : 24 derniers mois"></canvas>
+    <canvas id="priceSparkline" width="80" height="28" title="Cours du brut : 60 derniers mois (traits pointillés : vos alertes de prix)"></canvas>
+    <button class="btn" id="btnPriceAlert" onclick="priceAlertOpen()" aria-label="Alertes de prix" title="Alertes de prix : être prévenu quand le brut franchit un seuil">🔔<span id="priceAlertCount"></span></button>
     <div class="hud-item">
       <span class="hud-lbl">Puits</span>
       <span class="hud-val" id="hudWells">0</span>
@@ -1197,7 +1204,7 @@ const BASIN_BRIEFS = {
 let G = {
   mode: 'junior', gridSize: 12, offshore: true, basinType: 'random',
   budget: 15e6, month: 0, speed: 1, paused: false,
-  price: 70, priceHistory: [],
+  price: 80, priceHistory: [],
   wells: [], drilling: [],
   sectionA: null, sectionB: null,
   tool: 'select', history: [], lastCF: 0,
@@ -3215,6 +3222,69 @@ function revealTrueGeology(b){
   const worst = factors.reduce((a,c)=>c.v<a.v?c:a);
   addLog(`🎓 Mode TP : vraie géologie révélée bloc (${b.x},${b.y}) : prob. réelle ${(b.trueProbability*100).toFixed(0)}%, qualité ${Math.round(b.trueQuality)}/100. Facteur limitant : ${worst.n} (${(worst.v*100).toFixed(0)}%).`, 'ev');
 }
+// ---------- Alertes de prix ----------
+// Une alerte se déclenche quand le brut FRANCHIT le seuil (dans le sens choisi). Elle peut mettre le jeu en pause et se
+// répéter. Les alertes sont dans G (donc sauvegardées avec la partie).
+function priceAlertCheck(prev, now){
+  const list = G.priceAlerts; if(!list || !list.length) return;
+  const fired = [];
+  list.forEach(a=>{
+    const hit = a.dir==='above' ? (prev < a.value && now >= a.value) : (prev > a.value && now <= a.value);
+    if(hit) fired.push(a);
+  });
+  if(!fired.length) return;
+  fired.forEach(a=>{
+    const txt = `🔔 Alerte prix : le brut passe ${a.dir==='above'?'au-dessus de':'sous'} ${a.value} $ (cours ${now.toFixed(1)} $).`;
+    addLog(txt, 'ev'); if(typeof toast==='function') toast(txt);
+    if(a.pause) setSpeed(0);
+  });
+  G.priceAlerts = list.filter(a=>!(fired.includes(a) && !a.repeat));
+  priceAlertRefresh();
+}
+function priceAlertRefresh(){
+  const n = (G.priceAlerts||[]).length; const el = document.getElementById('priceAlertCount');
+  if(el) el.textContent = n ? ' ' + n : '';
+  const m = document.getElementById('priceAlertModal'); if(m && m.classList.contains('open')) priceAlertRender();
+  if(typeof drawSparkline==='function') drawSparkline();
+}
+let priceAlertDraft = { dir:'above', value:90, pause:true, repeat:false };
+function priceAlertOpen(){
+  priceAlertDraft = { dir:'above', value:Math.round((G.price||80)+10), pause:true, repeat:false };
+  let el = document.getElementById('priceAlertModal');
+  if(!el){ el = document.createElement('div'); el.id = 'priceAlertModal'; document.body.appendChild(el); }
+  el.classList.add('open'); priceAlertRender();
+}
+function priceAlertClose(){ const el = document.getElementById('priceAlertModal'); if(el) el.classList.remove('open'); }
+function priceAlertSetDir(d){ priceAlertDraft.dir = d; priceAlertDraft.value = Math.round(G.price + (d==='above' ? 10 : -10)); priceAlertRender(); }
+function priceAlertAdd(){
+  const inp = document.getElementById('paValue'); const v = Math.round(parseFloat(inp && inp.value));
+  if(!isFinite(v) || v < 20 || v > 140){ toast('Seuil entre 20 et 140 $.'); return; }
+  G.priceAlerts = G.priceAlerts || [];
+  const same = G.priceAlerts.some(a=>a.dir===priceAlertDraft.dir && a.value===v);
+  if(same){ toast('Cette alerte existe déjà.'); return; }
+  G.priceAlerts.push({ dir:priceAlertDraft.dir, value:v, pause:!!document.getElementById('paPause').checked, repeat:!!document.getElementById('paRepeat').checked });
+  G.priceAlerts.sort((a,b)=>a.value-b.value);
+  addLog(`🔔 Alerte de prix ajoutée : ${priceAlertDraft.dir==='above'?'au-dessus de':'sous'} ${v} $.`, 'ev');
+  priceAlertDraft.value = v; priceAlertRefresh();
+}
+function priceAlertRemove(i){ (G.priceAlerts||[]).splice(i,1); priceAlertRefresh(); }
+function priceAlertRender(){
+  const el = document.getElementById('priceAlertModal'); if(!el) return; const d = priceAlertDraft, list = G.priceAlerts||[];
+  el.innerHTML = `<div class="lab-cal-box"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;"><b style="font-size:15px;">Alertes de prix du brut</b><button class="lab-pick" onclick="priceAlertClose()">Fermer</button></div>
+    <div class="lab-note">Cours actuel : <b>${G.price.toFixed(1)} $/bbl</b>. Une alerte se déclenche quand le cours franchit le seuil dans le sens choisi. Elle peut mettre le jeu en pause.</div>
+    <div class="pa-form">
+      <div class="pa-row"><span>Me prévenir quand le prix passe</span>
+        <button class="lab-pick ${d.dir==='above'?'sel':''}" onclick="priceAlertSetDir('above')">au-dessus de</button>
+        <button class="lab-pick ${d.dir==='below'?'sel':''}" onclick="priceAlertSetDir('below')">sous</button>
+        <input id="paValue" type="number" min="20" max="140" step="1" value="${d.value}" style="width:64px;"> $</div>
+      <label class="pa-row"><input id="paPause" type="checkbox" ${d.pause?'checked':''}> Mettre le jeu en pause quand elle se déclenche</label>
+      <label class="pa-row"><input id="paRepeat" type="checkbox" ${d.repeat?'checked':''}> La garder après son déclenchement (sinon elle disparaît)</label>
+      <div style="text-align:right;"><button class="lab-pick sel" onclick="priceAlertAdd()">Ajouter l'alerte</button></div>
+    </div>
+    <div class="lab-note" style="margin-top:10px;"><b>Alertes actives</b></div>
+    ${list.length ? list.map((a,i)=>`<div class="pa-item"><span>${a.dir==='above'?'↗ au-dessus de':'↘ sous'} <b>${a.value} $</b>${a.pause?' · pause':''}${a.repeat?' · répétée':''}</span><button class="lab-pick" onclick="priceAlertRemove(${i})">Supprimer</button></div>`).join('') : '<div class="lab-note">Aucune alerte.</div>'}
+  </div>`;
+}
 function stepPrice(){
   if(!G.priceTrendTarget) G.priceTrendTarget=0;
   if(Math.random()<.05) G.priceTrendTarget=(Math.random()-.5)*.7;
@@ -3225,7 +3295,9 @@ function stepPrice(){
     shock=(Math.random()-.5)*30;
     if(Math.abs(shock)>10) addLog(`⚠ Choc de marché : cours ${shock>0?'en hausse':'en baisse'} brutale.`,'ev');
   }
+  const prevPrice = G.price;
   G.price = clamp(G.price+G.priceTrend+noise+shock, 20, 140);
+  priceAlertCheck(prevPrice, G.price);
   G.priceHistory.push(G.price);
   if(G.priceHistory.length>60) G.priceHistory.shift();
   drawSparkline();
@@ -5652,6 +5724,11 @@ function drawSparkline(){
     if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
   });
   ctx.stroke();
+  // seuils d'alerte compris dans la plage affichée
+  (G.priceAlerts||[]).forEach(a=>{
+    if(a.value < mn || a.value > mx) return;
+    const y = H-(a.value-mn)/range*H; ctx.beginPath(); ctx.setLineDash([3,3]); ctx.strokeStyle = a.dir==='above' ? '#3a8f5a' : '#c0504d'; ctx.lineWidth=1; ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); ctx.setLineDash([]);
+  });
 }
 
 // =====================================================================
@@ -6821,6 +6898,7 @@ function loadGame(){
   renderStudiesPanel(selectedBlock!==null ? blocks[selectedBlock] : null);
   setFinanceVisible(!!G.financeMode);
   labApplyOpt();
+  priceAlertRefresh();
   if(G.financeMode && typeof renderFinancePanel==='function') renderFinancePanel();
   const tpBtn = document.getElementById('tpTargetsBtn');
   if(tpBtn) tpBtn.style.display = G.mode==='tp' ? '' : 'none';
@@ -6863,7 +6941,7 @@ function _doStartGame(){
     uncertaintyLevel: menuConfig.uncertainty,
     budget:         m.budget,
     month:0, speed:1, paused:false, labPick:null, labCal:{}, labProc:{}, labSecPrev:null, labOpt:{ ...LABOPT },
-    price:70, priceHistory:[70],
+    price:80, priceHistory:[80], priceAlerts:[],
     wells:[], drilling:[], sectionA:null, sectionB:null,
     tool:'select', history:[], lastCF:0, lastRevenue:0, lastOpex:0, lastLoanPayment:0,
     priceTrend:0, priceTrendTarget:0, revealFieldsMode:false,
@@ -6891,6 +6969,7 @@ function _doStartGame(){
   // Onglet Finance : afficher/masquer selon le mode
   setFinanceVisible(!!G.financeMode);
   labApplyOpt();
+  priceAlertRefresh();
   // Le contenu du panneau n'était calculé qu'au premier tour de mois : avant, il
   // affichait « Mode finance non activé » alors que le mode était bien actif.
   if(G.financeMode && typeof renderFinancePanel==='function') renderFinancePanel();
