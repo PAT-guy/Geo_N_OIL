@@ -28,6 +28,7 @@ cd /tmp && node /chemin/vers/Geo_N_OIL/tools/tests/chk_lab.js
 - `lab434.js` : indices de fluides et imagerie réaliste (phase 4).
 - `lab435.js` : trait de coupe cliquable avec flèche sur la carte, finance dans les options.
 - `lab436.js` : case à cocher du trait de coupe (mémorisée), coupe précédente en pointillé, blocs cliquables, rechargement.
+- `lab437.js` : sondage stratigraphique avec carotte et Rock-Eval, la carotte cale le puits et double la portée de sa lithologie.
 - `sim_lab.js` : simulation d'équilibrage (parties de 25 ans jouées par des robots).
 
 ## Dernier bilan d'équilibrage (`sim_lab.js`, 60 à 150 parties par cellule, junior, 25 ans)
