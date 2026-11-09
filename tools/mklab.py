@@ -725,5 +725,46 @@ rep("  if(!LAB.truth && G.labPick!=null){\n    const pts = [];", """  if(!LAB.tr
         svg += `<path d="M${top[0].x.toFixed(1)},${top[0].y.toFixed(1)}${secSmoothPath(top, faultPx)} L${base[0].x.toFixed(1)},${base[0].y.toFixed(1)}${secSmoothPath(base, faultPx)} Z" fill="var(--amber)" fill-opacity=".22" stroke="var(--amber)" stroke-width="1" pointer-events="none"/>`; }); }
     const pts = [];""")
 
+
+# ====================== Épaisseurs variables des couches (option), jamais dans le jeu principal ======================
+rep("""      const horizons = [];
+      let depth = Math.max(50, topOfReservoir - localStrat.slice(0,Math.max(0,reservoirIdx)).reduce((s,l)=>s+l.thickness,0));
+      localStrat.forEach((layer,i)=>{
+        horizons.push({ ...layer,
+          top: depth,
+          base: depth + (i===reservoirIdx ? resThicknessLocal : layer.thickness),
+          thicknessLocal: i===reservoirIdx ? resThicknessLocal : layer.thickness,
+        });
+        depth += i===reservoirIdx ? resThicknessLocal : layer.thickness;
+      });""", """      const horizons = [];
+      // Épaisseur locale de chaque couche : la colonne de la province, modulée (option « épaisseurs variables »)
+      // par la structure et une dérive latérale propre à la couche. Le réservoir garde sa loi de biseau.
+      const labThArr = localStrat.map((layer,i)=> i===reservoirIdx ? resThicknessLocal : layer.thickness*labThickFactor(i, x, y, gridSize, structureMap));
+      let depth = Math.max(50, topOfReservoir - labThArr.slice(0,Math.max(0,reservoirIdx)).reduce((s,t)=>s+t,0));
+      localStrat.forEach((layer,i)=>{
+        horizons.push({ ...layer,
+          top: depth,
+          base: depth + labThArr[i],
+          thicknessLocal: labThArr[i],
+        });
+        depth += labThArr[i];
+      });""")
+rep("const LAB_DEFAULT_OPT = { finance:true,", """// Facteur d'épaisseur d'une couche en un point : plus épaisse dans les bas structuraux (dépôt pendant la subsidence), plus mince
+// sur les hauts, avec une dérive latérale propre à chaque couche. Déterministe (aucun tirage du générateur : les cartes de
+// l'option désactivée restent identiques à celles du jeu principal).
+function labThickFactor(i, x, y, g, structureMap){
+  if(!LABOPT.thick) return 1;
+  const h1 = labHash(i*7.31 + 1), h2 = labHash(i*3.17 + 9), h3 = labHash(i*5.91 + 4);
+  const sens = -0.4 + 1.8*h1;
+  const ang = h2*Math.PI*2, drift = ((x/g - .5)*Math.cos(ang) + (y/g - .5)*Math.sin(ang)) * 0.35 * (h3 - 0.25)*2;
+  return clamp(1 + 0.12*Math.tanh(structureMap/400)*sens + drift, 0.6, 1.4);
+}
+const LAB_DEFAULT_OPT = { finance:true, thick:true,""")
+rep("o:{ mute:false, pick:false, cal:false, strati:true, dhi:false, real:false, cheat:true } }", "o:{ mute:false, pick:false, cal:false, strati:true, dhi:false, real:false, thick:false, cheat:true } }")
+rep("o:{ mute:true, pick:true, cal:false, strati:true, dhi:false, real:false, cheat:true } }", "o:{ mute:true, pick:true, cal:false, strati:true, dhi:false, real:false, thick:true, cheat:true } }")
+rep("o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true } }", "o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, thick:true, cheat:true } }")
+rep("o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:false } }", "o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, thick:true, cheat:false } }")
+rep("    ${row('cheat', 'Bouton « Voir la vérité » (triche)'", "    ${row('thick', 'Épaisseurs variables des couches', 'Une couche n\\'a plus la même épaisseur partout : plus épaisse dans les bas structuraux, plus mince sur les hauts, avec une dérive latérale propre à chaque couche. Désactivée : épaisseur constante dans une province, comme dans le jeu principal. Attention : la carte générée pour une même graine n\\'est pas la même selon ce réglage.', labOptMode!=='start')}\n    ${row('cheat', 'Bouton « Voir la vérité » (triche)'")
+
 open(dst, 'w', encoding='utf-8').write(s)
 print('ok', len(s))
