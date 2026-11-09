@@ -1126,7 +1126,7 @@ body.mobile-layout #priceSparkline{display:none;}
         <div style="font-size:11px; color:var(--muted); margin-bottom:6px;" id="sectionSeismicInfo"></div>
         <button class="study-btn" id="btnSeismic2d" onclick="performStudy(null,'seismic2d')">📡 Lancer sismique 2D sur ce profil</button>
       </div>
-      <div id="sectionTools" style="display:none;text-align:right;padding:6px 8px;"><button class="study-btn study-btn-compact" onclick="openBigView('section')">⤢ <span class="i18n" data-fr="Agrandir la coupe" data-en="Enlarge section">Agrandir la coupe</span></button> <button class="study-btn study-btn-compact" onclick="openLithoLib()">📚 <span class="i18n" data-fr="Lithologies" data-en="Lithologies">Lithologies</span></button> <button class="study-btn study-btn-compact" id="labTruthBtn" onclick="LAB.truth=!LAB.truth; this.textContent = LAB.truth ? '🙈 Cacher la vérité' : '👁 Voir la vérité (triche)'; renderSection();">👁 Voir la vérité (triche)</button></div>
+      <div id="sectionTools" style="display:none;text-align:right;padding:6px 8px;"><button class="study-btn study-btn-compact" onclick="openBigView('section')">⤢ <span class="i18n" data-fr="Agrandir la coupe" data-en="Enlarge section">Agrandir la coupe</span></button> <button class="study-btn study-btn-compact" onclick="openLithoLib()">📚 <span class="i18n" data-fr="Lithologies" data-en="Lithologies">Lithologies</span></button> <button class="study-btn study-btn-compact" id="labTruthBtn" onclick="LAB.truth=!LAB.truth; this.textContent = LAB.truth ? '🙈 Cacher la vérité' : '👁 Voir la vérité (triche)'; renderSection();">👁 Voir la vérité (triche)</button> <button class="study-btn study-btn-compact" id="labOptBtn" onclick="labOptOpen('game')">⚙ Options</button></div>
       <svg id="sectionSvg" style="display:none;"></svg>
       <div class="section-legend" id="sectionLegend" style="display:none;"></div>
       <div id="sectionInterpret" style="display:none; padding:8px; background:rgba(13,17,23,0.6); border-top:1px solid var(--line); font-size:11px; line-height:1.6;"></div>
@@ -2518,6 +2518,7 @@ const EQUIPMENT = {
 const METHODS = {
   vertical:   {label:'Vertical',   costMult:1.0, prodMult:1.0},
   horizontal: {label:'Horizontal', costMult:1.8, prodMult:1.7},
+  strati:     {label:'Sondage stratigraphique (carotte + log, sans production)', costMult:0.3, prodMult:0},
 };
 
 // Profondeur utilisée pour estimer et budgéter un forage. Avec une sismique
@@ -2598,7 +2599,7 @@ function applyCalibration(est, geoOk, initProd, b){
 function drillBlock(blockId, method, equip, est){
   const b = blocks[blockId];
   if(b.well||b.dryHole){addLog('Ce bloc est déjà foré.','bad');return;}
-  if(G.labPick==null && G.mode!=='sandbox'){ const m = 'Désignez d\'abord votre horizon cible sur la coupe (clic sur la sismique ou bouton « viser » du tableau).'; addLog(m, 'bad'); toast(m); return; }
+  if(G.labPick==null && LABOPT.pick && method!=='strati' && G.mode!=='sandbox'){ const m = 'Désignez d\'abord votre horizon cible sur la coupe (clic sur la sismique ou bouton « viser » du tableau).'; addLog(m, 'bad'); toast(m); return; }
   if(b.studyLevel<1){addLog('Réalisez au moins une étude (gravimétrie ou sismique) avant de forer.','bad');return;}
   const depth = drillDepthEstimate(b);
   const eq = EQUIPMENT[equip], me = METHODS[method];
@@ -2609,10 +2610,11 @@ function drillBlock(blockId, method, equip, est){
   G.budget -= cost;
   b.planned = false;
 
-  const drillingMonths = Math.max(2, Math.round(depth/600));
+  const drillingMonths = method==='strati' ? Math.max(1, Math.round(depth/1200)) : Math.max(2, Math.round(depth/600));
   G.drilling.push({blockId, method, equip, cost, depth, startMonth:G.month, endMonth:G.month+drillingMonths,
                    est: est && (est.p!==null || est.bucket!==null) ? {p:est.p, bucket:est.bucket} : null});
   b.el?.classList.add('drilling');
+  if(method==='strati') addLog(`🧪 Sondage stratigraphique lancé : bloc (${b.x},${b.y}).`, 'ev');
   addLog(`⏳ Forage lancé : bloc (${b.x},${b.y}), prof. estimée ${Math.round(depth)}m, ${drillingMonths} mois.`,'ev');
 
   // Suggestion concrète pour combler l'attente : lancer une autre étude
@@ -2628,6 +2630,7 @@ function drillBlock(blockId, method, equip, est){
 
 function resolveDrilling(d){
   if(d.sidetrack) return resolveSidetrack(d);
+  if(d.method==='strati') return labResolveStrati(d);
   const b = blocks[d.blockId];
   b.el?.classList.remove('drilling');
   const eq = EQUIPMENT[d.equip], me = METHODS[d.method];
@@ -3286,6 +3289,7 @@ function playNextDrillReveal(){
   setTimeout(()=>{
     clearInterval(suspenseInterval);
     icon.classList.remove('pulse');
+    if(limitingFactor==='strati'){ icon.textContent='🧪'; title.textContent='SONDAGE TERMINÉ'; title.style.color='var(--text)'; sub.textContent='Carottes et log récupérés'; detail.innerHTML = calibHtml; closeBtn.style.display=''; return; }
     const success = geoOk && techOk;
     icon.textContent = success ? '⛽' : '✗';
     title.textContent = success ? 'PUITS PRODUCTIF !' : 'PUITS SEC';
@@ -3570,8 +3574,8 @@ function blockKnowledge(b){
   } else out.push({n:'Piège', st:'inc', t:'Levé gravimétrique requis.'});
   // Réservoir
   if(e?.depth !== undefined){
-    const pd = labPickDepth(b);
-    out.push({n:'Réservoir', st:'ind', t: G.labPick==null ? 'À identifier vous-même sur la coupe : aucun horizon n\'est désigné comme réservoir.' : (pd!==null ? `Votre cible H${G.labPick+1} vers ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.` : `Votre cible H${G.labPick+1} : profondeur à préciser par la sismique 2D sur ce bloc.`)});
+    const pd = labShownDepth(b);
+    out.push({n:'Réservoir', st:'ind', t: (G.labPick==null && pd!==null) ? `Horizon vers ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.` : G.labPick==null ? 'À identifier vous-même sur la coupe : aucun horizon n\'est désigné comme réservoir.' : (pd!==null ? `Votre cible H${G.labPick+1} vers ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.` : `Votre cible H${G.labPick+1} : profondeur à préciser par la sismique 2D sur ce bloc.`)});
   } else out.push({n:'Réservoir', st:'inc', t:'Précisé par la sismique 2D.'});
   out.push({n:'Couverture', st:'inc', t:'Connue seulement après un forage.'});
   out.push({n:'Roche-mère', st:'inc', t:'Rock-Eval, après un forage.'});
@@ -4098,7 +4102,7 @@ function renderStudiesPanel(b){
     html+=`<div class="ps-section" style="margin-top:12px;">Forage</div>
     <div class="drill-card">
       <select class="drill-select" id="drillMethod" onchange="updateDrillSummary(${b.id})">
-        ${Object.entries(METHODS).map(([k,m])=>`<option value="${k}" ${k==='vertical'?'selected':''}>${m.label}</option>`).join('')}
+        ${Object.entries(METHODS).filter(([k])=>k!=='strati'||LABOPT.strati).map(([k,m])=>`<option value="${k}" ${k==='vertical'?'selected':''}>${m.label}</option>`).join('')}
       </select>
       <select class="drill-select" id="drillEquip" onchange="updateDrillSummary(${b.id})">
         ${Object.entries(EQUIPMENT).map(([k,e])=>`<option value="${k}" ${k==='standard'?'selected':''}>${e.label} (max ${e.maxDepth}m, fiab. ${(e.reliability*100).toFixed(0)}%)</option>`).join('')}
@@ -4177,6 +4181,11 @@ function updateDrillSummary(blockId){
     return;
   }
 
+  if(method==='strati'){
+    summary.innerHTML=`<div class="tr"><span class="tl">Coût du sondage</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}${b.isOffshore?' (offshore)':''}</span></div><div class="ds-warn" style="margin-top:4px;">Carottes et log : la lithologie de la colonne est dévoilée. Aucune production possible, aucune information sur les hydrocarbures. Le bloc reste forable ensuite.</div>`;
+    if(drillBtn) drillBtn.disabled=!canAfford;
+    return;
+  }
   // Estimation de rentabilité
   const probKnown = b.estimate.prob!==undefined;
   const prob=b.estimate.prob??0;
@@ -4465,8 +4474,89 @@ function secSmoothPath(pts, faultPx){
 //     emplacement, qui s'étend (en transparence dégradée) aux blocs voisins de la MÊME province, sans faille entre
 //     les deux. Au-delà, ou dans une autre province, la coupe reste muette.
 // =====================================================================
+
+// ---------- OPTIONS DU LABO (écran avant la partie, verrouillables) + SONDAGE STRATIGRAPHIQUE ----------
+const LAB_DEFAULT_OPT = { mute:true, pick:true, cal:true, strati:true, cheat:true, locked:false };
+const LAB_PRESETS = {
+  decouverte: { label:'Découverte', d:'Coupe lisible comme dans le jeu principal, aucune contrainte.', o:{ mute:false, pick:false, cal:false, strati:true, cheat:true } },
+  inter:      { label:'Intermédiaire', d:'Sismique muette et cible à désigner, calage non exigé.', o:{ mute:true, pick:true, cal:false, strati:true, cheat:true } },
+  complet:    { label:'Labo complet', d:'Toutes les règles du labo, bouton « vérité » disponible.', o:{ mute:true, pick:true, cal:true, strati:true, cheat:true } },
+  expert:     { label:'Expert', d:'Toutes les règles, sans bouton « vérité ».', o:{ mute:true, pick:true, cal:true, strati:true, cheat:false } },
+};
+let LABOPT = { ...LAB_DEFAULT_OPT };
+try { const r = JSON.parse(localStorage.getItem('geoexplorer_labopt')||'null'); if(r && typeof r==='object') LABOPT = { ...LAB_DEFAULT_OPT, ...r, locked:false }; } catch(e){}
+function labNormOpt(o){ const n = { ...LAB_DEFAULT_OPT, ...o }; if(!n.mute) n.cal = false; if(n.locked) n.cheat = false; return n; }
+function labApplyOpt(){
+  const tb = document.getElementById('labTruthBtn'), ob = document.getElementById('labOptBtn');
+  if(tb) tb.style.display = (LABOPT.cheat && !LABOPT.locked) ? '' : 'none';
+  if(ob) ob.style.display = LABOPT.locked ? 'none' : '';
+  if(!LABOPT.cheat || LABOPT.locked) LAB.truth = false;
+}
+let labOptDraft = null, labOptMode = 'start';
+function labOptOpen(mode){
+  labOptMode = mode; labOptDraft = { ...LABOPT, locked:false };
+  let el = document.getElementById('labOptModal');
+  if(!el){ el = document.createElement('div'); el.id = 'labOptModal'; document.body.appendChild(el); }
+  el.classList.add('open'); labOptRender();
+}
+function labOptClose(){ const el = document.getElementById('labOptModal'); if(el) el.classList.remove('open'); }
+function labOptSet(k, v){ labOptDraft[k] = v; if(k==='mute' && !v) labOptDraft.cal = false; labOptRender(); }
+function labOptPreset(k){ labOptDraft = { ...labOptDraft, ...LAB_PRESETS[k].o }; labOptRender(); }
+function labOptRender(){
+  const el = document.getElementById('labOptModal'); if(!el) return; const o = labOptDraft;
+  const row = (k, titre, desc, dis) => `<label class="lab-opt-row ${dis?'dis':''}"><input type="checkbox" ${o[k]?'checked':''} ${dis?'disabled':''} onchange="labOptSet('${k}', this.checked)"><span><b>${titre}</b><br><span class="lab-mut">${desc}</span></span></label>`;
+  el.innerHTML = `<div class="lab-cal-box"><b style="font-size:15px;">Options de la partie</b>
+    <div class="lab-note" style="margin-top:2px;">Réglez les règles du labo avant de commencer. Vous pouvez les verrouiller pour toute la partie.</div>
+    <div class="lab-chips">${Object.entries(LAB_PRESETS).map(([k,p])=>`<button class="lab-pick" title="${p.d}" onclick="labOptPreset('${k}')">${p.label}</button>`).join('')}</div>
+    ${row('mute', 'Sismique muette', 'La sismique ne montre que des contrastes (bleu : l\'impédance augmente, rouge : elle diminue), jamais les roches. La lithologie n\'apparaît sur la coupe qu\'après un forage et un log. Désactivée : la coupe affiche les lithologies comme dans le jeu principal.')}
+    ${row('pick', 'Désigner la cible soi-même', 'Le jeu ne dit pas quel horizon est le réservoir. Il faut le viser sur la coupe avant de forer : un mauvais choix donne un puits sec, un bon choix rapporte un bonus.')}
+    ${row('cal', 'Calage puits-sismique obligatoire', 'Un puits ne propage sa lithologie le long du profil qu\'une fois calé (mini-jeu vitesse moyenne). Sans calage, il ne dévoile que sa propre colonne. Demande la sismique muette.', !o.mute)}
+    ${row('strati', 'Sondage stratigraphique disponible', 'Forage carotté moins cher (environ 30 % d\'un forage classique), qui donne le log et la lithologie mais ne peut jamais produire.')}
+    ${row('cheat', 'Bouton « Voir la vérité » (triche)', 'Affiche la vraie coupe géologique à tout moment.')}
+    <label class="lab-opt-row" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px;"><input type="checkbox" ${o.locked?'checked':''} onchange="labOptSet('locked', this.checked)"><span><b>🔒 Verrouiller ces options</b><br><span class="lab-mut">Aucune modification possible en cours de partie, et le bouton « vérité » est retiré.</span></span></label>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;"><button class="lab-pick" onclick="labOptCancel()">${labOptMode==='start'?'Retour':'Annuler'}</button><button class="lab-pick sel" id="labOptGo" onclick="labOptValidate()">${labOptMode==='start'?'Lancer la partie':'Appliquer'}</button></div></div>`;
+}
+function labOptCancel(){ labOptClose(); }
+function labOptValidate(){
+  LABOPT = labNormOpt(labOptDraft);
+  try { localStorage.setItem('geoexplorer_labopt', JSON.stringify({ ...LABOPT, locked:false })); } catch(e){}
+  labOptClose();
+  if(labOptMode==='start'){ labOptLaunch(); return; }
+  G.labOpt = { ...LABOPT }; labApplyOpt();
+  addLog('⚙ Options du labo modifiées' + (LABOPT.locked ? ' et verrouillées.' : '.'), 'ev');
+  renderSection(); if(selectedBlock!==null){ renderGeoPanel(blocks[selectedBlock]); renderStudiesPanel(blocks[selectedBlock]); }
+  if(typeof renderGuide==='function') renderGuide(); if(typeof bigView!=='undefined' && bigView.open) bvRender();
+}
+// profondeur de réservoir montrée au joueur
+function labShownDepth(b){
+  if(G.labPick!=null) return labPickDepth(b);
+  if(LABOPT.pick && LABOPT.mute) return null;
+  return b.estimate?.depth ?? null;
+}
+// Sondage stratigraphique : log et carottes, aucune production possible, la probabilité de succès n'est pas révélée
+function labInjectStratiLog(b){
+  if(b.studies.some(s=>s.type==='welllog')) return;
+  const e = b.estimate || {};
+  b.studies.push({type:'welllog', cost:0, result:{
+    topReservoirEst: b.topOfReservoir, topErr:0,
+    probEst: e.prob, probErr: e.probErr, qualityEst: e.quality, qualErr: e.qualErr,
+    horizonsPartial: b.horizons.map(h=>({...h, topEst:h.top, porosityEst:h.porosity, hcShow:false})),
+    maturityClass: b.maturityClass, tempAtRes:b.tempAtRes, pressureRes:b.pressureRes, isGas:b.isGas,
+  }, month:G.month, revealed:true});
+  b.studyLevel = Math.max(b.studyLevel, 3);
+}
+function labResolveStrati(d){
+  const b = blocks[d.blockId]; b.el?.classList.remove('drilling');
+  b.strati = true; labInjectStratiLog(b); updateBlockEstimate(b);
+  addLog(`🧪 Sondage stratigraphique terminé : bloc (${b.x},${b.y}). Log et carottes récupérés, lithologie de la colonne dévoilée.`, 'good');
+  const html = `Le sondage a traversé la colonne et ramené la lithologie. Il ne peut pas produire et ne dit rien sur la présence d'hydrocarbures.` + (LABOPT.cal && LABOPT.mute && !labCalOk(b) ? ` Calez-le sur la sismique pour étendre la lithologie le long du profil.` : '') + ` Le bloc reste forable.`;
+  renderBlock(b); updateHud();
+  if(selectedBlock===d.blockId){ renderGeoPanel(b); renderStudiesPanel(b); }
+  showDrillReveal(b, false, true, 'strati', html);
+}
+
 const LAB = { truth:false, freq:28 };
-const labDrilled = b => !!(b && (b.well || b.dryHole));
+const labDrilled = b => !!(b && (b.well || b.dryHole || b.strati));
 // Niveau de dévoilement de chaque bloc du profil : 0 = puits, 1 à 3 = extrapolé (voisin proche à lointain), -1 = inconnu
 function labLevels(dispData){
   const lv = dispData.map(()=>-1), dr = [];
@@ -4634,7 +4724,7 @@ function labResultHtml(b, missed, resIdx){
 // le sismogramme synthétique du puits se superpose à la trace sismique. Un puits calé étend sa lithologie le long du
 // profil ; un puits non calé ne dévoile que sa propre colonne.
 const LAB_CAL_BONUS = 80000;
-const labCalOk = b => !!(b && (G.mode==='sandbox' || (G.labCal && G.labCal[b.id])));
+const labCalOk = b => !!(b && (G.mode==='sandbox' || !LABOPT.cal || (G.labCal && G.labCal[b.id])));
 const labRicker = (t, f) => { const a = Math.PI*f*t; return (1-2*a*a)*Math.exp(-a*a); };
 function labCalModel(b){
   const L = getBlockLayerData(b); if(!L) return null;
@@ -4704,12 +4794,14 @@ function labCalValidate(){
   }
 }
 function labWellList(dispData, lv){
-  const ws = dispData.map((d,i)=>({d,i})).filter(o=>o.d.b && lv[o.i]===0);
+  if(!LABOPT.cal) return '';
+  const ws = dispData.map((d,i)=>({d,i})).filter(o=>o.d.b && labDrilled(o.d.b));
   if(!ws.length) return `<div class="lab-note"><b>Calage.</b> Aucun puits sur ce profil. Un puits foré puis calé permet d'étendre la lithologie le long de la coupe.</div>`;
   return `<div class="lab-note"><b>Calage puits-sismique.</b> ` + ws.map(o=>{ const b = o.d.b; return labCalOk(b) ? `Puits (${b.x}, ${b.y}) : <b>calé</b> ✓ ` : `Puits (${b.x}, ${b.y}) : <button class="lab-pick" onclick="labOpenCal(${b.id})">caler</button> `; }).join(' · ') + `<br>Un puits non calé ne dévoile que sa propre colonne. Calé, il étend sa lithologie aux blocs voisins du profil (jusqu'aux failles et aux limites de province).</div>`;
 }
 
 function renderSection(){
+  labApplyOpt();
   const svgEl    = document.getElementById('sectionSvg');
   const hint     = document.getElementById('sectionHint');
   const legend   = document.getElementById('sectionLegend');
@@ -4840,7 +4932,7 @@ function renderSection(){
       dispData[i].layers.forEach(l=>{ l.top += delta; });
     });
   })();
-  const LAB_ON = !LAB.truth;
+  const LAB_ON = !LAB.truth && LABOPT.mute;
   const labLv = LAB_ON ? labLevels(dispData) : dispData.map(()=>0);
   const labVisibleAtX = x => { if(!LAB_ON) return true; let best = 0, bd = Infinity; dispData.forEach((d,i)=>{ const dd = Math.abs(xOf(d.t)-x); if(dd<bd){ bd = dd; best = i; } }); return labLv[best] >= 0; };
   // Transition entre deux lithologies voisines occupant la même position
@@ -5173,7 +5265,7 @@ function renderSection(){
   });
 
   // Horizon visé : trait ambre sur toute sa longueur
-  if(LAB_ON && G.labPick!=null){
+  if(!LAB.truth && G.labPick!=null){
     const pts = []; dispData.forEach(bd=>{ const l = bd.layers && bd.layers[G.labPick]; if(l && l.thickness>=1) pts.push({x:xOf(bd.t), y:yOf(l.top)}); });
     if(pts.length>=2){
       svg += `<path d="M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}${secSmoothPath(pts, faultPx)}" fill="none" stroke="var(--amber)" stroke-width="2.4" stroke-linecap="round" pointer-events="none"/>`;
@@ -5247,7 +5339,7 @@ function renderSection(){
 
   // ── Interprétation structurale automatique ──
   // Analyse le profil des données estimées pour identifier la géométrie
-  if(LAB_ON){
+  if(LAB_ON || (!LAB.truth && (LABOPT.pick || LABOPT.cal))){
     const ip = document.getElementById('sectionInterpret');
     if(ip){ ip.style.display = 'block'; ip.innerHTML = `<b style="color:var(--amber);">Traitement et interprétation</b>` + labHorizonTable(dispData, labLv) + `${labWellList(dispData, labLv)}<div class="lab-note"><b>Quel horizon est le réservoir ?</b> La sismique ne le dit pas : repérez les plis, les failles et les contrastes, croisez avec la vitesse (un réservoir de grès ou de calcaire est plus « dur » que l'argile qui le scelle, donc plutôt un contraste (+) à son toit), puis <b>désignez votre cible</b> par un clic sur la sismique ou le bouton « viser ». Forer le mauvais horizon donne un puits sec, mais le log vous apprend où était le réservoir ; un bon choix rapporte ${formatM(LAB_PICK_BONUS)}.</div>`; }
   } else interpretSection(blockData, profileBlocks);
@@ -5300,7 +5392,7 @@ function showTip(b,e){
   if(b.well) h+=`<div class="tr"><span class="tl">Statut</span><span style="color:var(--green);">Puits actif ⛽</span></div>`;
   else if(b.dryHole) h+=`<div class="tr"><span class="tl">Statut</span><span style="color:var(--red);">Puits sec ✗</span></div>`;
   else if(b.estimate?.prob!==undefined) h+=`<div class="tr"><span class="tl">Prob.</span><span>${(b.estimate.prob*100).toFixed(0)}% ±${(b.estimate.probErr*100).toFixed(0)}%</span></div>`;
-  { const pd = labPickDepth(b); if(pd!==null) h+=`<div class="tr"><span class="tl">Prof. cible H${G.labPick+1}</span><span>${Math.round(pd)} m</span></div>`; }
+  { const pd = labShownDepth(b); if(pd!==null) h+=`<div class="tr"><span class="tl">${G.labPick==null?'Prof. réservoir':'Prof. cible H'+(G.labPick+1)}</span><span>${Math.round(pd)} m</span></div>`; }
   if(b.estimate?.structPos!==undefined) h+=`<div class="tr"><span class="tl">Position struct.</span><span>${b.estimate.structPos>.1?'Haut structural':b.estimate.structPos<-.1?'Bas structural':'Intermédiaire'}</span></div>`;
   if(b.studyLevel===0) h+=`<div style="color:var(--muted);font-size:10px;">Non exploré</div>`;
   tipEl.innerHTML=h; tipEl.style.display='block'; moveTip(e);
@@ -5471,7 +5563,7 @@ function guideCompute(){
   { const unc = prof.map(o=>o.b).find(b=>labDrilled(b) && !labCalOk(b));
     if(unc) return {cur:4, text:`Le puits (${unc.x}, ${unc.y}) n'est pas calé sur la sismique. Calez-le : sa lithologie se propagera alors sur le profil et vous gagnerez ${formatM(LAB_CAL_BONUS)}.`,
             act:{label:`Caler le puits (${unc.x}, ${unc.y})`, call:`labOpenCal(${unc.id})`, ok:true}}; }
-  if(G.labPick==null && ranked.length){
+  if(G.labPick==null && LABOPT.pick && ranked.length){
     return {cur:4, text:'Avant de forer, désignez sur la coupe l\'horizon que vous pensez être le réservoir : clic sur la sismique, ou bouton « viser » du tableau. Un mauvais choix donne un puits sec.',
             act:{label:'Aller à la coupe', call:'labGoSection()', ok:true}};
   }
@@ -6358,12 +6450,13 @@ document.getElementById('geoSeed')?.addEventListener('input', e=>{
   menuConfig.seed = e.target.value.trim() || null;
 });
 
-document.getElementById('startBtn').addEventListener('click',()=>{
+document.getElementById('startBtn').addEventListener('click',()=>{ labOptOpen('start'); });
+function labOptLaunch(){
   const seedVal = document.getElementById('geoSeed')?.value.trim();
   menuConfig.seed = seedVal ? (parseInt(seedVal)||seedVal) : null;
   document.getElementById('menu').classList.add('hidden');
   startGame();
-});
+}
 
 document.getElementById('endRestartBtn').addEventListener('click',()=>{
   document.getElementById('endScreen').style.display='none';
@@ -6447,6 +6540,7 @@ function loadGame(){
   document.getElementById('menu').classList.add('hidden');
   document.getElementById('endScreen').style.display = 'none';
   Object.assign(G, payload.G);
+  if(G.labOpt) LABOPT = labNormOpt(G.labOpt); else LABOPT = { ...LAB_DEFAULT_OPT };
   blocks = payload.blocks.map(b => ({ ...b, el: null })); // .el sera réattaché par buildGrid()
   // Bug V4.1 : JSON.stringify/parse transforme l'objet puits partagé entre
   // G.wells et b.well en deux copies indépendantes. On remet b.well sur
@@ -6516,7 +6610,7 @@ function _doStartGame(){
     financeMode:    menuConfig.financeMode,
     uncertaintyLevel: menuConfig.uncertainty,
     budget:         m.budget,
-    month:0, speed:1, paused:false, labPick:null, labCal:{},
+    month:0, speed:1, paused:false, labPick:null, labCal:{}, labOpt:{ ...LABOPT },
     price:70, priceHistory:[70],
     wells:[], drilling:[], sectionA:null, sectionB:null,
     tool:'select', history:[], lastCF:0, lastRevenue:0, lastOpex:0, lastLoanPayment:0,
@@ -7532,6 +7626,12 @@ function _doStartGame(){
 .lab-tab th{text-align:left;color:var(--muted);font-weight:500;border-bottom:1px solid var(--line);padding:4px 6px;white-space:nowrap;}
 .lab-tab td{border-bottom:1px solid var(--line);padding:4px 6px;white-space:nowrap;}
 .lab-mut{color:var(--muted);}
+#labOptModal{position:fixed;inset:0;z-index:1360;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:14px;}
+#labOptModal.open{display:flex;}
+.lab-opt-row{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.45;padding:6px 0;cursor:pointer;}
+.lab-opt-row.dis{opacity:.45;cursor:default;}
+.lab-opt-row input{margin-top:3px;flex:none;}
+.lab-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px;}
 #labCalModal{position:fixed;inset:0;z-index:1350;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:14px;}
 #labCalModal.open{display:flex;}
 .lab-cal-box{background:var(--panel);color:var(--text);border-radius:10px;padding:14px;max-width:560px;width:100%;max-height:96vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.4);}
