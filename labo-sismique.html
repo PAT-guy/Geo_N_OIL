@@ -4470,7 +4470,7 @@ const labDrilled = b => !!(b && (b.well || b.dryHole));
 // Niveau de dévoilement de chaque bloc du profil : 0 = puits, 1 à 3 = extrapolé (voisin proche à lointain), -1 = inconnu
 function labLevels(dispData){
   const lv = dispData.map(()=>-1), dr = [];
-  dispData.forEach((bd,i)=>{ if(bd.b && labDrilled(bd.b)){ lv[i] = 0; dr.push(i); } });
+  dispData.forEach((bd,i)=>{ if(bd.b && labDrilled(bd.b)){ lv[i] = 0; if(labCalOk(bd.b)) dr.push(i); } });
   const faultBetween = (i,j) => { const a = Math.min(i,j), c = Math.max(i,j); for(let m=a;m<c;m++){ const p = dispData[m].b, q = dispData[m+1].b; if(!p||!q) return true; if(Math.abs(q.topOfReservoir - p.topOfReservoir) > 150) return true; } return false; };
   dispData.forEach((bd,i)=>{
     if(lv[i]===0 || !bd.b) return;
@@ -4626,6 +4626,87 @@ function labResultHtml(b, missed, resIdx){
   if(G.mode!=='sandbox') G.budget += LAB_PICK_BONUS;
   addLog('🎯 Interprétation juste : H' + (resIdx+1) + ' est bien le réservoir (+' + formatM(LAB_PICK_BONUS) + ').', 'good');
   return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><b>Interprétation juste</b> : H${resIdx+1} (${real?real.name:'?'}) est bien le réservoir. Bonus : <b>+${formatM(LAB_PICK_BONUS)}</b>.</div>`;
+}
+
+
+// ---------- PHASE 3 : calage puits-sismique ----------
+// La sismique est en temps, le puits en profondeur. Le joueur règle une vitesse moyenne de conversion jusqu'à ce que
+// le sismogramme synthétique du puits se superpose à la trace sismique. Un puits calé étend sa lithologie le long du
+// profil ; un puits non calé ne dévoile que sa propre colonne.
+const LAB_CAL_BONUS = 80000;
+const labCalOk = b => !!(b && (G.mode==='sandbox' || (G.labCal && G.labCal[b.id])));
+const labRicker = (t, f) => { const a = Math.PI*f*t; return (1-2*a*a)*Math.exp(-a*a); };
+function labCalModel(b){
+  const L = getBlockLayerData(b); if(!L) return null;
+  const rows = []; L.forEach((l,li)=>{ if(l && l.thickness>=1 && b.horizons[li]) rows.push({li, top:l.top, th:l.thickness, a:labAcoustic(b.horizons[li], l.top + l.thickness/2)}); });
+  rows.sort((p,q)=>p.top-q.top); if(rows.length<3) return null;
+  let t = 2*rows[0].top/rows[0].a.v; const refl = [];
+  rows.forEach((r,k)=>{ if(k>0){ const A = rows[k-1].a, B = r.a; t += 2*rows[k-1].th/A.v; refl.push({li:r.li, z:r.top, R:(B.z-A.z)/(B.z+A.z), tTrue:t}); } });
+  const zMax = rows[rows.length-1].top + rows[rows.length-1].th;
+  const rms = V => { let s=0, w=0; refl.forEach(r=>{ const k = Math.abs(r.R)>0.03 ? 1 : 0; if(!k) return; const d = 2*r.z/V - r.tTrue; s += d*d; w++; }); return w ? Math.sqrt(s/w) : 0; };
+  let best = Infinity, bestV = 3000; for(let V=1500; V<=7000; V+=25){ const e = rms(V); if(e<best){ best = e; bestV = V; } }
+  return { refl, zMax, tMax: refl[refl.length-1].tTrue + 0.18, rms, bestV, tol: Math.max(0.022, best*1.5), best };
+}
+let labCalState = null;
+function labOpenCal(id){
+  const b = blocks.find(x=>x.id===id); if(!b || !labDrilled(b)) return;
+  const m = labCalModel(b); if(!m){ toast('Colonne trop mince pour un calage.'); return; }
+  labCalState = { id, m, V: 3000, tries: 0 };
+  let el = document.getElementById('labCalModal');
+  if(!el){ el = document.createElement('div'); el.id = 'labCalModal'; document.body.appendChild(el); }
+  el.classList.add('open'); labCalRender();
+}
+function labCalClose(){ const el = document.getElementById('labCalModal'); if(el) el.classList.remove('open'); labCalState = null; }
+function labCalSet(v){ if(!labCalState) return; labCalState.V = +v; labCalDraw(); }
+function labCalDraw(){
+  const S = labCalState; if(!S) return; const m = S.m, svg = document.getElementById('labCalSvg'); if(!svg) return;
+  const W = 460, H = 360, top = 28, bot = H-12, f = 30, tMax = m.tMax;
+  const yT = t => top + (t/tMax)*(bot-top);
+  const cx1 = 130, cx2 = 330, amp = 34, nS = 260;
+  const trace = (tf) => { let pts = [], pos = []; for(let i=0;i<=nS;i++){ const t = i/nS*tMax; let a = 0; m.refl.forEach(r=>{ a += r.R*labRicker(t - tf(r), f); });
+    a += (labHash(i*3.1 + S.id*7.7)-0.5)*0.05*(typeof uncertaintyMult==='function'?uncertaintyMult():1);
+    pts.push([t,a]); } const mx = Math.max(0.05, ...pts.map(p=>Math.abs(p[1]))); return pts.map(p=>[p[0], p[1]/mx]); };
+  const tr = trace(r=>r.tTrue), sy = trace(r=>2*r.z/S.V);
+  const line = (pts,cx) => 'M' + pts.map(p=>`${(cx+p[1]*amp).toFixed(1)},${yT(p[0]).toFixed(1)}`).join(' L');
+  const fill = (pts,cx) => `M${cx},${yT(0)} L` + pts.map(p=>`${(cx+Math.max(0,p[1])*amp).toFixed(1)},${yT(p[0]).toFixed(1)}`).join(' L') + ` L${cx},${yT(tMax)} Z`;
+  let h = `<text x="${cx1}" y="14" text-anchor="middle" font-size="10" font-weight="700" fill="var(--text)">Synthétique du puits</text><text x="${cx2}" y="14" text-anchor="middle" font-size="10" font-weight="700" fill="var(--text)">Trace sismique</text>`;
+  for(let t=0; t<tMax; t+=0.1) h += `<line x1="40" x2="${W-10}" y1="${yT(t)}" y2="${yT(t)}" stroke="var(--line)" stroke-width=".5"/><text x="36" y="${yT(t)+3}" font-size="8" text-anchor="end" fill="var(--muted)">${Math.round(t*1000)}</text>`;
+  h += `<text x="6" y="${top-8}" font-size="8" fill="var(--muted)">ms</text>`;
+  [[sy,cx1,'#4a6a8a'],[tr,cx2,'#8a4a4a']].forEach(([pts,cx,col])=>{ h += `<line x1="${cx}" x2="${cx}" y1="${top}" y2="${bot}" stroke="var(--line)" stroke-dasharray="2 3"/><path d="${fill(pts,cx)}" fill="${col}" opacity=".55"/><path d="${line(pts,cx)}" fill="none" stroke="#222" stroke-width=".8"/>`; });
+  m.refl.forEach(r=>{ if(Math.abs(r.R)<0.03) return; const y = yT(2*r.z/S.V); if(y>bot) return; h += `<line x1="${cx1-amp-6}" x2="${W-10}" y1="${y}" y2="${y}" stroke="var(--amber)" stroke-width=".8" stroke-dasharray="4 3" opacity=".8"/><text x="${cx1-amp-8}" y="${y-2}" font-size="8.5" font-weight="700" text-anchor="end" fill="var(--amber)">H${r.li+1} · ${Math.round(r.z)} m</text>`; });
+  svg.innerHTML = h;
+  const v = document.getElementById('labCalV'); if(v) v.textContent = Math.round(S.V).toLocaleString('fr-FR') + ' m/s';
+}
+function labCalRender(){
+  const S = labCalState, el = document.getElementById('labCalModal'); if(!S || !el) return; const b = blocks.find(x=>x.id===S.id);
+  el.innerHTML = `<div class="lab-cal-box"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;"><b style="font-size:14px;">Calage puits-sismique · bloc (${b.x}, ${b.y})</b><button class="lab-pick" onclick="labCalClose()">Fermer</button></div>
+    <div class="lab-note" style="margin-top:4px;">La sismique est en temps, le puits en profondeur. À gauche, le sismogramme calculé depuis votre log avec une <b>vitesse moyenne</b> constante ; à droite, la trace réelle. Réglez la vitesse jusqu'à ce que les pics et les creux se superposent, surtout aux horizons marqués en ambre.</div>
+    <svg id="labCalSvg" viewBox="0 0 460 360" style="width:100%;max-width:520px;background:var(--panel);border:1px solid var(--line);border-radius:6px;margin-top:6px;"></svg>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:6px;"><span style="font-size:11px;">Vitesse moyenne</span><input id="labCalSlider" type="range" min="1500" max="7000" step="25" value="${S.V}" oninput="labCalSet(this.value)" style="flex:1;"><b id="labCalV" style="min-width:84px;text-align:right;font-size:12px;"></b></div>
+    <div id="labCalMsg" style="min-height:36px;margin-top:6px;font-size:11.5px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;"><button class="lab-pick sel" onclick="labCalValidate()">Valider le calage</button></div></div>`;
+  labCalDraw();
+}
+function labCalValidate(){
+  const S = labCalState; if(!S) return; const m = S.m, e = m.rms(S.V), msg = document.getElementById('labCalMsg'); S.tries++;
+  if(e <= m.tol){
+    const b = blocks.find(x=>x.id===S.id); G.labCal = G.labCal || {}; const first = !G.labCal[b.id]; G.labCal[b.id] = true;
+    if(first && G.mode!=='sandbox') G.budget += LAB_CAL_BONUS;
+    addLog(`📐 Puits (${b.x},${b.y}) calé : vitesse moyenne ${Math.round(S.V)} m/s. Sa lithologie est étendue le long du profil` + (first ? ` (+${formatM(LAB_CAL_BONUS)})` : '') + '.', 'good');
+    toast('Calage validé : la lithologie du puits se propage sur la coupe.');
+    labCalClose(); renderSection();
+    if(selectedBlock!==null){ renderGeoPanel(blocks[selectedBlock]); renderStudiesPanel(blocks[selectedBlock]); }
+    if(typeof renderGuide==='function') renderGuide(); if(typeof bigView!=='undefined' && bigView.open) bvRender();
+  } else {
+    const sens = 2*m.refl[0].z/S.V; // repère : un synthétique trop profond en temps appelle une vitesse plus haute
+    let tooDeep = 0, n = 0; m.refl.forEach(r=>{ if(Math.abs(r.R)>0.03){ tooDeep += (2*r.z/S.V - r.tTrue); n++; } });
+    msg.innerHTML = `<span style="color:var(--red);"><b>Calage insuffisant</b> (écart moyen ${Math.round(e*1000)} ms, tolérance ${Math.round(m.tol*1000)} ms).</span> ` + (S.tries>=2 ? (tooDeep>0 ? 'Les horizons du synthétique arrivent trop tard : augmentez la vitesse.' : 'Les horizons du synthétique arrivent trop tôt : diminuez la vitesse.') : 'Superposez mieux les horizons, puis revalidez.');
+  }
+}
+function labWellList(dispData, lv){
+  const ws = dispData.map((d,i)=>({d,i})).filter(o=>o.d.b && lv[o.i]===0);
+  if(!ws.length) return `<div class="lab-note"><b>Calage.</b> Aucun puits sur ce profil. Un puits foré puis calé permet d'étendre la lithologie le long de la coupe.</div>`;
+  return `<div class="lab-note"><b>Calage puits-sismique.</b> ` + ws.map(o=>{ const b = o.d.b; return labCalOk(b) ? `Puits (${b.x}, ${b.y}) : <b>calé</b> ✓ ` : `Puits (${b.x}, ${b.y}) : <button class="lab-pick" onclick="labOpenCal(${b.id})">caler</button> `; }).join(' · ') + `<br>Un puits non calé ne dévoile que sa propre colonne. Calé, il étend sa lithologie aux blocs voisins du profil (jusqu'aux failles et aux limites de province).</div>`;
 }
 
 function renderSection(){
@@ -5168,7 +5249,7 @@ function renderSection(){
   // Analyse le profil des données estimées pour identifier la géométrie
   if(LAB_ON){
     const ip = document.getElementById('sectionInterpret');
-    if(ip){ ip.style.display = 'block'; ip.innerHTML = `<b style="color:var(--amber);">Traitement et interprétation</b>` + labHorizonTable(dispData, labLv) + `<div class="lab-note"><b>Quel horizon est le réservoir ?</b> La sismique ne le dit pas : repérez les plis, les failles et les contrastes, croisez avec la vitesse (un réservoir de grès ou de calcaire est plus « dur » que l'argile qui le scelle, donc plutôt un contraste (+) à son toit), puis <b>désignez votre cible</b> par un clic sur la sismique ou le bouton « viser ». Forer le mauvais horizon donne un puits sec, mais le log vous apprend où était le réservoir ; un bon choix rapporte ${formatM(LAB_PICK_BONUS)}.</div>`; }
+    if(ip){ ip.style.display = 'block'; ip.innerHTML = `<b style="color:var(--amber);">Traitement et interprétation</b>` + labHorizonTable(dispData, labLv) + `${labWellList(dispData, labLv)}<div class="lab-note"><b>Quel horizon est le réservoir ?</b> La sismique ne le dit pas : repérez les plis, les failles et les contrastes, croisez avec la vitesse (un réservoir de grès ou de calcaire est plus « dur » que l'argile qui le scelle, donc plutôt un contraste (+) à son toit), puis <b>désignez votre cible</b> par un clic sur la sismique ou le bouton « viser ». Forer le mauvais horizon donne un puits sec, mais le log vous apprend où était le réservoir ; un bon choix rapporte ${formatM(LAB_PICK_BONUS)}.</div>`; }
   } else interpretSection(blockData, profileBlocks);
 
   // ── Légende ── énumère les lithologies RÉELLEMENT présentes sur ce profil,
@@ -5387,6 +5468,9 @@ function guideCompute(){
     return {cur:3, text:`Le profil montre un haut structural en (${b.x}, ${b.y}). Une sismique 3D y précisera la profondeur et cherchera des indices directs de fluides.`,
             act:{label:`Sismique 3D sur (${b.x}, ${b.y}) · ${formatM(c)}`, call:`guideDo('seismic3d',${b.id})`, ok:money(c), why:`Budget insuffisant (${formatM(c)} requis).`}};
   }
+  { const unc = prof.map(o=>o.b).find(b=>labDrilled(b) && !labCalOk(b));
+    if(unc) return {cur:4, text:`Le puits (${unc.x}, ${unc.y}) n'est pas calé sur la sismique. Calez-le : sa lithologie se propagera alors sur le profil et vous gagnerez ${formatM(LAB_CAL_BONUS)}.`,
+            act:{label:`Caler le puits (${unc.x}, ${unc.y})`, call:`labOpenCal(${unc.id})`, ok:true}}; }
   if(G.labPick==null && ranked.length){
     return {cur:4, text:'Avant de forer, désignez sur la coupe l\'horizon que vous pensez être le réservoir : clic sur la sismique, ou bouton « viser » du tableau. Un mauvais choix donne un puits sec.',
             act:{label:'Aller à la coupe', call:'labGoSection()', ok:true}};
@@ -6432,7 +6516,7 @@ function _doStartGame(){
     financeMode:    menuConfig.financeMode,
     uncertaintyLevel: menuConfig.uncertainty,
     budget:         m.budget,
-    month:0, speed:1, paused:false, labPick:null,
+    month:0, speed:1, paused:false, labPick:null, labCal:{},
     price:70, priceHistory:[70],
     wells:[], drilling:[], sectionA:null, sectionB:null,
     tool:'select', history:[], lastCF:0, lastRevenue:0, lastOpex:0, lastLoanPayment:0,
@@ -7448,12 +7532,15 @@ function _doStartGame(){
 .lab-tab th{text-align:left;color:var(--muted);font-weight:500;border-bottom:1px solid var(--line);padding:4px 6px;white-space:nowrap;}
 .lab-tab td{border-bottom:1px solid var(--line);padding:4px 6px;white-space:nowrap;}
 .lab-mut{color:var(--muted);}
+#labCalModal{position:fixed;inset:0;z-index:1350;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:14px;}
+#labCalModal.open{display:flex;}
+.lab-cal-box{background:var(--panel);color:var(--text);border-radius:10px;padding:14px;max-width:560px;width:100%;max-height:96vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.4);}
 .lab-pick{padding:3px 9px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:999px;font-size:11px;cursor:pointer;font-family:var(--sans);}
 .lab-pick.sel{background:var(--amber);color:#fff;border-color:var(--amber);font-weight:600;}
 .lab-note{font-size:11px;line-height:1.55;color:var(--muted);margin-top:6px;}
 #labBadge{position:fixed;right:10px;bottom:62px;z-index:900;background:var(--ink);color:var(--on-ink);font-size:11px;padding:6px 10px;border-radius:8px;opacity:.88;max-width:260px;line-height:1.4;}
 body.mobile-layout #labBadge{bottom:64px;}
 </style>
-<div id="labBadge"><b>LABO sismique, phase 2</b> : la sismique ne montre plus les roches ni le réservoir. Désignez votre cible sur la coupe, forez, loguez. Sauvegarde séparée du jeu principal.</div>
+<div id="labBadge"><b>LABO sismique, phase 3</b> : la sismique ne montre plus les roches ni le réservoir. Désignez votre cible, forez, loguez, puis calez le puits sur la sismique pour étendre la lithologie. Sauvegarde séparée du jeu principal.</div>
 </body>
 </html>
