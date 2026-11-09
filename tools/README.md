@@ -30,6 +30,7 @@ cd /tmp && node /chemin/vers/Geo_N_OIL/tools/tests/chk_lab.js
 - `lab436.js` : case à cocher du trait de coupe (mémorisée), coupe précédente en pointillé, blocs cliquables, rechargement.
 - `lab437.js` : sondage stratigraphique avec carotte et Rock-Eval, la carotte cale le puits et double la portée de sa lithologie.
 - `couche_clic.js` : clic sur une couche de la coupe du jeu principal (toit, mur, épaisseur, biseau, surlignage).
+- `lab438.js` : épaisseurs variables des couches (option du labo) : variation, cohérence des piles, cartes identiques hors épaisseur.
 - `sim_lab.js` : simulation d'équilibrage (parties de 25 ans jouées par des robots).
 
 ## Dernier bilan d'équilibrage (`sim_lab.js`, 60 à 150 parties par cellule, junior, 25 ans)

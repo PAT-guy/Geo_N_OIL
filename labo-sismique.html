@@ -1900,14 +1900,17 @@ function generateGeology(gridSize, basinType, offshore, seed){
       // Construire la pile de profondeurs (toit de chaque horizon), à partir
       // de la colonne de CETTE province, pas de la colonne globale
       const horizons = [];
-      let depth = Math.max(50, topOfReservoir - localStrat.slice(0,Math.max(0,reservoirIdx)).reduce((s,l)=>s+l.thickness,0));
+      // Épaisseur locale de chaque couche : la colonne de la province, modulée (option « épaisseurs variables »)
+      // par la structure et une dérive latérale propre à la couche. Le réservoir garde sa loi de biseau.
+      const labThArr = localStrat.map((layer,i)=> i===reservoirIdx ? resThicknessLocal : layer.thickness*labThickFactor(i, x, y, gridSize, structureMap));
+      let depth = Math.max(50, topOfReservoir - labThArr.slice(0,Math.max(0,reservoirIdx)).reduce((s,t)=>s+t,0));
       localStrat.forEach((layer,i)=>{
         horizons.push({ ...layer,
           top: depth,
-          base: depth + (i===reservoirIdx ? resThicknessLocal : layer.thickness),
-          thicknessLocal: i===reservoirIdx ? resThicknessLocal : layer.thickness,
+          base: depth + labThArr[i],
+          thicknessLocal: labThArr[i],
         });
-        depth += i===reservoirIdx ? resThicknessLocal : layer.thickness;
+        depth += labThArr[i];
       });
 
       // Température et pression au réservoir
@@ -4551,12 +4554,22 @@ function secLayerText(name, info){
 // =====================================================================
 
 // ---------- OPTIONS DU LABO (écran avant la partie, verrouillables) + SONDAGE STRATIGRAPHIQUE ----------
-const LAB_DEFAULT_OPT = { finance:true, mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true, locked:false };
+// Facteur d'épaisseur d'une couche en un point : plus épaisse dans les bas structuraux (dépôt pendant la subsidence), plus mince
+// sur les hauts, avec une dérive latérale propre à chaque couche. Déterministe (aucun tirage du générateur : les cartes de
+// l'option désactivée restent identiques à celles du jeu principal).
+function labThickFactor(i, x, y, g, structureMap){
+  if(!LABOPT.thick) return 1;
+  const h1 = labHash(i*7.31 + 1), h2 = labHash(i*3.17 + 9), h3 = labHash(i*5.91 + 4);
+  const sens = -0.4 + 1.8*h1;
+  const ang = h2*Math.PI*2, drift = ((x/g - .5)*Math.cos(ang) + (y/g - .5)*Math.sin(ang)) * 0.35 * (h3 - 0.25)*2;
+  return clamp(1 + 0.12*Math.tanh(structureMap/400)*sens + drift, 0.6, 1.4);
+}
+const LAB_DEFAULT_OPT = { finance:true, thick:true, mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true, locked:false };
 const LAB_PRESETS = {
-  decouverte: { label:'Découverte', d:'Coupe lisible comme dans le jeu principal, aucune contrainte.', o:{ mute:false, pick:false, cal:false, strati:true, dhi:false, real:false, cheat:true } },
-  inter:      { label:'Intermédiaire', d:'Sismique muette et cible à désigner, calage non exigé.', o:{ mute:true, pick:true, cal:false, strati:true, dhi:false, real:false, cheat:true } },
-  complet:    { label:'Labo complet', d:'Toutes les règles du labo, bouton « vérité » disponible.', o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true } },
-  expert:     { label:'Expert', d:'Toutes les règles, sans bouton « vérité ».', o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:false } },
+  decouverte: { label:'Découverte', d:'Coupe lisible comme dans le jeu principal, aucune contrainte.', o:{ mute:false, pick:false, cal:false, strati:true, dhi:false, real:false, thick:false, cheat:true } },
+  inter:      { label:'Intermédiaire', d:'Sismique muette et cible à désigner, calage non exigé.', o:{ mute:true, pick:true, cal:false, strati:true, dhi:false, real:false, thick:true, cheat:true } },
+  complet:    { label:'Labo complet', d:'Toutes les règles du labo, bouton « vérité » disponible.', o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, thick:true, cheat:true } },
+  expert:     { label:'Expert', d:'Toutes les règles, sans bouton « vérité ».', o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, thick:true, cheat:false } },
 };
 let LABOPT = { ...LAB_DEFAULT_OPT };
 try { const r = JSON.parse(localStorage.getItem('geoexplorer_labopt')||'null'); if(r && typeof r==='object') LABOPT = { ...LAB_DEFAULT_OPT, ...r, locked:false }; } catch(e){}
@@ -4590,6 +4603,7 @@ function labOptRender(){
     ${row('strati', 'Sondage stratigraphique disponible', 'Forage carotté moins cher (environ 30 % d\'un forage classique), qui donne le log et la lithologie mais ne peut jamais produire.')}
     ${row('dhi', 'Indices de fluides à interpréter', 'La sismique 3D ne donne plus un pourcentage précis mais une classe d\'anomalie d\'amplitude (nulle, faible, modérée, forte), visible sur la coupe comme une tache brillante. Les faux positifs existent : gaz, charbon, calcaire serré.')}
     ${row('real', 'Imagerie sismique réaliste', 'Bruit croissant avec la profondeur, multiples (faux réflecteurs), qualité de traitement variable selon la ligne (retraitement payant), axe de temps double en ms.')}
+    ${row('thick', 'Épaisseurs variables des couches', 'Une couche n\'a plus la même épaisseur partout : plus épaisse dans les bas structuraux, plus mince sur les hauts, avec une dérive latérale propre à chaque couche. Désactivée : épaisseur constante dans une province, comme dans le jeu principal. Attention : la carte générée pour une même graine n\'est pas la même selon ce réglage.', labOptMode!=='start')}
     ${row('cheat', 'Bouton « Voir la vérité » (triche)', 'Affiche la vraie coupe géologique à tout moment.')}
     <label class="lab-opt-row" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px;"><input type="checkbox" ${o.locked?'checked':''} onchange="labOptSet('locked', this.checked)"><span><b>🔒 Verrouiller ces options</b><br><span class="lab-mut">Aucune modification possible en cours de partie, et le bouton « vérité » est retiré.</span></span></label>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;"><button class="lab-pick" onclick="labOptCancel()">${labOptMode==='start'?'Retour':'Annuler'}</button><button class="lab-pick sel" id="labOptGo" onclick="labOptValidate()">${labOptMode==='start'?'Lancer la partie':'Appliquer'}</button></div></div>`;
