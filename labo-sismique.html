@@ -111,6 +111,8 @@ main{flex:1; display:grid; grid-template-columns:1fr var(--right-w, 380px); over
 .grid{display:grid; gap:2px; width:fit-content; position:relative;}
 #secLineSvg{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;z-index:6;}
 #secLineSvg .hit{pointer-events:stroke;cursor:pointer;}
+.lab-secchk{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;margin-right:6px;}
+.lab-secchk input{margin:0;}
 .axl{font-family:var(--mono); font-size:10px; color:var(--muted); display:flex; align-items:center; justify-content:center;}
 .block{
   width:44px; height:44px; border:1px solid var(--line-strong); cursor:pointer;
@@ -1066,6 +1068,7 @@ body.mobile-layout #priceSparkline{display:none;}
       </div>
       <span id="toolLabel">Mode : Sélection</span>
       <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
+        <label class="lab-secchk" title="Afficher ou masquer le trait de coupe (flèche de A vers B) sur la carte"><input type="checkbox" id="secLineChk" checked onchange="labToggleSecLine(this.checked)"> Trait de coupe</label>
         <button class="btn" id="zoomOut" aria-label="Zoom arrière">−</button>
         <span id="zoomLbl" style="font-size:12px; color:var(--muted); min-width:40px; text-align:center; font-family:var(--mono);">100%</span>
         <button class="btn" id="zoomIn" aria-label="Zoom avant">+</button>
@@ -3552,11 +3555,19 @@ function structColor(t, est, offshore, inSalt){
 
 
 // ---------- Trait de coupe cliquable sur la carte (flèche A vers B) ----------
+let LAB_SECLINE = true;
+try { if(localStorage.getItem('geoexplorer_secline')==='0') LAB_SECLINE = false; } catch(e){}
+{ const c = document.getElementById('secLineChk'); if(c) c.checked = LAB_SECLINE; }
+function labToggleSecLine(on){ LAB_SECLINE = !!on; try { localStorage.setItem('geoexplorer_secline', on ? '1' : '0'); } catch(e){} labDrawSecLine(); }
 function labDrawSecLine(){
   const grid = document.getElementById('grid'); if(!grid) return;
+  const chk = document.getElementById('secLineChk'); if(chk) chk.checked = LAB_SECLINE;
   let svg = document.getElementById('secLineSvg');
-  if(G.sectionA==null || G.sectionB==null || grid.offsetParent===null){ if(svg) svg.remove(); return; }
-  const ea = grid.querySelector(`.block[data-id="${G.sectionA}"]`), eb = grid.querySelector(`.block[data-id="${G.sectionB}"]`);
+  // pendant le tracé d'une nouvelle coupe, la précédente reste affichée en pointillé
+  let ia = G.sectionA, ib = G.sectionB, ghost = false;
+  if((ia==null || ib==null) && G.labSecPrev){ ia = G.labSecPrev.a; ib = G.labSecPrev.b; ghost = true; }
+  if(!LAB_SECLINE || ia==null || ib==null || grid.offsetParent===null){ if(svg) svg.remove(); return; }
+  const ea = grid.querySelector(`.block[data-id="${ia}"]`), eb = grid.querySelector(`.block[data-id="${ib}"]`);
   if(!ea || !eb){ if(svg) svg.remove(); return; }
   const NS = 'http://www.w3.org/2000/svg';
   if(!svg){ svg = document.createElementNS(NS, 'svg'); svg.id = 'secLineSvg'; }
@@ -3566,11 +3577,12 @@ function labDrawSecLine(){
   const A = c(ea), B = c(eb), dx = B.x-A.x, dy = B.y-A.y, len = Math.hypot(dx, dy) || 1, u = { x:dx/len, y:dy/len };
   const off = Math.min(len*0.4, ea.offsetWidth*0.34);
   const x1 = A.x + u.x*off, y1 = A.y + u.y*off, x2 = B.x - u.x*off, y2 = B.y - u.y*off;
-  const a = blocks[G.sectionA], b = blocks[G.sectionB];
+  const a = blocks[ia], b = blocks[ib];
   svg.innerHTML = `<defs><marker id="secArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--amber)"/></marker></defs>
-    <line class="hit" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="transparent" stroke-width="18" stroke-linecap="round"><title>Coupe A (${a.x}, ${a.y}) vers B (${b.x}, ${b.y}) : cliquer pour revoir la coupe</title></line>
-    <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--amber)" stroke-width="3" stroke-linecap="round" marker-end="url(#secArrow)" opacity=".92" pointer-events="none"/>`;
-  svg.querySelector('.hit').addEventListener('click', ev=>{ ev.stopPropagation(); labGoSection(); renderSection(); });
+    <line class="hit" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="transparent" stroke-width="10" stroke-linecap="round"><title>${ghost ? 'Coupe précédente' : `Coupe A (${a.x}, ${a.y}) vers B (${b.x}, ${b.y}) : cliquer pour revoir la coupe`}</title></line>
+    <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--amber)" stroke-width="3" stroke-linecap="round" marker-end="url(#secArrow)" opacity="${ghost ? .4 : .92}" ${ghost ? 'stroke-dasharray="6 5"' : ''} pointer-events="none"/>`;
+  if(ghost) svg.querySelector('.hit').style.pointerEvents = 'none';
+  else svg.querySelector('.hit').addEventListener('click', ev=>{ ev.stopPropagation(); labGoSection(); renderSection(); });
 }
 
 function rerenderAllBlocks(){
@@ -5864,7 +5876,7 @@ function onBlockClick(id){
       if(G.sectionA===null||G.sectionB!==null){
         G.sectionA=id; G.sectionB=null;
       } else {
-        G.sectionB=id;
+        G.sectionB=id; G.labSecPrev = null;
         // Le profil est posé : l'outil revient à Sélection, sinon le clic suivant effaçait la coupe.
         setTool('select');
         // Basculer sur l'écran coupe (carte -> volet, unifié en disposition mobile)
@@ -5948,7 +5960,7 @@ function setTool(name){
     document.getElementById(id).classList.toggle('active',
       id==='tool'+name.charAt(0).toUpperCase()+name.slice(1));
   });
-  if(name==='section'){ G.sectionA=null; G.sectionB=null; rerenderAllBlocks(); }
+  if(name==='section'){ if(G.sectionA!=null && G.sectionB!=null) G.labSecPrev = { a:G.sectionA, b:G.sectionB }; G.sectionA=null; G.sectionB=null; rerenderAllBlocks(); }
 }
 document.getElementById('toolSelect').addEventListener('click',()=>setTool('select'));
 document.getElementById('toolSection').addEventListener('click',()=>setTool('section'));
@@ -6656,6 +6668,7 @@ function loadGame(){
   if(tpBtn) tpBtn.style.display = G.mode==='tp' ? '' : 'none';
   setSpeed(G.paused ? 0 : (G.speed || 1));
   if(typeof updateMobileLayoutClass==='function') updateMobileLayoutClass();
+  labDrawSecLine(); // le trait de coupe est redessiné après chargement
 }
 
 // Applique les multiplicateurs de coût (ADV) aux études et au matériel.
@@ -6691,7 +6704,7 @@ function _doStartGame(){
     financeMode:    menuConfig.financeMode,
     uncertaintyLevel: menuConfig.uncertainty,
     budget:         m.budget,
-    month:0, speed:1, paused:false, labPick:null, labCal:{}, labProc:{}, labOpt:{ ...LABOPT },
+    month:0, speed:1, paused:false, labPick:null, labCal:{}, labProc:{}, labSecPrev:null, labOpt:{ ...LABOPT },
     price:70, priceHistory:[70],
     wells:[], drilling:[], sectionA:null, sectionB:null,
     tool:'select', history:[], lastCF:0, lastRevenue:0, lastOpex:0, lastLoanPayment:0,

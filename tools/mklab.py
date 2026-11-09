@@ -664,5 +664,34 @@ rep("  labOptMode = mode; labOptDraft = { ...LABOPT, locked:false };", "  labOpt
 rep("    ${row('mute', 'Sismique muette',", "    ${row('finance', 'Mode finance', 'Emprunts, stockage du pétrole, couverture du prix (hedging), récupération assistée, accidents. ' + (labOptMode==='start' ? 'Désactivé : partie centrée sur la géologie et le budget.' : 'Choisi au lancement : non modifiable en cours de partie.'), labOptMode!=='start')}\n    ${row('mute', 'Sismique muette',")
 rep("  LABOPT = labNormOpt(labOptDraft);\n", "  LABOPT = labNormOpt(labOptDraft);\n  if(labOptMode==='start') menuConfig.financeMode = !!LABOPT.finance; else LABOPT.finance = !!G.financeMode;\n")
 
+
+# ====================== Trait de coupe : case à cocher, conservation pendant une nouvelle coupe ======================
+rep("function labDrawSecLine(){\n  const grid = document.getElementById('grid'); if(!grid) return;\n  let svg = document.getElementById('secLineSvg');\n  if(G.sectionA==null || G.sectionB==null || grid.offsetParent===null){ if(svg) svg.remove(); return; }\n  const ea = grid.querySelector(`.block[data-id=\"${G.sectionA}\"]`), eb = grid.querySelector(`.block[data-id=\"${G.sectionB}\"]`);",
+"""let LAB_SECLINE = true;
+try { if(localStorage.getItem('geoexplorer_secline')==='0') LAB_SECLINE = false; } catch(e){}
+{ const c = document.getElementById('secLineChk'); if(c) c.checked = LAB_SECLINE; }
+function labToggleSecLine(on){ LAB_SECLINE = !!on; try { localStorage.setItem('geoexplorer_secline', on ? '1' : '0'); } catch(e){} labDrawSecLine(); }
+function labDrawSecLine(){
+  const grid = document.getElementById('grid'); if(!grid) return;
+  const chk = document.getElementById('secLineChk'); if(chk) chk.checked = LAB_SECLINE;
+  let svg = document.getElementById('secLineSvg');
+  // pendant le tracé d'une nouvelle coupe, la précédente reste affichée en pointillé
+  let ia = G.sectionA, ib = G.sectionB, ghost = false;
+  if((ia==null || ib==null) && G.labSecPrev){ ia = G.labSecPrev.a; ib = G.labSecPrev.b; ghost = true; }
+  if(!LAB_SECLINE || ia==null || ib==null || grid.offsetParent===null){ if(svg) svg.remove(); return; }
+  const ea = grid.querySelector(`.block[data-id=\"${ia}\"]`), eb = grid.querySelector(`.block[data-id=\"${ib}\"]`);""")
+rep("  const a = blocks[G.sectionA], b = blocks[G.sectionB];\n  svg.innerHTML", "  const a = blocks[ia], b = blocks[ib];\n  svg.innerHTML")
+rep('stroke="transparent" stroke-width="18" stroke-linecap="round"><title>Coupe A (${a.x}, ${a.y}) vers B (${b.x}, ${b.y}) : cliquer pour revoir la coupe</title></line>', 'stroke="transparent" stroke-width="10" stroke-linecap="round"><title>${ghost ? \'Coupe précédente\' : `Coupe A (${a.x}, ${a.y}) vers B (${b.x}, ${b.y}) : cliquer pour revoir la coupe`}</title></line>')
+rep('marker-end="url(#secArrow)" opacity=".92" pointer-events="none"/>`;', 'marker-end="url(#secArrow)" opacity="${ghost ? .4 : .92}" ${ghost ? \'stroke-dasharray="6 5"\' : \'\'} pointer-events="none"/>`;')
+rep("  svg.querySelector('.hit').addEventListener('click', ev=>{ ev.stopPropagation(); labGoSection(); renderSection(); });", "  if(ghost) svg.querySelector('.hit').style.pointerEvents = 'none';\n  else svg.querySelector('.hit').addEventListener('click', ev=>{ ev.stopPropagation(); labGoSection(); renderSection(); });")
+rep("  if(name==='section'){ G.sectionA=null; G.sectionB=null; rerenderAllBlocks(); }", "  if(name==='section'){ if(G.sectionA!=null && G.sectionB!=null) G.labSecPrev = { a:G.sectionA, b:G.sectionB }; G.sectionA=null; G.sectionB=null; rerenderAllBlocks(); }")
+rep("        G.sectionB=id;\n        // Le profil est posé", "        G.sectionB=id; G.labSecPrev = null;\n        // Le profil est posé")
+rep("labPick:null, labCal:{}, labProc:{},", "labPick:null, labCal:{}, labProc:{}, labSecPrev:null,")
+rep('        <button class="btn" id="zoomOut" aria-label="Zoom arrière">−</button>', '        <label class="lab-secchk" title="Afficher ou masquer le trait de coupe (flèche de A vers B) sur la carte"><input type="checkbox" id="secLineChk" checked onchange="labToggleSecLine(this.checked)"> Trait de coupe</label>\n        <button class="btn" id="zoomOut" aria-label="Zoom arrière">−</button>')
+rep("#secLineSvg .hit{pointer-events:stroke;cursor:pointer;}", "#secLineSvg .hit{pointer-events:stroke;cursor:pointer;}\n.lab-secchk{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;margin-right:6px;}\n.lab-secchk input{margin:0;}")
+
+
+rep("  setSpeed(G.paused ? 0 : (G.speed || 1));\n  if(typeof updateMobileLayoutClass==='function') updateMobileLayoutClass();\n}", "  setSpeed(G.paused ? 0 : (G.speed || 1));\n  if(typeof updateMobileLayoutClass==='function') updateMobileLayoutClass();\n  labDrawSecLine(); // le trait de coupe est redessiné après chargement\n}")
+
 open(dst, 'w', encoding='utf-8').write(s)
 print('ok', len(s))
