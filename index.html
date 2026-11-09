@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.33</title>
+<title>GeoExplorer V4.34</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -5690,6 +5690,13 @@ function guideEV(b){
   return best;
 }
 
+// Plafond d'études du guide : au-delà de cette part du budget de départ dépensée en prospection (gravimétrie, 2D, 3D),
+// le guide ne recommande plus de nouvelle étude. Sans lui, « Nouvelle coupe » se répétait tant qu'aucun bloc n'était
+// rentable sur le papier (environ un bloc sur cinq l'est) et le budget partait en études.
+let GUIDE_STUDY_CAP = 0.35;
+function guideStudySpent(){
+  return blocks.reduce((s,b)=>s+b.studies.reduce((t,st)=>t+((st.type==='gravity'||st.type==='seismic2d'||st.type==='seismic3d') ? (st.cost||0) : 0),0),0);
+}
 function guideCompute(){
   if(!blocks.length) return null;
   const m = MODES[G.mode];
@@ -5708,7 +5715,20 @@ function guideCompute(){
                           .sort((a,z)=>z.estimate.prob-a.estimate.prob);
   // classement par gain net espéré (le meilleur en premier) ; seuls les gains positifs sont conseillés
   const ranked = drillable.map(b=>({b, e:guideEV(b)})).filter(x=>x.e).sort((a,z)=>z.e.ev-a.e.ev);
-  if(!hasProf){
+  // Plafond d'études atteint (et au moins un bloc déjà étudié en 3D) : on ne prospecte plus, on décide parmi les blocs étudiés
+  const initBudget = MODES[G.mode].budget || 0;
+  const studySpent = guideStudySpent(), studyCap = GUIDE_STUDY_CAP*initBudget;
+  const capped = studySpent >= studyCap && ranked.length>0;
+  if(capped && !(ranked[0].e.ev > 0)){
+    const producing = G.wells.some(w=>w.status==='producing'), busy = G.drilling.length>0;
+    const capTxt = `Plafond d'études atteint (${formatM(studySpent)} dépensés pour ${formatM(studyCap)} conseillés). Aucun bloc étudié n'est rentable sur le papier : `;
+    if(producing || busy)
+      return {cur:4, text:capTxt + `laissez produire vos puits${busy?' et attendez le résultat du forage en cours':''} : leurs revenus financeront la suite.`, act:null};
+    const b = ranked[0].b, e = ranked[0].e, ok = G.budget - e.cost >= 0.25*initBudget;
+    return {cur:4, text:capTxt + `le moins mauvais est le bloc (${b.x}, ${b.y}), gain net espéré ${formatM(e.ev)}. Forer est alors un pari raisonné, plutôt que de dépenser le reste en études.`,
+            act:{label:`Forer le bloc (${b.x}, ${b.y}) par pari`, call:`guideDo('drill',${b.id})`, ok, why:`Budget insuffisant pour parier en gardant une réserve (${formatM(0.25*initBudget)}).`}};
+  }
+  if(!hasProf && !capped){
     if(G.tool==='section' && G.sectionA!==null)
       return {cur:1, text:`Bloc A posé en (${blocks[G.sectionA].x}, ${blocks[G.sectionA].y}). Cliquez maintenant le bloc B pour terminer la coupe.`, act:null};
     return {cur:1, text:drillable.length ? "Les blocs étudiés ne suffisent pas : tracez une nouvelle coupe à travers un autre haut structural."
@@ -5717,7 +5737,7 @@ function guideCompute(){
   }
   const prof = getProfileBlocks(G.sectionA, G.sectionB);
   const to2d = prof.filter(({b})=>!b.studies.some(st=>st.type==='seismic2d'));
-  if(to2d.length){
+  if(to2d.length && !capped){
     const c = to2d.reduce((sum,{b})=>sum+STUDIES.seismic2d.cost*(b.isOffshore?STUDIES.seismic2d.offMult:1),0);
     return {cur:2, text:`Le profil A→B couvre ${prof.length} blocs. Une sismique 2D précisera la profondeur du réservoir et les failles.`,
             act:{label:`Sismique 2D · ${formatM(c)}`, call:"guideDo('seismic2d')", ok:money(c), why:`Budget insuffisant (${formatM(c)} requis).`}};
@@ -5729,7 +5749,7 @@ function guideCompute(){
   const promising = ranked.some(x=>x.e.ev > 0);
   const cands = prof.map(o=>o.b).filter(b=>free(b) && b.estimate?.depth!==undefined && !b.studies.some(st=>st.type==='seismic3d'))
                     .sort((a,z)=>a.estimate.depth-z.estimate.depth);
-  if(cands.length && !promising && n3d < 4){
+  if(cands.length && !promising && n3d < 4 && !capped){
     const b = cands[0];
     const c = STUDIES.seismic3d.cost*(b.isOffshore?STUDIES.seismic3d.offMult:1);
     return {cur:3, text:`Le profil montre un haut structural en (${b.x}, ${b.y}). Une sismique 3D y précisera la profondeur et cherchera des indices directs de fluides.`,

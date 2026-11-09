@@ -28,6 +28,8 @@ cd /tmp && node /chemin/vers/Geo_N_OIL/tools/tests/chk_lab.js
 - `lab438.js` : épaisseurs variables des couches (option du labo) : variation, cohérence des piles, cartes identiques hors épaisseur.
 - `coupe_points.js` : rangée de points des blocs sous la coupe (visible, cliquable), trait vertical du bloc sélectionné, forage visé dans le labo.
 - `sim_lab.js` : simulation d'équilibrage (parties de 25 ans jouées par des robots).
+- `guide_plafond.js` : plafond d'études du guide (35 % du budget de départ), pari raisonné ou attente selon les puits.
+- `rendement_puits.js` : rendement d'un puits productif, à terre et en mer.
 - `diag_guide.js` : le guide est-il bien calibré ? espérance de gain du guide contre espérance vraie sur les blocs étudiés en 3D.
 - `fusion.js` : préréglage par niveau, Découverte par défaut, ancienne sauvegarde, redirection de l'ancien lien du labo.
 

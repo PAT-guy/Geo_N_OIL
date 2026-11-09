@@ -1,18 +1,18 @@
 // Simulation d'équilibrage du labo : parties de 25 ans jouées par des robots, sans interface.
 // Usage : node sim_lab.js <parties> <préréglages> <stratégies> [<mode>]
-//   5e argument facultatif : objectif de victoire en M$ (par défaut celui du niveau) ; 6e : multiplicateur du coût des études ; 7e : multiplicateur du coût des forages
+//   5e argument facultatif : objectif de victoire en M$ (par défaut celui du niveau) ; 6e : multiplicateur du coût des études ; 7e : multiplicateur du coût des forages ; 8e : multiplicateur de production d'un puits vertical
 //   préréglages : decouverte,inter,complet,expert (suffixes -nodhi, -nopick, -nocal, -noreal pour couper une règle)      stratégies : oracle,sism100,sism60,sism30,random
 //   guide / guideNN = joueur docile qui exécute à chaque étape l'action recommandée par le guide du jeu (NN % de bonnes cibles)
 //   sismNN = joueur qui étudie (2D + 3D) puis fore les meilleurs blocs, avec NN % de chances de désigner le bon horizon
 //   (après un puits manqué, il apprend le bon horizon grâce au log). oracle = connaît les vraies valeurs.
 const { chromium } = require('playwright');
-const [,, nGames='20', presets='decouverte,inter,complet', strategies='oracle,sism100,sism60,sism30,random', mode='junior', goalM='', studyMult='', drillMult=''] = process.argv;
+const [,, nGames='20', presets='decouverte,inter,complet', strategies='oracle,sism100,sism60,sism30,random', mode='junior', goalM='', studyMult='', drillMult='', prodMult=''] = process.argv;
 const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
 (async()=>{
   const br = await chromium.launch(); const pg = await br.newPage();
   const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
   await pg.goto(LABO);
-  const res = await pg.evaluate(({nGames,presets,strategies,mode,goalM,studyMult,drillMult})=>{
+  const res = await pg.evaluate(({nGames,presets,strategies,mode,goalM,studyMult,drillMult,prodMult})=>{
     document.getElementById('tutorialModal').style.display='none';
     let ended=null;
     ['updateHud','renderBlock','drawSparkline','renderGeoPanel','renderStudiesPanel','renderSection','renderFinancePanel','addLog','toast','showDrillReveal','buildDebriefReport','renderGuide'].forEach(n=>{ window[n]=()=>{}; });
@@ -48,9 +48,10 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       if(goalM) MODES[mode].winGoal = +goalM*1e6;
       if(typeof ADV!=='undefined') ADV.studyCostMult = studyMult ? +studyMult : 1;
       if(typeof ADV!=='undefined') ADV.drillCostMult = drillMult ? +drillMult : 1;
+      METHODS.vertical.prodMult = prodMult ? +prodMult : 1;
       _doStartGame(); setSpeed(0);
       const resIdx = STRAT.findIndex(l=>l.role==='reservoir');
-      const acc = strat.startsWith('guide') ? (strat.length>5 ? +strat.slice(5)/100 : 1) : strat==='sismB' ? 1 : strat.startsWith('sism') ? +strat.slice(4)/100 : strat==='oracle' ? 1 : 0;
+      const acc = strat.startsWith('guide') ? (/^guide\d+$/.test(strat) ? +strat.slice(5)/100 : 1) : strat==='sismB' ? 1 : strat.startsWith('sism') ? +strat.slice(4)/100 : strat==='oracle' ? 1 : 0;
       let learned = false;
       const choosePick = ()=> (learned || Math.random() < acc) ? resIdx : Math.floor(Math.random()*STRAT.length);
       if(LABOPT.pick) G.labPick = strat==='random' ? Math.floor(Math.random()*STRAT.length) : choosePick();
@@ -66,6 +67,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       };
       const undrilled = ()=>blocks.filter(b=>!b.well && !b.dryHole && !G.drilling.some(d=>d.blockId===b.id));
       // ---- joueur docile : suit le guide du jeu (guideCompute) à la lettre, comme un joueur qui clique toujours sur l'action proposée ----
+      GUIDE_STUDY_CAP = strat.startsWith('guideOff') ? 1e9 : /^guideC\d+/.test(strat) ? +/^guideC(\d+)/.exec(strat)[1]/100 : 0.35;
       const usedLines = new Set(); const GSZ = G.gridSize;
       const chooseProfile = ()=>{ // le joueur trace la coupe à travers les blocs les plus hauts (ocre foncé), en évitant les lignes déjà tracées
         const lines = []; for(let k=0;k<GSZ;k++){ lines.push({key:'r'+k, a:blocks[k*GSZ], b:blocks[k*GSZ+GSZ-1]}); lines.push({key:'c'+k, a:blocks[k], b:blocks[(GSZ-1)*GSZ+k]}); }
@@ -134,13 +136,13 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       const rows=[]; for(let s=1;s<=+nGames;s++){ try{ rows.push(play(preset,strat,s*101)); }catch(e){ rows.push({err:String(e.stack||e).slice(0,300)}); } }
       const ok=rows.filter(r=>!r.err); const avg=a=>a.reduce((x,y)=>x+y,0)/(a.length||1); const med=a=>{const s=[...a].sort((x,y)=>x-y); return s[Math.floor(s.length/2)]||0;};
       out.push({preset, strat, n:ok.length, errs:rows.length-ok.length, err:(rows.find(r=>r.err)||{}).err,
-        win:Math.round(100*avg(ok.map(r=>r.win?1:0))), bankrupt:Math.round(100*avg(ok.map(r=>r.end==='bankrupt'?1:0))), bloque:Math.round(100*avg(ok.map(r=>r.end==='bloque'?1:0))),
+        win:Math.round(100*avg(ok.map(r=>r.win?1:0))), gain:Math.round(100*avg(ok.map(r=>r.ratio>=1?1:0))), ratioMoy:+avg(ok.map(r=>r.ratio)).toFixed(2), bankrupt:Math.round(100*avg(ok.map(r=>r.end==='bankrupt'?1:0))), bloque:Math.round(100*avg(ok.map(r=>r.end==='bloque'?1:0))),
         ratioMed:+med(ok.map(r=>r.ratio)).toFixed(2), forages:+avg(ok.map(r=>r.drilled)).toFixed(1), puitsProd:+avg(ok.map(r=>r.prod)).toFixed(1), manques:+avg(ok.map(r=>r.missed)).toFixed(1),
         etudesM:+(avg(ok.map(r=>r.studySpend))/1e6).toFixed(1), foragesM:+(avg(ok.map(r=>r.drillSpend))/1e6).toFixed(1), bonusCalM:+(avg(ok.map(r=>r.calBonus))/1e6).toFixed(2)});
     }));
     Math.random = realRandom; return out;
-  },{nGames,presets,strategies,mode,goalM,studyMult,drillMult});
-  console.log('preset      strat    n  win% bloq% ratioMed forages prod manqués étudesM foragesM bonusCalM');
-  res.forEach(r=>console.log(`${r.preset.padEnd(11)} ${r.strat.padEnd(8)} ${String(r.n).padStart(2)} ${String(r.win).padStart(4)} ${String(r.bloque).padStart(5)} ${String(r.ratioMed).padStart(8)} ${String(r.forages).padStart(7)} ${String(r.puitsProd).padStart(4)} ${String(r.manques).padStart(7)} ${String(r.etudesM).padStart(7)} ${String(r.foragesM).padStart(8)} ${String(r.bonusCalM).padStart(9)}` + (r.errs? '  ERREURS:'+r.errs+' '+r.err:'')));
+  },{nGames,presets,strategies,mode,goalM,studyMult,drillMult,prodMult});
+  console.log('preset      strat    n  win% gain% bloq% ratioMed ratioMoy forages prod manqués étudesM foragesM bonusCalM');
+  res.forEach(r=>console.log(`${r.preset.padEnd(11)} ${r.strat.padEnd(8)} ${String(r.n).padStart(2)} ${String(r.win).padStart(4)} ${String(r.gain).padStart(5)} ${String(r.bloque).padStart(5)} ${String(r.ratioMed).padStart(8)} ${String(r.ratioMoy).padStart(8)} ${String(r.forages).padStart(7)} ${String(r.puitsProd).padStart(4)} ${String(r.manques).padStart(7)} ${String(r.etudesM).padStart(7)} ${String(r.foragesM).padStart(8)} ${String(r.bonusCalM).padStart(9)}` + (r.errs? '  ERREURS:'+r.errs+' '+r.err:'')));
   console.log('erreurs page:', errs.slice(0,3)); await br.close();
 })();
