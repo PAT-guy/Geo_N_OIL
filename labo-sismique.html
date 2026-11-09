@@ -3857,11 +3857,12 @@ function bvRender(){
     try { renderSection(); } finally { var src = document.getElementById('sectionSvg'); var c = src.cloneNode(true); secDims = null; renderSection(); }
     c.removeAttribute('id'); c.removeAttribute('style'); c.removeAttribute('width'); c.removeAttribute('height');
     stage.replaceChildren(c);
-    c.querySelectorAll('.sec-layer-poly').forEach(poly => poly.addEventListener('click', () => {
-      c.querySelectorAll('.sec-layer-poly').forEach(q => q.classList.remove('sec-layer-selected'));
-      poly.classList.add('sec-layer-selected');
-      document.getElementById('bvLayer').textContent = poly.dataset.layerName || '';
+    c.querySelectorAll('.sec-layer-poly').forEach(poly => poly.addEventListener('click', (e) => {
+      e.stopPropagation();
+      secSelectLayer(c, poly);
+      document.getElementById('bvLayer').textContent = poly.dataset.layerName ? secLayerText(poly.dataset.layerName, secLayerInfo(e, poly)) : '';
     }));
+    c.addEventListener('click', () => { c.querySelectorAll('.sec-layer-poly').forEach(q => q.classList.remove('sec-layer-selected')); document.getElementById('bvLayer').textContent = ''; });
     base = availW;
   } else {
     const b = blocks[v.id];
@@ -4508,6 +4509,34 @@ function secSmoothPath(pts, faultPx){
   return d;
 }
 
+// Informations de la couche cliquée sur la coupe : toit, mur et épaisseur À L'ENDROIT du clic (interpolés entre les
+// deux blocs qui l'encadrent), et mention d'un biseau quand la couche s'amincit. Avant, seul le nom de la bande
+// apparaissait, sans profondeur ni épaisseur.
+function secLayerInfo(evt, poly){
+  try {
+    const svg = poly.ownerSVGElement, geo = JSON.parse(svg.getAttribute('data-sec')||'null'), prof = JSON.parse(poly.getAttribute('data-prof')||'null');
+    if(!geo || !prof || !prof.length) return null;
+    const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+    const x = pt.matrixTransform(svg.getScreenCTM().inverse()).x, t = clamp((x - geo.l)/geo.w, 0, 1);
+    let a = prof[0], b = prof[prof.length-1];
+    for(let i=0;i<prof.length-1;i++){ if(t>=prof[i][0] && t<=prof[i+1][0]){ a = prof[i]; b = prof[i+1]; break; } }
+    const u = b[0]===a[0] ? 0 : clamp((t-a[0])/(b[0]-a[0]), 0, 1);
+    const top = a[1] + (b[1]-a[1])*u, base = a[2] + (b[2]-a[2])*u, th = base - top;
+    const maxTh = Math.max(...prof.map(r=>r[2]-r[1]));
+    return { top:Math.round(top), base:Math.round(base), th:Math.round(th), biseau: th < 0.35*maxTh || prof.length===1 };
+  } catch(e){ return null; }
+}
+let secSelLi = null;
+function secSelectLayer(svgEl, poly, info){
+  svgEl.querySelectorAll('.sec-layer-poly').forEach(p=>p.classList.remove('sec-layer-selected'));
+  secSelLi = poly.dataset.li ?? null;
+  // toutes les bandes de la même couche (plusieurs fragments, biseaux) sont surlignées ensemble
+  if(secSelLi!==null) svgEl.querySelectorAll('.sec-layer-poly[data-li="'+secSelLi+'"]').forEach(p=>p.classList.add('sec-layer-selected'));
+  else poly.classList.add('sec-layer-selected');
+}
+function secLayerText(name, info){
+  return name + (info ? ` · toit ${info.top} m · mur ${info.base} m · épaisseur ${info.th} m` + (info.biseau ? ' · biseau : la couche s\'amincit ici' : '') : '');
+}
 
 // =====================================================================
 // LABO : SISMIQUE SANS LITHOLOGIE
@@ -5172,7 +5201,7 @@ function renderSection(){
         const avgConf = group.reduce((s,{bd})=>s+(bd.layers[li]?.confidence??0),0)/group.length;
         const opacity = 0.4 + avgConf*0.5; // plus opaque = plus certain
         const col = refLayer.col || '#555';
-        const polyStr = `<path d="${dPoly}" fill="${col}" fill-opacity="${opacity.toFixed(2)}" stroke="var(--sec-ink-edge)" stroke-width=".4" stroke-linejoin="round" class="sec-layer-poly" data-layer-name="${(refLayer.name||'').replace(/"/g,'&quot;')}" onclick="labPickAt(event)" style="cursor:pointer;"/>` + figOverlay(refLayer, dPoly, 0.5 + avgConf*0.45);
+        const polyStr = `<path d="${dPoly}" fill="${col}" fill-opacity="${opacity.toFixed(2)}" stroke="var(--sec-ink-edge)" stroke-width=".4" stroke-linejoin="round" data-li="${li}" data-prof='${JSON.stringify(group.filter(({bd})=>bd.layers[li]).map(({bd})=>[+bd.t.toFixed(4), Math.round(bd.layers[li].top), Math.round(bd.layers[li].top+bd.layers[li].thickness)]))}' class="sec-layer-poly" data-layer-name="${(refLayer.name||'').replace(/"/g,'&quot;')}" onclick="labPickAt(event)" style="cursor:pointer;"/>` + figOverlay(refLayer, dPoly, 0.5 + avgConf*0.45);
         if(LAB_ON){ [0,1,2,3].forEach(k=>{ svg += `<g clip-path="url(#labClip${k})" opacity="${[1,.82,.62,.46][k]}">${polyStr}</g>`; }); }
         else svg += polyStr;
         // Ligne de toit : plus marquée pour réservoir et roche-mère
@@ -5358,6 +5387,18 @@ function renderSection(){
 
   // Horizon visé : trait ambre sur toute sa longueur
   if(!LAB.truth && G.labPick!=null){
+    // bande entière de la couche visée : toit et mur, avec amincissement jusqu'à la pointe aux biseaux ; une couche qui disparaît coupe la bande
+    { const runs = []; let cur = [];
+      const flushRun = (endIdx)=>{ if(cur.length){ const first = cur[0].idx, last = cur[cur.length-1].idx;
+          const pts = cur.map(c=>({x:xOf(dispData[c.idx].t), yt:yOf(c.l.top), yb:yOf(Math.min(c.l.top + c.l.thickness, dMax))}));
+          const tip = (i)=>{ const nb = dispData[i], nl = nb && nb.layers && nb.layers[G.labPick]; return nl ? { x:xOf(nb.t), yt:yOf(clamp(nl.top, dMin, dMax)), yb:yOf(clamp(nl.top, dMin, dMax)) } : null; };
+          const t0 = first>0 ? tip(first-1) : null, t1 = last<dispData.length-1 ? tip(last+1) : null;
+          if(t0) pts.unshift(t0); if(t1) pts.push(t1);
+          if(pts.length>=2) runs.push(pts); } cur = []; };
+      dispData.forEach((bd,i)=>{ const l = bd.layers && bd.layers[G.labPick]; if(l && l.thickness>=1) cur.push({idx:i, l}); else flushRun(i); });
+      flushRun(dispData.length);
+      runs.forEach(r=>{ const top = r.map(p=>({x:p.x, y:p.yt})), base = r.map(p=>({x:p.x, y:p.yb})).reverse();
+        svg += `<path d="M${top[0].x.toFixed(1)},${top[0].y.toFixed(1)}${secSmoothPath(top, faultPx)} L${base[0].x.toFixed(1)},${base[0].y.toFixed(1)}${secSmoothPath(base, faultPx)} Z" fill="var(--amber)" fill-opacity=".22" stroke="var(--amber)" stroke-width="1" pointer-events="none"/>`; }); }
     const pts = []; dispData.forEach(bd=>{ const l = bd.layers && bd.layers[G.labPick]; if(l && l.thickness>=1) pts.push({x:xOf(bd.t), y:yOf(l.top)}); });
     if(pts.length>=2){
       svg += `<path d="M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}${secSmoothPath(pts, faultPx)}" fill="none" stroke="var(--amber)" stroke-width="2.4" stroke-linecap="round" pointer-events="none"/>`;
@@ -5408,12 +5449,15 @@ function renderSection(){
 
   svgEl.innerHTML = svg;
   svgEl.setAttribute('data-lab', JSON.stringify({ m:[MARG.l, MARG.t, PW, PH], d:[dMin, dMax], b:dispData.map(bd=>bd.layers ? { t:bd.t, L:bd.layers.map(l=>[Math.round(l.top), Math.round(l.thickness)]) } : null) }));
+  svgEl.setAttribute('data-sec', JSON.stringify({ l:MARG.l, w:PW }));
+  const secClearLabel = ()=>{ svgEl.querySelectorAll('.sec-layer-poly').forEach(p=>p.classList.remove('sec-layer-selected')); secSelLi = null; const l0 = document.getElementById('sectionLayerLabel'); if(l0) l0.remove(); };
   svgEl.querySelectorAll('.sec-layer-poly').forEach(poly=>{
     poly.addEventListener('click', (e)=>{
       const name = poly.dataset.layerName;
       if(!name) return;
-      svgEl.querySelectorAll('.sec-layer-poly').forEach(p=>p.classList.remove('sec-layer-selected'));
-      poly.classList.add('sec-layer-selected');
+      e.stopPropagation();
+      const info = secLayerInfo(e, poly);
+      secSelectLayer(svgEl, poly, info);
       let lbl = document.getElementById('sectionLayerLabel');
       if(!lbl){
         lbl = document.createElement('div');
@@ -5422,14 +5466,16 @@ function renderSection(){
         svgEl.parentElement.style.position = svgEl.parentElement.style.position || 'relative';
         svgEl.parentElement.appendChild(lbl);
       }
-      lbl.textContent = name;
+      lbl.textContent = secLayerText(name, info);
       const wrapRect = svgEl.parentElement.getBoundingClientRect();
-      lbl.style.left = Math.min(e.clientX - wrapRect.left, wrapRect.width-120) + 'px';
-      lbl.style.top = Math.max(e.clientY - wrapRect.top - 30, 0) + 'px';
-      clearTimeout(lbl._hideT);
-      lbl._hideT = setTimeout(()=>{ lbl.remove(); poly.classList.remove('sec-layer-selected'); }, 3000);
+      lbl.style.left = Math.max(0, Math.min(e.clientX - wrapRect.left, wrapRect.width - lbl.offsetWidth - 6)) + 'px';
+      lbl.style.top = Math.max(e.clientY - wrapRect.top - 34, 0) + 'px';
     });
   });
+  // un clic hors des bandes referme la fiche et la sélection
+  svgEl.addEventListener('click', ()=>{ if(document.getElementById('sectionLayerLabel') || secSelLi!==null) secClearLabel(); });
+  // la sélection survit au redessin de la coupe
+  if(secSelLi!==null) svgEl.querySelectorAll('.sec-layer-poly[data-li="'+secSelLi+'"]').forEach(p=>p.classList.add('sec-layer-selected'));
 
   // ── Interprétation structurale automatique ──
   // Analyse le profil des données estimées pour identifier la géométrie
