@@ -42,7 +42,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       Math.random = mulberry(seed*7919+13);
       const [base, ...flags] = preset.split('-'); const o = { ...LAB_PRESETS[base].o }; flags.forEach(f=>{ if(f.startsWith('no')) o[f.slice(2)] = false; });
       LABOPT = labNormOpt(o);
-      menuConfig.seed=seed; menuConfig.mode=mode; menuConfig.basinType='random'; menuConfig.offshore=true; menuConfig.gridSize=12; menuConfig.financeMode=false; menuConfig.uncertainty='medium';
+      menuConfig.seed=seed; menuConfig.mode=mode; menuConfig.basinType='random'; menuConfig.offshore=true; menuConfig.gridSize = mode==='expedition' ? 30 : 12; menuConfig.financeMode=false; menuConfig.uncertainty='medium';
       _doStartGame(); setSpeed(0);
       const resIdx = STRAT.findIndex(l=>l.role==='reservoir');
       const acc = strat.startsWith('sism') ? +strat.slice(4)/100 : strat==='oracle' ? 1 : 0;
