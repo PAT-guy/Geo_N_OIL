@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.27</title>
+<title>GeoExplorer V4.28</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -926,6 +926,7 @@ body.mobile-layout #priceSparkline{display:none;}
       <button class="adv-reset pause-nav-btn" id="pauseSaveBtn">💾 <span class="i18n" data-fr="Sauvegarder la partie" data-en="Save game">Sauvegarder la partie</span></button>
       <button class="adv-reset pause-nav-btn" data-pause-view="settings">⚙ Paramètres de confort</button>
       <button class="adv-reset pause-nav-btn" data-pause-view="glossary">📖 Glossaire</button>
+      <button class="adv-reset pause-nav-btn" id="pauseLithoBtn">📚 Bibliothèque des lithologies <span style="font-size:11px;color:var(--muted);margin-left:auto;">antisèche : logs, réservoirs</span></button>
       <button class="adv-reset pause-nav-btn" id="pauseTutorialBtn">🎓 Revoir le tutoriel</button>
       <button class="adv-reset pause-nav-btn danger" id="pauseHomeBtn">🏠 Retour à l'accueil</button>
     </div>
@@ -1124,7 +1125,7 @@ body.mobile-layout #priceSparkline{display:none;}
         <div style="font-size:11px; color:var(--muted); margin-bottom:6px;" id="sectionSeismicInfo"></div>
         <button class="study-btn" id="btnSeismic2d" onclick="performStudy(null,'seismic2d')">📡 Lancer sismique 2D sur ce profil</button>
       </div>
-      <div id="sectionTools" style="display:none;text-align:right;padding:6px 8px;"><button class="study-btn study-btn-compact" onclick="openBigView('section')">⤢ <span class="i18n" data-fr="Agrandir la coupe" data-en="Enlarge section">Agrandir la coupe</span></button></div>
+      <div id="sectionTools" style="display:none;text-align:right;padding:6px 8px;"><button class="study-btn study-btn-compact" onclick="openBigView('section')">⤢ <span class="i18n" data-fr="Agrandir la coupe" data-en="Enlarge section">Agrandir la coupe</span></button> <button class="study-btn study-btn-compact" onclick="openLithoLib()">📚 <span class="i18n" data-fr="Lithologies" data-en="Lithologies">Lithologies</span></button></div>
       <svg id="sectionSvg" style="display:none;"></svg>
       <div class="section-legend" id="sectionLegend" style="display:none;"></div>
       <div id="sectionInterpret" style="display:none; padding:8px; background:rgba(13,17,23,0.6); border-top:1px solid var(--line); font-size:11px; line-height:1.6;"></div>
@@ -1579,6 +1580,7 @@ function buildStratigraphy(basinType, rng, nVariants=1){
     ],
   };
 
+  buildStratigraphy.pools = pools; // lu par la bibliothèque des lithologies (exemples de formations)
   // Tirer une lithologie aléatoire dans chaque pool
   // Colonne propre au bassin nommé (Paris, Mer du Nord, Aquitaine, Gulf
   // Coast) : séquence, lithologies et épaisseurs spécifiques. Les 4 bassins
@@ -7026,6 +7028,196 @@ function _doStartGame(){
     render();
   });
   window.__lgm = { makeLog, open };   // pour les tests
+})();
+</script>
+
+
+<style>
+#lithoLib{position:fixed;inset:0;z-index:1250;background:var(--bg);display:none;flex-direction:column;}
+#lithoLib.open{display:flex;}
+.ll-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel);flex-shrink:0;}
+.ll-title{font-family:var(--serif);font-size:18px;font-weight:600;margin-right:auto;}
+.ll-tools{padding:10px 14px 4px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;max-width:980px;width:100%;margin:0 auto;}
+.ll-search{width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:10px;font-family:var(--sans);}
+.ll-chips{display:flex;gap:6px;flex-wrap:wrap;}
+.ll-chips button{padding:6px 11px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:999px;font-size:12px;cursor:pointer;font-family:var(--sans);}
+.ll-chips button.sel{background:var(--ink);color:var(--on-ink);border-color:var(--ink);}
+.ll-body{flex:1;min-height:0;overflow-y:auto;padding:6px 14px 40px;max-width:980px;width:100%;margin:0 auto;}
+.ll-rules{border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:10px 14px;margin:8px 0 12px;font-size:12.5px;line-height:1.6;}
+.ll-rules summary{cursor:pointer;font-weight:600;}
+.ll-rules ul{margin:8px 0 0 18px;padding:0;}
+.ll-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;}
+.ll-card{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:12px 14px;}
+.ll-card h3{display:flex;align-items:center;gap:10px;margin:0 0 4px;font-size:15px;font-family:var(--serif);}
+.ll-card h3 svg{flex:none;border:1px solid var(--line);border-radius:4px;}
+.ll-role{font-size:11px;color:var(--amber);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}
+.ll-reco{font-size:12.5px;line-height:1.55;margin:4px 0 8px;}
+.ll-vals{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px;border-top:1px solid var(--line);padding-top:8px;}
+.ll-vals dt{color:var(--muted);}
+.ll-vals dd{margin:0;font-family:var(--mono);font-size:11.5px;}
+.ll-sub{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:8px 0 3px;grid-column:1/-1;}
+.ll-ex{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.5;}
+.ll-none{padding:30px 0;color:var(--muted);text-align:center;}
+</style>
+<div id="lithoLib" role="dialog" aria-modal="true" aria-label="Bibliothèque des lithologies">
+  <div class="ll-head"><span class="ll-title">📚 Bibliothèque des lithologies</span><button class="btn" id="llClose">✕ Fermer</button></div>
+  <div class="ll-tools">
+    <input type="search" class="ll-search" id="llSearch" placeholder="Chercher une roche ou une formation (grès, Brent, sel, charbon…)" aria-label="Chercher une lithologie">
+    <div class="ll-chips" id="llChips"></div>
+  </div>
+  <div class="ll-body">
+    <details class="ll-rules" id="llRules" open>
+      <summary>Règles rapides pour lire un log</summary>
+      <ul>
+        <li><b>GR bas</b> (moins de 50 API) : roche propre, grès, calcaire, dolomie, sel, anhydrite. <b>GR haut</b> (plus de 100) : argile, ou roche-mère si la courbe sort de l'échelle.</li>
+        <li><b>Densité</b> : 2,03 g/cc = sel gemme, 2,98 = anhydrite, 1,4 = charbon, 2,87 = dolomie pure, 2,71 = calcaire pur, 2,65 = grès pur. Une porosité la fait baisser.</li>
+        <li><b>Sonique lent</b> (plus de 100 µs/ft) : roche très poreuse, sédiments meubles, charbon, argile peu compactée. <b>Sonique rapide</b> (moins de 50) : dolomie, calcaire compact, anhydrite, socle.</li>
+        <li><b>Résistivité</b> énorme (plus de 1 000 Ω·m) sur GR bas et sans porosité : sel ou anhydrite. Basse (moins de 5) dans une roche poreuse : eau salée. Haute dans une roche poreuse : hydrocarbures.</li>
+        <li><b>Croisement densité-neutron</b> (jaune) dans une roche poreuse : gaz.</li>
+      </ul>
+    </details>
+    <div class="ll-grid" id="llGrid"></div>
+  </div>
+</div>
+<script>
+// =====================================================================
+// BIBLIOTHÈQUE DES LITHOLOGIES (antisèche)
+// Fiches des roches que l'on rencontre sur les coupes : figuré, rôle pétrolier, comment la reconnaître, valeurs
+// de diagraphies et plages de paramètres de réservoir. Roches à valeur fixe (sel, anhydrite, charbon, socle...) :
+// lues dans WL_LITH, donc identiques aux logs. Réservoirs : plages RELEVÉES sur des réservoirs générés par le moteur
+// (voir OBS), car les bornes théoriques (porosité jusqu'à 33 %) ne sont presque jamais atteintes. Les exemples de
+// formations sont relevés dans les listes du jeu.
+// =====================================================================
+(function(){
+  const fr = (v, d=0) => (Math.abs(v)<1e-9?0:v).toFixed(d).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const rg = (a, b, d=0) => fr(a, d) + ' à ' + fr(b, d);
+  // conditions de référence pour les valeurs calculées
+  const F = {
+    sandstone:{L:'sandstone', fig:'sandstone', col:'#C4863A'}, limestone:{L:'limestone', fig:'limestone', col:'#D4A853'}, dolomite:{L:'dolomite', fig:'dolomite', col:'#B8904A'},
+  };
+  // Valeurs relevées sur des réservoirs générés (8 bassins, 70 cartes), intervalle de réservoir en eau :
+  // [centile 5, centile 95, minimum, maximum]. 1 587 grès, 1 059 calcaires, 449 dolomies.
+  const OBS = {
+    sandstone:{n:1587, phi:[5,16,3.7,22], k:[0.07,6,0.03,55], vsh:[5,28,5,29], gr:[30,51,28,53], rho:[2.38,2.55,2.29,2.58], dt:[65,82,62,90], nphi:[4,17,1,22], rt:[2.5,12,1.4,22]},
+    limestone:{n:1059, phi:[6,20,4,27], k:[0.13,20,0.06,609], vsh:[6,26,5,29], gr:[21,41,19,45], rho:[2.37,2.58,2.26,2.62], dt:[61,83,57,93], nphi:[9,23,7,29], rt:[2.3,12,1.7,22]},
+    dolomite:{n:449, phi:[7,21,4,28], k:[0.24,15,0.04,120], vsh:[5,29,5,29], gr:[25,46,22,48], rho:[2.46,2.68,2.34,2.73], dt:[60,80,56,93], nphi:[11,23,8,30], rt:[2.3,11,1.7,16]},
+  };
+  // nombre lisible : 0,07 ; 1,4 ; 12 ; 609 (pas de zéros inutiles)
+  const nf = v => v>=10 ? fr(v, 0) : v>=1 ? fr(v, 1).replace(/,0$/,'') : fr(v, 2);
+  const rga = (a,b) => nf(a) + ' à ' + nf(b);
+  const ob = (a, d=0) => (d==='auto' ? rga(a[0], a[1]) + ' (extrêmes ' + rga(a[2], a[3]) : rg(a[0], a[1], d) + ' (extrêmes ' + rg(a[2], a[3], d)) + ')';
+  function obsVals(cls){
+    const o = OBS[cls], L = WL_LITH[cls];
+    return [
+      ['GR', ob(o.gr) + ' API ; roche propre : ' + fr(L.gr)],
+      ['Densité ρb', ob(o.rho, 2) + ' g/cc ; matrice : ' + fr(L.rhoMa, 2)],
+      ['Sonique DT', ob(o.dt) + ' µs/ft ; matrice : ' + fr(L.dtMa, 1)],
+      ['Neutron NPHI', ob(o.nphi) + ' % ' + (L.nOff===0 ? '(NPHI = φ)' : '(φ ' + (L.nOff<0?'-':'+') + ' ' + fr(Math.abs(L.nOff)*100, 1) + ' pt)')],
+      ['Résistivité Rt', ob(o.rt, 'auto') + ' Ω·m dans l\'eau salée ; ×5 à ×10 si hydrocarbures'],
+    ];
+  }
+  function obsRes(cls){
+    const o = OBS[cls];
+    return [['Porosité φ', ob(o.phi) + ' % (repère : au-dessus de 10 %, c\'est intéressant)'], ['Perméabilité k', ob(o.k, 'auto') + ' mD (repère : au-dessus de 1 mD)'], ['Argilosité Vsh', ob(o.vsh) + ' %']];
+  }
+  const fixedVals = (cls, extra) => { const L = WL_LITH[cls]; return [['GR', fr(L.gr) + ' API'], ['Densité ρb', fr(L.rhoMa, 2) + ' g/cc'], ['Sonique DT', fr(L.dtMa) + ' µs/ft'], ['Neutron NPHI', fr(L.nOff*100) + ' %'], ['Résistivité Rt', fr(L.rt) + ' Ω·m'], ...(extra||[])]; };
+  const NORES = [['Porosité φ', '0 à 5 %'], ['Perméabilité k', 'environ 0 mD : ne stocke et ne laisse rien passer']];
+  const rhoSh = 2.25 + 0.30*(1-Math.exp(-2000/2500)), dtSh = Math.max(80, 125-2000/70), nSh = Math.max(0.2, 0.38-2000/30000);
+
+  const ENTRIES = [
+    {id:'sandstone', fig:'sandstone', col:'#C4863A', name:'Grès', role:'Réservoir possible', tags:['res'], reco:'Roche propre et poreuse : GR bas à modéré, densité sous 2,65 dès qu\'elle est poreuse, pas de séparation forte densité-neutron en eau. Le grès compact (φ < 5 %) a les mêmes courbes mais sans porosité : il est neutre.',
+      vals:[...obsVals('sandstone'), ['_','Paramètres de réservoir (valeurs du jeu)'], ...obsRes('sandstone')], cls:'sandstone'},
+    {id:'conglomerate', fig:'conglomerate', col:'#A07840', name:'Conglomérat', role:'Réservoir possible', tags:['res'], reco:'Galets cimentés, même réponse qu\'un grès (classe grès dans le jeu) avec une porosité souvent plus irrégulière. Rare sur une coupe.',
+      vals:[...obsVals('sandstone'), ['_','Paramètres de réservoir (valeurs du jeu)'], ...obsRes('sandstone')], cls:'sandstone'},
+    {id:'limestone', fig:'limestone', col:'#D4A853', name:'Calcaire', role:'Réservoir possible', tags:['res'], reco:'GR très bas, densité de 2,71 en l\'absence de porosité, sonique rapide (47 µs/ft). Les calcaires oolitiques, récifaux et fracturés sont les réservoirs ; le calcaire argileux ou marneux est neutre.',
+      vals:[...obsVals('limestone'), ['_','Paramètres de réservoir (valeurs du jeu)'], ...obsRes('limestone')], cls:'limestone'},
+    {id:'chalk', fig:'chalk', col:'#E0DCC8', name:'Craie', role:'Neutre (réservoir possible si fracturée)', tags:['res','neu'], reco:'Calcaire micritique blanc très fin : mêmes courbes que le calcaire. Très poreuse mais très peu perméable en pratique.',
+      vals:[...obsVals('limestone'), ['_','Paramètres de réservoir (valeurs du jeu)'], ...obsRes('limestone')], cls:'limestone'},
+    {id:'dolomite', fig:'dolomite', col:'#B8904A', name:'Dolomie', role:'Réservoir possible', tags:['res'], reco:'Reconnaissable à sa densité forte (2,87 g/cc pur) et à son sonique très rapide (43 µs/ft). Porosité vugulaire possible.',
+      vals:[...obsVals('dolomite'), ['_','Paramètres de réservoir (valeurs du jeu)'], ...obsRes('dolomite')], cls:'dolomite'},
+    {id:'shale', fig:'shale', col:'#4a5568', name:'Argile, argilite, siltite', role:'Couverture (ou roche neutre)', tags:['seal','neu'], reco:'GR élevé (autour de 115 API), résistivité basse et plate (1 à 3 Ω·m), densité et neutron intermédiaires. Une argile compacte de 60 à 95 % d\'argilosité scelle un réservoir.',
+      vals:[['GR', '105 à 125 API (115)'], ['Densité ρb', fr(2.25, 2) + ' à ' + fr(2.55, 2) + ' g/cc (' + fr(rhoSh, 2) + ' à 2 000 m)'], ['Sonique DT', '80 à 125 µs/ft (' + fr(dtSh) + ' à 2 000 m)'], ['Neutron NPHI', '20 à 38 % (' + fr(nSh*100) + ' à 2 000 m)'], ['Résistivité Rt', '1 à 3 Ω·m'], ['_','Paramètres'], ...NORES, ['Argilosité Vsh', 'couverture : 60 à 95 % ; neutre : 20 à 70 %']], cls:'shale'},
+    {id:'marl', fig:'marl', col:'#6a7a60', name:'Marne', role:'Couverture ou roche neutre', tags:['seal','neu'], reco:'Mélange d\'argile et de calcaire : dans le jeu elle se lit comme une argile (GR élevé, résistivité basse). À distinguer d\'un calcaire par son GR.',
+      vals:[['GR', '105 à 125 API'], ['Densité ρb', '2,25 à 2,55 g/cc'], ['Sonique DT', '80 à 125 µs/ft'], ['Neutron NPHI', '20 à 38 %'], ['Résistivité Rt', '1 à 3 Ω·m'], ['_','Paramètres'], ...NORES], cls:'shale'},
+    {id:'source', fig:'shale', col:'#1a1a2e', name:'Roche-mère (schiste organique, black shale)', role:'Roche-mère', tags:['src'], reco:'GR très élevé (120 + 12 × TOC) qui dépasse l\'échelle de 150 API quand le TOC dépasse 2,5 %, densité plus basse que l\'argile, sonique plus lent, résistivité plus haute si la roche est mature.',
+      vals:[['GR', rg(120+12*1.5, 120+12*9.5) + ' API (repli à gauche au-delà de 150)'], ['Densité ρb', 'ρ argile - 0,04 × TOC, soit ' + rg(rhoSh-0.04*9.5, rhoSh-0.04*1.5, 2) + ' g/cc à 2 000 m'], ['Sonique DT', 'DT argile + 4 × TOC, soit ' + rg(dtSh+4*1.5, dtSh+4*9.5) + ' µs/ft'], ['Neutron NPHI', 'NPHI argile - 3 pts'], ['Résistivité Rt', 'mature : 4 + 5 × TOC, soit ' + rg(4+5*1.5, 4+5*9.5) + ' Ω·m ; immature : 3 Ω·m'], ['_','Paramètres'], ['TOC', '1,5 à 9,5 % (le charbon houiller a un TOC bien plus élevé)'], ...NORES], cls:'source'},
+    {id:'halite', fig:'halite', col:'#F0E8F8', name:'Sel gemme (halite)', role:'Couverture parfaite, ou évaporite', tags:['seal','evap'], reco:'Densité très basse (2,03), GR quasi nul, résistivité énorme, sonique lent, trou très régulier. Se déforme en dômes (diapirs) qui piègent les flancs.',
+      vals:[...fixedVals('halite'), ['_','Paramètres'], ['Porosité φ', '≈ 0 %'], ['Perméabilité k', '0 mD : étanche']], cls:'halite'},
+    {id:'anhydrite', fig:'anhydrite', col:'#D8B8D8', name:'Anhydrite', role:'Couverture', tags:['seal','evap'], reco:'GR quasi nul, densité très haute (2,98), résistivité énorme. Souvent en bancs sous ou dans le sel.',
+      vals:[...fixedVals('anhydrite'), ['_','Paramètres'], ['Porosité φ', '≈ 0 %'], ['Perméabilité k', '0 mD : étanche']], cls:'anhydrite'},
+    {id:'gypsum', fig:'anhydrite', col:'#E8D8E0', name:'Gypse', role:'Couverture, évaporite', tags:['seal','evap'], reco:'Sulfate hydraté : densité de 2,35 et neutron très élevé (50 %) à cause de l\'eau de cristallisation, ce qui le distingue de l\'anhydrite.',
+      vals:[...fixedVals('gypsum'), ['_','Paramètres'], ['Porosité φ', '≈ 0 %'], ['Perméabilité k', '0 mD']], cls:'gypsum'},
+    {id:'potash', fig:'halite', col:'#D8A8C8', name:'Sel potassique (sylvite, carnallite)', role:'Évaporite, repère', tags:['evap'], reco:'Le seul sel radioactif : GR hors échelle (≈ 230 API) à cause du potassium 40, alors que la halite a un GR très bas. Excellent repère de corrélation.',
+      vals:[...fixedVals('potash'), ['_','Paramètres'], ['Porosité φ', '≈ 0 %'], ['Perméabilité k', '0 mD']], cls:'potash'},
+    {id:'coal', fig:'coal', col:'#0d0d0d', name:'Charbon, lignite', role:'Roche-mère (gaz) ou niveau repère', tags:['src'], reco:'Densité très basse (1,4), neutron très élevé (55 %), sonique très lent (120 µs/ft), GR bas : aucune autre roche ne combine ces trois signes.',
+      vals:[...fixedVals('coal'), ['_','Paramètres'], ['TOC', 'supérieur à 50 % (charbon houiller, type III : gaz)'], ['Porosité φ', '≈ 0 %']], cls:'coal'},
+    {id:'basement', fig:'basement', col:'#2D1B00', name:'Socle (granite, gneiss, schiste métamorphique)', role:'Fond de la coupe, imperméable', tags:['neu'], reco:'Fin de la colonne : GR élevé (≈ 130 API), densité de 2,7, sonique rapide, résistivité élevée, aucune porosité.',
+      vals:[...fixedVals('basement'), ['_','Paramètres'], ['Porosité φ', '≈ 0 %'], ['Perméabilité k', '≈ 0 mD']], cls:'basement'},
+    {id:'basalt', fig:'basement', col:'#1a1a1a', name:'Basalte (socle volcanique)', role:'Socle', tags:['neu'], reco:'Comme le socle mais GR faible (≈ 35 API) et densité plus haute (2,9).',
+      vals:[...fixedVals('basalt'), ['_','Paramètres'], ['Porosité φ', '≈ 0 %']], cls:'basalt'},
+    {id:'volcanic', fig:'volcanic', col:'#605850', name:'Tuf volcanoclastique', role:'Roche neutre', tags:['neu'], reco:'Cendres altérées en argile : dans le jeu, courbes d\'argile (GR élevé, résistivité basse).',
+      vals:[['GR', '105 à 125 API'], ['Densité ρb', '2,25 à 2,55 g/cc'], ['Sonique DT', '80 à 125 µs/ft'], ['_','Paramètres'], ...NORES], cls:'shale'},
+    {id:'uncons', fig:'alluvium', col:'#8B7355', name:'Sédiments meubles (surface, Quaternaire)', role:'Recouvrement', tags:['neu','surf'], reco:'Début de la colonne : densité faible (1,95 à 2,07), sonique très lent (95 à 150 µs/ft), neutron de 40 %, GR moyen (≈ 70 API).',
+      vals:[['GR', '≈ 70 API'], ['Densité ρb', '1,95 à 2,07 g/cc'], ['Sonique DT', '95 à 150 µs/ft'], ['Neutron NPHI', '40 %'], ['Résistivité Rt', '1,5 Ω·m'], ['_','Paramètres'], ['Porosité φ', '≈ 40 % (neutron de 40 %), sans compaction ni cimentation'], ['Perméabilité k', 'élevée, mais sans couverture : sans intérêt']], cls:'uncons'},
+  ];
+  const FAMILIES = [['all','Tout'],['res','Réservoirs possibles'],['seal','Couvertures'],['src','Roches-mères'],['evap','Évaporites'],['neu','Neutres, socle'],['surf','Surface']];
+  let family = 'all', exByEntry = null;
+
+  // Exemples de formations : relevés dans les listes du jeu et rattachés à la fiche par le même classement que les logs
+  function entryOf(item, role){
+    const n = (item.name||'').toLowerCase();
+    if(/potass/.test(n)) return 'potash';
+    if(/charbon|houill|lignite/.test(n) && role!=='neutral') return 'coal';
+    if(role==='source' || /black shale|bitumineux|organique/.test(n) && role==='source') return 'source';
+    if(role==='overburden') return 'uncons';
+    if(/basalt/.test(n)) return 'basalt';
+    const f = figureOf(item);
+    return ({sandstone:'sandstone',conglomerate:'conglomerate',limestone:'limestone',dolomite:'dolomite',chalk:'chalk',shale:'shale',marl:'marl',halite:'halite',anhydrite:/gypse/.test(n)?'gypsum':'anhydrite',basement:'basement',volcanic:'volcanic',alluvium:'uncons',coal:'coal'})[f] || null;
+  }
+  function harvest(){
+    if(exByEntry) return exByEntry;
+    exByEntry = {};
+    const add = (it, role) => { const k = entryOf(it, role); if(!k) return; (exByEntry[k] = exByEntry[k] || new Set()).add(it.name); };
+    const roleOf = key => key.startsWith('neutral') ? 'neutral' : key==='evaporite' ? 'seal' : key.split('#')[0];
+    try { Object.entries(buildStratigraphy.pools||{}).forEach(([k,arr])=>arr.forEach(it=>add(it, roleOf(k)))); } catch(e){}
+    Object.values(BASIN_COLUMNS||{}).forEach(bc=>{
+      const pl = [bc.pools, ...(bc.variants||[]).map(v=>v.pools)];
+      pl.forEach(pp=>pp && Object.entries(pp).forEach(([k,arr])=>arr.forEach(it=>add(it, roleOf(k)))));
+    });
+    return exByEntry;
+  }
+  const norm = t => (t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  function render(){
+    const q = norm(document.getElementById('llSearch').value.trim());
+    const ex = harvest();
+    const list = ENTRIES.filter(e=>{
+      if(family!=='all' && !e.tags.includes(family)) return false;
+      if(!q) return true;
+      const hay = norm([e.name, e.role, e.reco, ...(ex[e.id]||[])].join(' '));
+      return q.split(/\s+/).every(w=>hay.includes(w));
+    });
+    const grid = document.getElementById('llGrid');
+    if(!list.length){ grid.innerHTML = '<div class="ll-none">Aucune fiche ne correspond.</div>'; return; }
+    grid.innerHTML = list.map(e=>{
+      const dark = figIsDark(e.col);
+      const sw = `<svg width="46" height="34" viewBox="0 0 16 12"><rect width="16" height="12" fill="${e.col}"/><rect width="16" height="12" fill="url(#fig-${e.fig}${dark?'-l':''})"/></svg>`;
+      const vals = e.vals.map(([k,v])=> k==='_' ? `<div class="ll-sub">${v}</div>` : `<dt>${k}</dt><dd>${v}</dd>`).join('');
+      const exs = [...(ex[e.id]||[])].slice(0,8);
+      return `<article class="ll-card"><h3>${sw}<span>${e.name}</span></h3><div class="ll-role">${e.role}</div><div class="ll-reco">${e.reco}</div><dl class="ll-vals">${vals}</dl>${exs.length?`<div class="ll-ex"><b>Dans le jeu :</b> ${exs.join(', ')}</div>`:''}</article>`;
+    }).join('');
+  }
+  window.openLithoLib = function(){
+    document.getElementById('lithoLib').classList.add('open');
+    document.getElementById('llChips').innerHTML = FAMILIES.map(([k,l])=>`<button type="button" data-f="${k}" class="${k===family?'sel':''}">${l}</button>`).join('');
+    document.querySelectorAll('#llChips button').forEach(b=>b.addEventListener('click', ()=>{ family = b.dataset.f; document.querySelectorAll('#llChips button').forEach(x=>x.classList.toggle('sel', x===b)); render(); }));
+    document.getElementById('llRules').open = window.innerWidth > 720; // replié sur téléphone : les fiches d'abord
+    render();
+  };
+  document.getElementById('llSearch').addEventListener('input', render);
+  document.getElementById('llClose').addEventListener('click', ()=>document.getElementById('lithoLib').classList.remove('open'));
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') document.getElementById('lithoLib').classList.remove('open'); });
+  document.getElementById('pauseLithoBtn')?.addEventListener('click', ()=>window.openLithoLib());
+  window.__lithoLib = { ENTRIES, harvest };
 })();
 </script>
 
