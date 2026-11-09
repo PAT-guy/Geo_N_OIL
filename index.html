@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.28</title>
+<title>GeoExplorer V4.29</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -435,9 +435,9 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .pause-nav-btn{width:100%;text-align:left;margin-top:8px;font-size:12px;padding:12px 14px;}
 /* Les boutons secondaires des menus (pause, accueil, TP) étaient rendus en simples liens soulignés
    par la classe .adv-reset : ils deviennent de vrais boutons, lisibles et assez grands pour le doigt. */
-.pause-nav-btn,#continueSavedBtn,#openTutorialBtn,#tpAddTargetBtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;margin:8px 0 0;padding:13px 14px;font-size:14px;color:var(--text);text-decoration:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;cursor:pointer;font-family:var(--sans);}
-.pause-nav-btn:hover,#continueSavedBtn:hover,#openTutorialBtn:hover,#tpAddTargetBtn:hover:not(:disabled){border-color:var(--ink);}
-#continueSavedBtn,#openTutorialBtn{justify-content:center;text-align:center;}
+.pause-nav-btn,#continueSavedBtn,#openTutorialBtn,#openLithoHomeBtn,#tpAddTargetBtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;margin:8px 0 0;padding:13px 14px;font-size:14px;color:var(--text);text-decoration:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;cursor:pointer;font-family:var(--sans);}
+.pause-nav-btn:hover,#continueSavedBtn:hover,#openTutorialBtn:hover,#openLithoHomeBtn:hover,#tpAddTargetBtn:hover:not(:disabled){border-color:var(--ink);}
+#continueSavedBtn,#openTutorialBtn,#openLithoHomeBtn{justify-content:center;text-align:center;}
 #tpAddTargetBtn:disabled{opacity:.55;cursor:default;}
 .pause-nav-btn.danger{color:var(--red);}
 #pauseSummary{margin:12px 0 4px;}
@@ -810,6 +810,7 @@ body.mobile-layout #priceSparkline{display:none;}
     </div>
 
     <button class="adv-reset" id="continueSavedBtn" style="width:100%;text-align:center;margin-bottom:8px;display:none;">💾 <span class="i18n" data-fr="Reprendre la partie sauvegardée" data-en="Resume saved game">Reprendre la partie sauvegardée</span></button>
+    <button class="adv-reset" id="openLithoHomeBtn" style="width:100%;text-align:center;margin-bottom:8px;">📚 <span class="i18n" data-fr="Bibliothèque des lithologies" data-en="Lithology library">Bibliothèque des lithologies</span></button>
     <button class="adv-reset" id="openTutorialBtn" style="width:100%;text-align:center;margin-bottom:8px;">🎓 <span class="i18n" data-fr="Tutoriel (2 min)" data-en="Tutorial (2 min)">Tutoriel (2 min)</span></button>
     <button class="start-btn" id="startBtn">▶ <span class="i18n" data-fr="DÉMARRER" data-en="START">DÉMARRER</span></button>
   </div>
@@ -7179,6 +7180,9 @@ function _doStartGame(){
     exByEntry = {};
     const add = (it, role) => { const k = entryOf(it, role); if(!k) return; (exByEntry[k] = exByEntry[k] || new Set()).add(it.name); };
     const roleOf = key => key.startsWith('neutral') ? 'neutral' : key==='evaporite' ? 'seal' : key.split('#')[0];
+    // Sur l'accueil, aucune partie n'a encore généré de colonne : un appel à vide expose les listes génériques
+    // (buildStratigraphy ne modifie rien d'autre que sa propriété lastVariant, qu'on rétablit).
+    if(!buildStratigraphy.pools){ const lv = buildStratigraphy.lastVariant; try { buildStratigraphy('random', makeRng(1), 1); } catch(e){} buildStratigraphy.lastVariant = lv; }
     try { Object.entries(buildStratigraphy.pools||{}).forEach(([k,arr])=>arr.forEach(it=>add(it, roleOf(k)))); } catch(e){}
     Object.values(BASIN_COLUMNS||{}).forEach(bc=>{
       const pl = [bc.pools, ...(bc.variants||[]).map(v=>v.pools)];
@@ -7217,6 +7221,7 @@ function _doStartGame(){
   document.getElementById('llClose').addEventListener('click', ()=>document.getElementById('lithoLib').classList.remove('open'));
   document.addEventListener('keydown', e=>{ if(e.key==='Escape') document.getElementById('lithoLib').classList.remove('open'); });
   document.getElementById('pauseLithoBtn')?.addEventListener('click', ()=>window.openLithoLib());
+  document.getElementById('openLithoHomeBtn')?.addEventListener('click', ()=>window.openLithoLib());
   window.__lithoLib = { ENTRIES, harvest };
 })();
 </script>
