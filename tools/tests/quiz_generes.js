@@ -27,6 +27,20 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(r.manches.every(m=>m.n===8) && r.manches.filter(m=>m.k==='maturation').every(m=>m.gen===6) && r.manches.filter(m=>m.k==='rockeval').every(m=>m.gen===5), 'manche de 8 questions : 6 (maturation) ou 5 (rock-eval) générées + le reste tiré de la liste fixe');
   ok(apres===avant && avant.length>500, 'la partie en cours (cartes, strates) n\'est pas modifiée par la génération des quiz ('+avant.length+' octets comparés)');
   ok(r.ms<120, 'génération rapide : '+Math.round(r.ms)+' ms par manche');
+  // sismique : chaque question générée se recalcule à partir de ses valeurs affichées (meta) et le texte affiche bien ces valeurs
+  const sq = await pg.evaluate(()=>{ const all=[]; for(let i=0;i<40;i++) all.push(...window.__qz.qzGenSeismic()); const m=[]; for(let i=0;i<20;i++){ const r=window.__qz.qzBuildRound(window.__qz.QUIZ_BANKS.seismic); m.push([r.length, r.filter(x=>x.gen).length]); } return {all, m}; });
+  let sf=0; const kc={}; sq.all.forEach(x=>{ kc[x.kind]=(kc[x.kind]||0)+1; const m=x.meta; let good=-1, txt=true;
+    if(x.kind==='pol') good = m.R>0?0:1;
+    if(x.kind==='force'){ const a=m.Rs.map(Math.abs); good=a.indexOf(Math.max(...a)); const s2=[...a].sort((u,w)=>w-u); if(s2[0]/s2[1]<1.4) sf++; }
+    if(x.kind==='twt'){ good=0; txt = x.q.includes(m.z+' m') && x.q.includes(m.V+' m/s') && x.choices[0]===Math.round(2000*m.z/m.V)+' ms'; }
+    if(x.kind==='calage'){ good=0; txt = x.q.includes(m.z+' m') && x.q.includes(m.t+' ms') && Math.abs(m.V-2000*m.z/m.t)<=5 && x.choices[0]===m.V+' m/s'; }
+    if(x.kind==='multiple'){ good=0; txt = m.R>0 && x.q.includes(m.t0+' ms') && x.choices[0]===(2*m.t0)+' ms'; }
+    if(x.kind==='resol'){ good=0; txt = x.q.includes(m.f+' Hz') && x.q.includes(m.V+' m/s') && x.choices[0]==='environ '+Math.round(m.V/(4*m.f))+' m'; }
+    if(good!==x.correct || !txt || new Set(x.choices).size!==x.choices.length) sf++; });
+  ok(sq.all.length===240 && Object.values(kc).every(n=>n===40) && Object.keys(kc).length===6, 'sismique : 6 types de questions générées, un de chaque par manche '+JSON.stringify(kc));
+  ok(sf===0, 'sismique : réponse recalculée = bonne réponse, valeurs affichées cohérentes, choix distincts ('+sf+' erreurs)');
+  ok(sq.m.every(([n,g])=>n===8&&g===6), 'sismique : manche de 8 questions, 6 générées + 2 de la liste fixe');
+  { const apres2 = await pg.evaluate(`(${empreinte.toString()})()`); ok(apres2===avant, 'partie en cours toujours intacte après les quiz sismiques'); }
   // les autres quiz restent des listes fixes
-  const fixes = await pg.evaluate(()=>['lithofacies','seismic'].map(k=>window.__qz.qzBuildRound(window.__qz.QUIZ_BANKS[k]).length)); ok(fixes.every(n=>n===8), 'lithofaciès et sismique : manches de 8 questions fixes');
+  const fixes = await pg.evaluate(()=>['lithofacies'].map(k=>window.__qz.qzBuildRound(window.__qz.QUIZ_BANKS[k]).length)); ok(fixes.every(n=>n===8), 'lithofaciès : manche de 8 questions fixes');
   console.log('erreurs JS', errs); console.log(ko?'ECHECS: '+ko:'TOUT OK'); await br.close(); process.exit(ko||errs.length?1:0); })();
