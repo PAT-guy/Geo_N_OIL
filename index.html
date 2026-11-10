@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.46</title>
+<title>GeoExplorer V4.47</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2029,6 +2029,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       raw.push({
         id, x, y, horizons, topOfReservoir, tempAtRes, tempAtSrc, pressureRes,
         maturity, maturityClass, isGas,
+        gradient, exhumation, paleoTemp, srcTopDepth, // exposés pour les quiz générés (Rock-Eval, Maturation) : aucun effet sur la géologie
         trapFactor, resFactor, sealFactor, genStrength, trueQuality,
         resThicknessLocal, inSalt, faultThrow, isOffshore, provinceIdx,
       });
@@ -2126,6 +2127,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       horizons:b.horizons,
       topOfReservoir:b.topOfReservoir, tempAtRes:b.tempAtRes, tempAtSrc:b.tempAtSrc, pressureRes:b.pressureRes,
       maturity:b.maturity, maturityClass:b.maturityClass,
+      gradient:b.gradient, exhumation:b.exhumation, paleoTemp:b.paleoTemp, srcTopDepth:b.srcTopDepth,
       trapFactor:b.trapFactor, resFactor:b.resFactor, sealFactor:b.sealFactor, srcFactor:b.srcFactor,
       genStrength:b.genStrength,
       resThicknessLocal:b.resThicknessLocal, inSalt:b.inSalt, faultThrow:b.faultThrow, provinceIdx:b.provinceIdx,
@@ -7435,6 +7437,7 @@ function _doStartGame(){
     },
     maturation: {
       title: '🌡️ Quiz Maturation',
+      gen: ()=>qzGenMaturation(6), // 6 questions tirées du moteur géologique + 2 de la liste fixe
       questions: [
         {q:'Roche-mère actuellement à 900m de profondeur, gradient géothermique 30°C/km, aucune exhumation notable.',
          choices:['Immature','Fenêtre à huile','Fenêtre à gaz'], correct:0,
@@ -7467,6 +7470,7 @@ function _doStartGame(){
     },
     rockeval: {
       title: '🧪 Quiz Rock-Eval',
+      gen: ()=>qzGenRockeval(), // 5 questions tirées du moteur géologique + 3 de la liste fixe
       questions: [
         {q:'TOC = 0.15%, HI = 40 mg HC/g TOC. Quel potentiel générateur ?',
          choices:['Excellent','Bon','Non générateur'], correct:2,
@@ -7549,10 +7553,102 @@ function _doStartGame(){
 
   function qzShuffled(arr){ return [...arr].sort(()=>Math.random()-.5); }
 
+
+  // ── Questions générées par le moteur géologique (Maturation, Rock-Eval) ──
+  // Chaque manche génère de la géologie (bassins et seeds tirés au hasard), lit les valeurs du moteur (enfouissement,
+  // gradient, exhumation, Tmax, TOC, HI) et en tire des questions dont la réponse découle des règles du jeu. Une question
+  // n'est gardée que si les valeurs affichées tranchent avec une marge (pas de cas à la limite d'un seuil).
+  // La géologie de la manche est jetée juste après : une partie en cours n'est jamais touchée.
+  const QZ_BT = ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast'];
+  const qzF1 = v => (Math.round(v*10)/10).toString().replace('.',','), qzF2 = v => (Math.round(v*100)/100).toString().replace('.',',');
+  function qzIsolated(fn){
+    const keep = { blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
+    try { return fn(); }
+    finally { blocks = keep.blocks; STRAT = keep.STRAT; STRAT_PROVINCES = keep.STRAT_PROVINCES; GS = keep.GS; buildStratigraphy.lastVariant = keep.lv; wlZoom = keep.wlz; }
+  }
+  // Blocs porteurs d'une roche-mère, avec leurs valeurs Rock-Eval, pour une géologie fraîche
+  function qzSourceBlocks(){
+    generateGeology(12, QZ_BT[Math.floor(Math.random()*QZ_BT.length)], true, (Math.random()*1e9)|0);
+    const rng = makeRng((Math.random()*1e9)|0);
+    return qzShuffled(blocks.filter(b=>b.horizons.some(h=>h.role==='source') && b.srcTopDepth>0)).map(b=>({ b, re: STUDIES.rockeval.do(b, rng) }));
+  }
+  const QZ_MAT = ['Immature','Fenêtre à huile','Surmature (gaz)'];
+  function qzGenMaturation(n){
+    const targets = qzShuffled(Array.from({length:n}, (_,i)=>QZ_MAT[i%3]));
+    const out = [], usedKey = new Set();
+    return qzIsolated(()=>{
+      for(const tg of targets){
+        for(let tries=0; tries<60; tries++){
+          const pick = qzSourceBlocks().find(o=>{
+            if(o.b.maturityClass!==tg) return false;
+            const top=Math.round(o.b.srcTopDepth), g=Math.round(o.b.gradient*10)/10, e=Math.round(o.b.exhumation*100)/100;
+            const T = 14 + top*e*g/1000;
+            if(Math.abs(T-60)<8 || Math.abs(T-150)<8) return false;
+            const cls = T<60 ? QZ_MAT[0] : T<=150 ? QZ_MAT[1] : QZ_MAT[2];
+            return cls===tg && !usedKey.has(top+'|'+g);
+          });
+          if(!pick) continue;
+          const b=pick.b, top=Math.round(b.srcTopDepth), g=Math.round(b.gradient*10)/10, e=Math.round(b.exhumation*100)/100;
+          const pd = Math.round(top*e), T = Math.round(14 + top*e*g/1000);
+          usedKey.add(top+'|'+g);
+          const lbl = ['Immature','Fenêtre à huile','Fenêtre à gaz'], good = QZ_MAT.indexOf(tg);
+          out.push({ gen:true, q:`Roche-mère (toit de la couche) actuellement à ${top} m, gradient géothermique ${qzF1(g)} °C/km, exhumation ×${qzF2(e)}${e>=1.9?' (bassin fortement soulevé et érodé depuis son enfouissement maximal)':e<=1.15?' (bassin presque sans soulèvement)':''}.`,
+            choices:lbl, correct:good,
+            explain:`C'est la profondeur d'enfouissement MAXIMALE qui compte, pas la profondeur actuelle : ${top} × ${qzF2(e)} ≈ ${pd} m. Température ≈ 14 + ${qzF2(pd/1000)} × ${qzF1(g)} ≈ ${T} °C. Repères du jeu : sous 60 °C, immature ; de 60 à 150 °C, fenêtre à huile ; au-dessus, fenêtre à gaz.` });
+          break;
+        }
+      }
+      return out;
+    });
+  }
+  function qzGenRockeval(){
+    return qzIsolated(()=>{
+      const out = [];
+      const tgts = qzShuffled(['Immature','Fenêtre à huile','Surmature (gaz)']);
+      // 3 questions Tmax : la maturité se lit sur le Tmax, pas sur le TOC ni le HI
+      for(const tg of tgts){
+        for(let tries=0; tries<60; tries++){
+          const pick = qzSourceBlocks().find(o=>o.b.maturityClass===tg && !(o.re.tmax>430&&o.re.tmax<435) && !(o.re.tmax>455&&o.re.tmax<460));
+          if(!pick) continue; const re=pick.re;
+          const good = re.tmax<435 ? 0 : re.tmax<=455 ? 1 : 2;
+          out.push({ gen:true, q:`Échantillon de roche-mère d'un bloc du jeu : TOC = ${String(re.toc).replace('.',',')} %, HI = ${re.hi} mg HC/g TOC, Tmax = ${re.tmax} °C. Quelle maturité thermique ?`,
+            choices:['Immature (avant la fenêtre à huile)','Fenêtre à huile','Surmature (fenêtre à gaz)'], correct:good,
+            explain:`La maturité se lit sur le Tmax : ${re.tmax} °C ${good===0?'est sous 435 °C, la roche n\'a pas encore généré':good===1?'est entre 435 et 455 °C, la roche est en train de générer de l\'huile':'dépasse 455 °C, la roche a franchi la fenêtre à huile et ne donne plus que du gaz'}. Le TOC (richesse) et le HI (type et potentiel restant) ne disent rien de la maturité à eux seuls.` });
+          break;
+        }
+      }
+      // 2 questions S2 : le potentiel restant est le produit de la richesse par la qualité (S2 ≈ TOC × HI / 100)
+      for(let k=0;k<2;k++){
+        for(let tries=0; tries<60; tries++){
+          const all = qzSourceBlocks(); if(all.length<2) continue;
+          let found = null;
+          for(let i=0;i<all.length && !found;i++) for(let j=i+1;j<all.length && !found;j++){
+            const A=all[i].re, B=all[j].re, sa=A.toc*A.hi/100, sb=B.toc*B.hi/100;
+            if(Math.max(sa,sb)/Math.min(sa,sb) >= 1.35 && Math.abs(A.hi-B.hi)>=25 && Math.abs(A.toc-B.toc)>=0.4) found=[A,B,sa,sb];
+          }
+          if(!found) continue;
+          const [A,B,sa,sb]=found; const swap = Math.random()<.5, X = swap?B:A, Y = swap?A:B, sx = swap?sb:sa, sy = swap?sa:sb;
+          const fx = String(X.toc).replace('.',','), fy = String(Y.toc).replace('.',',');
+          out.push({ gen:true, q:`Deux échantillons de roche-mère. A : TOC = ${fx} %, HI = ${X.hi} mg HC/g TOC. B : TOC = ${fy} %, HI = ${Y.hi} mg HC/g TOC. Lequel contient le plus d'hydrocarbures encore générables (S2) ?`,
+            choices:['A','B','Autant l\'un que l\'autre'], correct: sx>sy ? 0 : 1,
+            explain:`Le potentiel restant se calcule en croisant richesse et qualité : S2 ≈ TOC × HI / 100. A : ${fx} × ${X.hi} / 100 ≈ ${qzF1(sx)} mg HC/g roche. B : ${fy} × ${Y.hi} / 100 ≈ ${qzF1(sy)}. Un TOC élevé ne suffit pas si le HI est bas, et inversement.` });
+          break;
+        }
+      }
+      return out;
+    });
+  }
+  // Une manche : questions générées (si la banque en propose) complétées par des questions de la liste fixe
+  function qzBuildRound(bank){
+    let list = [];
+    if(bank.gen){ try { list = bank.gen(); } catch(e){ list = []; } }
+    const fixed = qzShuffled(bank.questions).slice(0, Math.max(0, QZ_ROUND - list.length));
+    return qzShuffled([...list, ...fixed]);
+  }
+
   function qzRenderQuestion(){
     if(qzIdx >= qzOrder.length){ qzFinish(); return; }
-    const qs = qzBank.questions;
-    const q = qs[qzOrder[qzIdx]];
+    const q = qzOrder[qzIdx];
     document.getElementById('qzQuestion').textContent = q.q;
     document.getElementById('qzFeedback').classList.remove('show');
     const nb = document.getElementById('qzNextBtn');
@@ -7607,7 +7703,7 @@ function _doStartGame(){
 
   function qzOpen(key){
     qzBank = QUIZ_BANKS[key]; qzKey = key;
-    qzOrder = qzShuffled(qzBank.questions.map((_,i)=>i)).slice(0, QZ_ROUND);
+    qzOrder = qzBuildRound(qzBank);
     qzIdx = 0; qzScore = 0; qzAsked = 0;
     document.getElementById('qzTitle').textContent = qzBank.title;
     document.getElementById('qzScore').textContent = `Question 1/${qzOrder.length} · score 0/0`;
@@ -7618,6 +7714,7 @@ function _doStartGame(){
   document.querySelectorAll('.mg-card[data-quiz]').forEach(card=>{
     card.addEventListener('click', ()=>qzOpen(card.dataset.quiz));
   });
+  window.__qz = { qzGenMaturation, qzGenRockeval, qzBuildRound, QUIZ_BANKS };   // pour les tests
   document.getElementById('qzCloseBtn').addEventListener('click', ()=>{
     document.getElementById('quizModal').classList.remove('open');
   });
