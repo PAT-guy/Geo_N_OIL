@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.47</title>
+<title>GeoExplorer V4.48</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -7511,6 +7511,7 @@ function _doStartGame(){
 
   QUIZ_BANKS.seismic = {
       title: '📡 Quiz Sismique',
+      gen: ()=>qzGenSeismic(), // 6 questions tirées des propriétés acoustiques du moteur + 2 de la liste fixe
       questions: [
         {q:'Une interface où une couche dure (impédance plus haute) repose sous une couche molle. Quel est le signe du coefficient de réflexion en polarité normale ?',
          choices:['Positif (pic)','Négatif (creux)','Nul'], correct:0,
@@ -7601,6 +7602,74 @@ function _doStartGame(){
       return out;
     });
   }
+
+  // ── Quiz Sismique généré : propriétés acoustiques réelles des couches du moteur (mêmes lois que le labo sismique) ──
+  // Couches d'un bloc avec leurs propriétés acoustiques (labAcoustic) : densité, vitesse, impédance, temps double cumulé.
+  function qzSeisLayers(b){
+    const L = b.horizons.map(h=>({ h, name:h.name, top:h.top, th:(h.thicknessLocal ?? h.thickness) })).filter(l=>l.th>=8).sort((a,c)=>a.top-c.top);
+    let t = L.length ? 2*L[0].top/labAcoustic(L[0].h, L[0].top+1).v*1000 : 0;
+    L.forEach(l=>{ const a = labAcoustic(l.h, l.top + l.th/2); l.rho=a.rho; l.v=a.v; l.z=a.z; l.t0=t; t += 2*l.th/a.v*1000; l.t1=t; });
+    return L;
+  }
+  // Valeurs telles qu'affichées (densité à 0,01 g/cc, vitesse à 10 m/s) : la réponse se recalcule avec ces valeurs
+  const qzRho = v => Math.round(v*100)/100, qzV = v => Math.round(v/10)*10;
+  const qzZ = (rho,v) => rho*v/1000, qzR = (z1,z2) => (z2-z1)/(z2+z1);
+  const qzFr = v => String(v).replace('.',',');
+  function qzPairs(L){ const o=[]; for(let k=1;k<L.length;k++){ const A=L[k-1], B=L[k]; const ra=qzRho(A.rho), va=qzV(A.v), rb=qzRho(B.rho), vb=qzV(B.v); const za=qzZ(ra,va), zb=qzZ(rb,vb); o.push({A,B,ra,va,rb,vb,za,zb,R:qzR(za,zb),Re:qzR(A.z,B.z),k}); } return o; }
+  const qzIface = p => `${p.A.name} (ρ = ${qzFr(p.ra)} g/cc, V = ${p.va} m/s) sur ${p.B.name} (ρ = ${qzFr(p.rb)} g/cc, V = ${p.vb} m/s)`;
+  function qzGenSeismic(){
+    const kinds = qzShuffled(['pol','force','twt','calage','multiple','resol']);
+    const out = [];
+    return qzIsolated(()=>{
+      for(const kind of kinds){
+        for(let tries=0; tries<80; tries++){
+          generateGeology(12, QZ_BT[Math.floor(Math.random()*QZ_BT.length)], true, (Math.random()*1e9)|0);
+          const bs = qzShuffled(blocks.filter(b=>!b.inSalt && b.horizons.length>=6)); const b = bs[0]; if(!b) continue;
+          const L = qzSeisLayers(b); if(L.length<5) continue; const P = qzPairs(L);
+          let q = null;
+          if(kind==='pol'){
+            const c = qzShuffled(P.filter(x=>Math.abs(x.R)>=0.04 && Math.sign(x.R)===Math.sign(x.Re))); if(!c.length) continue; const x=c[0];
+            q = { kind, meta:{R:x.R}, q:`Interface entre ${qzIface(x)}. Sur la sismique du jeu, que voit-on à cette interface ?`,
+              choices:['Un pic bleu : l\'impédance augmente en descendant','Un creux rouge : l\'impédance diminue en descendant','Aucun signal : seule la vitesse compte, pas la densité'], correct: x.R>0?0:1,
+              explain:`Impédance Z = ρ × V : ${x.A.name} ≈ ${qzFr(Math.round(x.za*10)/10)}, ${x.B.name} ≈ ${qzFr(Math.round(x.zb*10)/10)} (10⁶ kg/m²/s). R = (Z2 − Z1) / (Z2 + Z1) ≈ ${qzFr(Math.round(x.R*100)/100)} : ${x.R>0?'positif, donc un pic bleu':'négatif, donc un creux rouge'}. La réflexion dépend de l'impédance, produit de la densité par la vitesse, jamais de la vitesse seule.` };
+          } else if(kind==='force'){
+            const c = qzShuffled(P.filter(x=>Math.abs(x.R)>=0.02 && Math.sign(x.R)===Math.sign(x.Re))); if(c.length<3) continue; const t3 = c.slice(0,3);
+            const ab = t3.map(x=>Math.abs(x.R)), sorted=[...ab].sort((u,w)=>w-u); if(sorted[0]/sorted[1] < 1.4) continue;
+            q = { kind, meta:{Rs:t3.map(x=>x.R)}, q:`Trois interfaces d'un même puits. ① ${qzIface(t3[0])}. ② ${qzIface(t3[1])}. ③ ${qzIface(t3[2])}. Laquelle donne la réflexion la plus forte en amplitude ?`,
+              choices:['Interface ①','Interface ②','Interface ③'], correct: ab.indexOf(sorted[0]),
+              explain:`L'amplitude suit |R| = |Z2 − Z1| / (Z2 + Z1). ① ${qzFr(Math.round(ab[0]*1000)/1000)}, ② ${qzFr(Math.round(ab[1]*1000)/1000)}, ③ ${qzFr(Math.round(ab[2]*1000)/1000)}. Ce qui compte est le contraste relatif d'impédance, pas la dureté d'une couche prise seule.` };
+          } else if(kind==='twt'){
+            const k = 2 + Math.floor(Math.random()*(L.length-2)); const z = Math.round(L[k].top/10)*10; if(z<300) continue;
+            let t=0; for(let i=0;i<L.length;i++){ const top=L[i].top, base=top+L[i].th; if(z<=top) break; t += 2*(Math.min(z,base)-top)/L[i].v*1000; } t += 2*L[0].top/L[0].v*1000;
+            const V = qzV(2000*z/t); const t2 = Math.round(2000*z/V); if(V<1500) continue;
+            q = { kind, meta:{z,V,t:t2}, q:`Un réflecteur est à ${z} m de profondeur et la vitesse moyenne jusqu'à lui est de ${V} m/s. Quel est son temps double (aller-retour) ?`,
+              choices:[`${t2} ms`,`${Math.round(t2/2)} ms`,`${t2*2} ms`], correct:0,
+              explain:`Le temps double est le trajet aller-retour : t = 2 × z / V = 2 × ${z} / ${V} ≈ ${t2/1000} s, soit ${t2} ms. ${Math.round(t2/2)} ms serait le temps simple (oublier l'aller-retour).` };
+          } else if(kind==='calage'){
+            const k = 2 + Math.floor(Math.random()*(L.length-2)); const z = Math.round(L[k].top/10)*10; if(z<300) continue;
+            let t=0; for(let i=0;i<L.length;i++){ const top=L[i].top, base=top+L[i].th; if(z<=top) break; t += 2*(Math.min(z,base)-top)/L[i].v*1000; } t += 2*L[0].top/L[0].v*1000; t = Math.round(t/10)*10; if(t<200) continue;
+            const V = qzV(2000*z/t); if(V<1500) continue;
+            q = { kind, meta:{z,t,V}, q:`Au puits, un réflecteur connu est à ${z} m. Sur la sismique, il apparaît à ${t} ms (temps double). Quelle vitesse moyenne faut-il utiliser pour caler le puits sur la sismique ?`,
+              choices:[`${V} m/s`,`${V*2} m/s`,`${qzV(V/2)} m/s`], correct:0,
+              explain:`Le calage relie profondeur et temps : V moyenne = 2 × z / t = 2 × ${z} / ${t/1000} s ≈ ${V} m/s. ${V*2} m/s viendrait d'un temps pris pour un trajet simple.` };
+          } else if(kind==='multiple'){
+            const c = P.filter(x=>x.R>=0.12 && x.Re>0 && x.B.t0<1200).sort((u,w)=>Math.abs(w.R)-Math.abs(u.R)); if(!c.length) continue; const x=c[0]; const t0=Math.round(x.B.t0/10)*10; if(t0<80) continue;
+            q = { kind, meta:{t0,R:x.R}, q:`Sur une sismique, l'interface ${x.A.name} sur ${x.B.name} (R ≈ ${qzFr(Math.round(x.R*100)/100)}) donne un réflecteur très fort à ${t0} ms. Un événement parasite, plus faible et de polarité inverse (creux), apparaît plus bas sans interface correspondante en profondeur. À quel temps double attendez-vous le premier multiple de surface ?`,
+              choices:[`${t0*2} ms`,`${Math.round(t0*1.5)} ms`,`${t0*4} ms`], correct:0,
+              explain:`Le premier multiple est l'onde qui a fait un aller-retour de plus entre le réflecteur et la surface : il arrive au double du temps du primaire, soit 2 × ${t0} = ${t0*2} ms, et, pour un primaire positif, avec une polarité inversée (la surface libre réfléchit avec un coefficient de −1). Un événement qui ne correspond à aucune interface réelle et tombe à un multiple exact du temps d'un fort réflecteur est un multiple, pas un horizon.` };
+          } else if(kind==='resol'){
+            const l = L[Math.floor(Math.random()*L.length)]; const f = [20,25,28,30][Math.floor(Math.random()*4)], V = Math.round(l.v/50)*50; if(V<2000) continue; const e = Math.round(V/(4*f));
+            q = { kind, meta:{f,V,e}, q:`La fréquence dominante de la sismique est de ${f} Hz. Dans la couche « ${l.name} », la vitesse est de ${V} m/s. Quelle épaisseur minimale de couche peut-on encore distinguer (critère du quart de longueur d'onde) ?`,
+              choices:[`environ ${e} m`,`environ ${e*2} m`,`environ ${e*4} m`], correct:0,
+              explain:`La longueur d'onde est λ = V / f = ${V} / ${f} ≈ ${Math.round(V/f)} m. La limite de résolution verticale est λ / 4 ≈ ${e} m : en dessous, les réflexions du toit et du mur se mélangent. ${e*4} m serait la longueur d'onde entière.` };
+          }
+          if(q){ q.gen = true; out.push(q); break; }
+        }
+      }
+      return out;
+    });
+  }
+
   function qzGenRockeval(){
     return qzIsolated(()=>{
       const out = [];
@@ -7714,7 +7783,7 @@ function _doStartGame(){
   document.querySelectorAll('.mg-card[data-quiz]').forEach(card=>{
     card.addEventListener('click', ()=>qzOpen(card.dataset.quiz));
   });
-  window.__qz = { qzGenMaturation, qzGenRockeval, qzBuildRound, QUIZ_BANKS };   // pour les tests
+  window.__qz = { qzGenMaturation, qzGenRockeval, qzGenSeismic, qzBuildRound, QUIZ_BANKS };   // pour les tests
   document.getElementById('qzCloseBtn').addEventListener('click', ()=>{
     document.getElementById('quizModal').classList.remove('open');
   });
