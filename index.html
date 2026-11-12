@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.52</title>
+<title>GeoExplorer V4.53</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -8313,7 +8313,9 @@ function _doStartGame(){
         // dans une même manche, on évite de redemander la même roche en A (sinon argile, socle et sédiments meubles reviennent sans cesse)
         const fresh = Object.keys(byCls).filter(k=>!avoid.includes(k)), clsKeys = fresh.length ? fresh : Object.keys(byCls), pickCls = byCls[clsKeys[Math.floor(Math.random()*clsKeys.length)]];
         const A = pickCls[Math.floor(Math.random()*pickCls.length)];
-        const zA = A.h.top + (A.h.thicknessLocal??A.h.thickness)*0.5;
+        // la portion de la couche réellement tracée s'arrête à la fin du log (z1) : le repère A doit tomber dans cette portion, sinon il sort du dessin
+        const visTh = Math.min(A.h.top + (A.h.thicknessLocal??A.h.thickness), g.z1) - A.h.top; if(visTh < 25) continue;
+        const zA = A.h.top + visTh*0.5;
         // log et repères
         let html = wellLogHtml(b);
         const VBW=382, left=38, top=40, plotH=560, right=376, span=g.z1-g.z0;
@@ -8337,7 +8339,7 @@ function _doStartGame(){
           : fluid==='huile' ? `C'était de l'<b>huile</b> : résistivité profonde de ${rtTxt}, bien au-dessus de celle de l'eau salée (une roche aquifère comparable lit moins de 10 Ω·m dans ce jeu), mais écart densité-neutron de ${gapTxt} points seulement : pas de croisement, donc pas de gaz.`
           : `C'était de l'<b>eau salée</b> : résistivité de ${rtTxt} seulement, l'eau de formation conduit. Un puits sec peut avoir un réservoir parfaitement poreux, c'est le fluide qui manque.`;
         const q2 = { text:'En B, dans le réservoir (couche poreuse à ' + Math.round(zB) + ' m), que contient la roche ?', opts:[{k:'gaz',t:'Gaz'},{k:'huile',t:'Huile'},{k:'eau',t:'Eau salée seule (réservoir aquifère)'}], good:fluid, y:yB, why:why2, table: readTable(rB,'B') };
-        return { html, qs:[q1,q2], fluid, rB, rA };
+        return { html, qs:[q1,q2], fluid, rB, rA, rng:{z0:g.z0, z1:g.z1, zA, zB} };
       }
       return null;
     } finally {
@@ -8352,8 +8354,14 @@ function _doStartGame(){
     const svg = pane.querySelector('.wl-svg'); if(!svg) return;
     const cols = ['GR','Résistivité','ρb / NPHI','Sonique'].map((t,k)=>`<span style="left:${((52+k*82)/382*100).toFixed(2)}%;width:${(78/382*100).toFixed(2)}%">${t}</span>`).join('');
     pane.insertAdjacentHTML('afterbegin', `<div class="lgm-cols" aria-hidden="true">${cols}</div>`);
-    requestAnimationFrame(()=>{ const sc = svg.getBoundingClientRect().width/382, top = svg.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
-      pane.scrollTop = Math.max(0, top + q.y*sc - pane.clientHeight/2); });
+  }
+  // Recentre la fenêtre du log sur le repère de la question. À appeler une fois la question et les réponses affichées : leur hauteur
+  // décide de celle de la fenêtre (avant, le centrage se faisait sur une fenêtre plus haute, et le repère pouvait en sortir).
+  function lgmCenter(q){
+    if(!window.matchMedia('(max-width:720px)').matches) return;
+    const pane = document.getElementById('lgmLog'), svg = pane.querySelector('.wl-svg'); if(!svg || !q) return;
+    const sc = svg.getBoundingClientRect().width/382, top = svg.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
+    pane.scrollTop = Math.max(0, top + q.y*sc - pane.clientHeight/2);
   }
   function render(){
     if(logIdx >= rounds.length) return finish();
@@ -8369,6 +8377,10 @@ function _doStartGame(){
     document.getElementById('lgmScore').textContent = `Question ${logIdx*2+qIdx+1}/${rounds.length*2} · score ${score}/${asked}`;
     const ch = document.getElementById('lgmChoices');
     ch.innerHTML = q.opts.map((o,i)=>`<button class="qz-choice" data-k="${o.k}">${o.t}</button>`).join('');
+    lgmCenter(q); requestAnimationFrame(()=>lgmCenter(q)); setTimeout(()=>lgmCenter(q), 120);
+    { const pane = document.getElementById('lgmLog'); pane.dataset.auto = '1';
+      if(!pane._ro){ pane._ro = new ResizeObserver(()=>{ if(pane.dataset.auto==='1' && cur) lgmCenter(cur); }); pane._ro.observe(pane);
+        ['touchstart','wheel','pointerdown'].forEach(ev=>pane.addEventListener(ev, ()=>{ pane.dataset.auto = '0'; }, {passive:true})); } }
     ch.querySelectorAll('.qz-choice').forEach(btn=>btn.addEventListener('click', ()=>{
       asked++; const okk = btn.dataset.k===q.good; if(okk) score++;
       const lab = k => (q.opts.find(o=>o.k===k)||{}).t || k;
@@ -8677,6 +8689,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
 .rg-inc .rg-btns{margin:6px 0 0;}
 .rg-log{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:8px;max-height:96px;overflow-y:auto;}
 .rg-log div.bad{color:var(--red);} .rg-log div.good{color:var(--green);}
+.rg-help{font-size:11.5px;color:var(--muted);line-height:1.55;margin-top:8px;} .rg-help summary{cursor:pointer;padding:8px 0;color:var(--text);} .rg-help p{margin:6px 0;}
 .rg-end{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:14px;margin:6px 0;font-size:13px;line-height:1.55;}
 .rg-end h3{margin:0 0 6px;font-size:16px;}
 .rg-end ul{margin:6px 0 0;padding-left:18px;}
@@ -8740,28 +8753,33 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
     });
   }
   // ---------- simulation ----------
-  const rigNew = sc => ({ sc, z:0, shoe:0, strings:0, mw:1.08, wob:100, rpm:120, q:1500, drilling:false, wear:0, clean:0, gain:0, shut:false, loss:0, lossActive:false, lcm:0,
+  const rigNew = sc => ({ sc, lag:false, mwTarget:1.08, mwQ:[], z:0, shoe:0, strings:0, mw:1.08, wob:100, rpm:120, q:1500, drilling:false, wear:0, clean:0, gain:0, shut:false, loss:0, lossActive:false, lcm:0,
     stuck:null, stat:0, hours:0, bits:1, status:'run', fail:null, block:null, ev:[], rop:0, kickLogged:false, lossLogged:false, bitLogged:false, tripsNpt:0, caseNpt:0, kills:0 });
   const gfOpen = S => { let m = Infinity; for(let z=Math.max(S.shoe,10); z<=Math.max(S.z,S.shoe,10); z+=DZ) m = Math.min(m, S.sc.gf(z)); return m + S.lcm; };
   const gfOpenPred = S => { let m = Infinity; for(let z=Math.max(S.shoe,10); z<=Math.max(S.z,S.shoe,10); z+=DZ) m = Math.min(m, S.sc.gfPred(z)); return m + S.lcm; };
-  const ropOf = S => { const sc=S.sc, z=Math.max(S.z,5), u=sc.ucs(z), base = 14*Math.pow(S.wob/100,0.8)*Math.pow(S.rpm/120,0.6)*Math.pow(50/u,0.7), ob = S.mw - sc.gp(z), pen = 1 - 1.2*Math.max(0, ob-0.05);
+  const ropOf = S => { const sc=S.sc, z=Math.max(S.z,5), u=sc.ucs(z), base = 14*Math.pow(S.wob/100,0.8)*Math.pow(S.rpm/120,0.6)*Math.pow(50/u,0.7), ob = S.mw - sc.gp(z), pen = 1 - 3.0*Math.max(0, ob-0.04);
     return Math.max(1, base*Math.max(0.2,pen)*(1-0.6*Math.min(1,S.wear))*(S.wear>=1?0.3:1)); };
   const qMin = rop => 1100 + 22*rop;
+  // Retard de circulation (règle de jeu) : une nouvelle densité de boue n'atteint le fond qu'après un fond-en-haut,
+  // soit 0,4 h + profondeur / 1800 × 1500 / débit (en h). Tant que l'effet n'est pas arrivé, le trou voit l'ancienne boue.
+  const bottomsUp = S => 0.4 + S.z/1800*1500/Math.max(400,S.q);
+  function applyMw(S){ while(S.mwQ.length && S.mwQ[0].t <= S.hours + 1e-9){ S.mw = S.mwQ.shift().w; } }
+  function addH(S, h){ S.hours += h; applyMw(S); }
   function log(S, type, msg, kind){ S.ev.push({h:S.hours, z:S.z, type, msg, kind:kind||''}); }
   function fail(S, why, msg){ if(S.status!=='run') return; S.status='fail'; S.fail=why; S.drilling=false; log(S, why, msg, 'bad'); }
   function tick(S){
     if(S.status!=='run') return;
-    if(S.stuck || S.shut){ S.hours += 0.25; return; }
+    if(S.stuck || S.shut){ addH(S, 0.25); return; }
     const sc=S.sc;
     if(!S.drilling){
-      S.hours += 0.25; S.stat++;
+      addH(S, 0.25); S.stat++;
       const L = sc.layerAt(Math.max(S.z,5)), ob = S.mw - sc.gp(S.z);
       if(L.perm && ob >= 0.12 && S.stat >= 3){ S.stuck = {type:'diff', att:0, pill:false}; S.block='stuck'; log(S,'stuck','Coincement par pression différentielle : l\'outil est resté immobile en face d\'un réservoir avec une boue trop lourde (surpression de '+(Math.round(ob*100)/100).toString().replace('.',',')+' sg).','bad'); }
       return;
     }
     S.stat = 0;
     const rop = ropOf(S); S.rop = rop;
-    S.hours += DZ/rop; S.z += DZ;
+    addH(S, DZ/rop); S.z += DZ;
     const L = sc.layerAt(S.z), u = sc.ucs(S.z);
     S.wear += DZ*0.0005*Math.pow(u/50,0.6)*Math.pow(S.rpm/120,0.9)*Math.pow(S.wob/100,0.7);
     if(S.q < qMin(rop)) S.clean += 0.25*(qMin(rop)-S.q)/qMin(rop)*2; else S.clean = Math.max(0, S.clean-0.15);
@@ -8785,56 +8803,57 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
   function act(S, name, arg){
     if(S.status!=='run') return false;
     const sc=S.sc, f2 = v=>(Math.round(v*100)/100).toString().replace('.',',');
+    if(name==='setmw'){ const w = clamp(arg, 0.9, 2.3); S.mwTarget = w; if(S.lag){ const last = S.mwQ.length ? S.mwQ[S.mwQ.length-1].w : S.mw; if(Math.abs(w - last) >= 0.004) S.mwQ.push({t:S.hours + bottomsUp(S), w}); } else S.mw = w; return true; }
     if(name==='shut'){
       S.drilling = false;
-      if(S.gain>0){ S.shut = true; S.block = 'kickshut'; S.hours += 0.2; log(S,'shut','Puits fermé (BOP). Pression de fermeture en tiges (SIDPP) : '+f2(Math.max(0,(sc.gp(S.z)-S.mw)*G0*S.z))+' MPa, gain '+f2(S.gain)+' m³.','good'); return true; }
-      S.hours += 0.5; log(S,'flow','Test de retour : aucun gain, le puits est stable (0,5 h perdue).'); return true; }
+      if(S.gain>0){ S.shut = true; S.block = 'kickshut'; addH(S, 0.2); log(S,'shut','Puits fermé (BOP). Pression de fermeture en tiges (SIDPP) : '+f2(Math.max(0,(sc.gp(S.z)-S.mw)*G0*S.z))+' MPa, gain '+f2(S.gain)+' m³.','good'); return true; }
+      addH(S, 0.5); log(S,'flow','Test de retour : aucun gain, le puits est stable (0,5 h perdue).'); return true; }
     if(name==='kill'){
-      if(!S.shut) return false; const w = arg, gp = sc.gp(S.z), gfo = gfOpen(S); S.hours += 20; S.kills++;
-      if(w < gp + 0.02){ log(S,'kill','Densité de contrôle insuffisante ('+f2(w)+' sg) : le puits n\'est pas tué, la pression de fermeture reste positive. Il faut plus lourd (20 h perdues).','bad'); S.mw = w; return true; }
-      if(w > gfo - 0.01 || w > gp + 0.16){ S.mw = w; S.gain = 0; S.shut = false; S.block = null; S.kickLogged = false; S.hours += 12;
+      if(!S.shut) return false; const w = arg, gp = sc.gp(S.z), gfo = gfOpen(S); addH(S, 20); S.kills++;
+      if(w < gp + 0.02){ log(S,'kill','Densité de contrôle insuffisante ('+f2(w)+' sg) : le puits n\'est pas tué, la pression de fermeture reste positive. Il faut plus lourd (20 h perdues).','bad'); S.mw = w; S.mwTarget = w; S.mwQ = []; return true; }
+      if(w > gfo - 0.01 || w > gp + 0.16){ S.mw = w; S.mwTarget = w; S.mwQ = []; S.gain = 0; S.shut = false; S.block = null; S.kickLogged = false; addH(S, 12);
         log(S,'kill','Densité de contrôle trop forte ('+f2(w)+' sg) : le terrain fracture au sabot, circulation perdue (12 h perdues). Visez la pression des pores plus 0,03 à 0,10 sg.','bad'); return true; }
-      S.mw = w; S.gain = 0; S.shut = false; S.block = null; S.kickLogged = false; log(S,'kill','Puits tué : le kick est circulé hors du trou avec une boue de '+f2(w)+' sg.','good'); return true; }
-    if(name==='lcm'){ if(!S.lossActive) return false; S.hours += 2; const e = S.mw - gfOpen(S); if(e <= 0.04){ S.lcm += e + 0.02; log(S,'lcm','Colmatant pompé : les pertes sont bouchées.','good'); } else { S.lcm += 0.02; log(S,'lcm','Colmatant insuffisant : l\'écart est trop grand, baissez aussi la densité ou posez un tubage.','bad'); } return true; }
-    if(name==='casing'){ if(S.strings>=3 || S.stuck || S.shut || S.z < S.shoe+30) return false; S.shoe = S.z; S.strings++; S.hours += 14; S.caseNpt += 14; S.drilling=false;
+      S.mw = w; S.mwTarget = w; S.mwQ = []; S.gain = 0; S.shut = false; S.block = null; S.kickLogged = false; log(S,'kill','Puits tué : le kick est circulé hors du trou avec une boue de '+f2(w)+' sg.','good'); return true; }
+    if(name==='lcm'){ if(!S.lossActive) return false; addH(S, 2); const e = S.mw - gfOpen(S); if(e <= 0.04){ S.lcm += e + 0.02; log(S,'lcm','Colmatant pompé : les pertes sont bouchées.','good'); } else { S.lcm += 0.02; log(S,'lcm','Colmatant insuffisant : l\'écart est trop grand, baissez aussi la densité ou posez un tubage.','bad'); } return true; }
+    if(name==='casing'){ if(S.strings>=3 || S.stuck || S.shut || S.z < S.shoe+30) return false; S.shoe = S.z; S.strings++; addH(S, 14); S.caseNpt += 14; S.drilling=false;
       log(S,'casing','Tubage posé à '+Math.round(S.z)+' m : le trou ouvert repart d\'un sabot plus résistant ('+f2(sc.gf(S.z))+' sg de fracturation).','good'); if(S.lossActive && S.mw <= gfOpen(S)){ S.lossActive=false; S.lossLogged=false; S.loss=0; if(S.block==='loss') S.block=null; } return true; }
-    if(name==='circ'){ S.drilling=false; S.hours += 0.75; if(S.gain>0 && !S.shut && S.mw >= sc.gp(S.z)+0.02){ S.gain=0; S.kickLogged=false; if(S.block==='kick') S.block=null; log(S,'circ','Circulation fond en haut : le gain est évacué, la boue est assez lourde.','good'); }
+    if(name==='circ'){ S.drilling=false; addH(S, Math.max(0.75, bottomsUp(S))); if(S.gain>0 && !S.shut && S.mw >= sc.gp(S.z)+0.02){ S.gain=0; S.kickLogged=false; if(S.block==='kick') S.block=null; log(S,'circ','Circulation fond en haut : le gain est évacué, la boue est assez lourde.','good'); }
       else if(S.q >= qMin(Math.max(S.rop,20))){ S.clean = Math.max(0, S.clean-0.7); if(S.clean<1 && S.block==='packoff'){ S.block=null; log(S,'circ','Trou nettoyé : la pression de pompe retombe.','good'); } else log(S,'circ','Circulation fond en haut (0,75 h).'); }
       else log(S,'circ','Circulation à débit trop faible pour évacuer les déblais : augmentez la pompe.','bad'); return true; }
-    if(name==='jar'){ if(!S.stuck) return false; S.hours += 3; const ob = S.mw - sc.gp(S.z) - (S.stuck.pill?0.05:0);
+    if(name==='jar'){ if(!S.stuck) return false; addH(S, 3); const ob = S.mw - sc.gp(S.z) - (S.stuck.pill?0.05:0);
       const ok = S.stuck.type==='diff' ? ob < 0.08 : (S.clean < 1 && S.q >= qMin(Math.max(S.rop,20))*1.1);
       if(ok){ S.stuck = null; S.stat = 0; if(S.block==='stuck') S.block=null; S.clean = Math.max(0,S.clean-0.7); log(S,'jar','Coulissage réussi : le train de tiges est libéré.','good'); }
       else { S.stuck.att++; log(S,'jar','Coulissage sans effet ('+S.stuck.att+'/3). '+(S.stuck.type==='diff'?'Baissez la densité (surpression à réduire) ou pompez une pilule.':'Nettoyez d\'abord le trou : circulez avec un débit élevé.'),'bad'); if(S.stuck.att>=3) fail(S,'coince','Outil définitivement coincé : le puits est abandonné ou dévié à grands frais.'); }
       return true; }
-    if(name==='pill'){ if(!S.stuck || S.stuck.type!=='diff') return false; S.hours += 2; S.stuck.pill = true; log(S,'pill','Pilule libératrice pompée : l\'adhérence diminue, tentez le coulissage.'); return true; }
-    if(name==='trip'){ if(S.stuck || S.shut) return false; S.drilling=false; const t = 4 + S.z/600; S.hours += t; S.tripsNpt += t; S.wear = 0; S.bitLogged = false; S.bits++; S.clean = 0; if(S.block==='bit') S.block=null;
+    if(name==='pill'){ if(!S.stuck || S.stuck.type!=='diff') return false; addH(S, 2); S.stuck.pill = true; log(S,'pill','Pilule libératrice pompée : l\'adhérence diminue, tentez le coulissage.'); return true; }
+    if(name==='trip'){ if(S.stuck || S.shut) return false; S.drilling=false; const t = 4 + S.z/600; addH(S, t); S.tripsNpt += t; S.wear = 0; S.bitLogged = false; S.bits++; S.clean = 0; if(S.block==='bit') S.block=null;
       log(S,'trip','Manœuvre pour changer l\'outil : '+f2(t)+' h, outil neuf.','good'); return true; }
     return false;
   }
   // ---------- joueurs automatiques (tests) ----------
   function playBot(S, kind){
-    let guard = 0, marg = 0.05;
+    let guard = 0, marg = /3$/.test(kind) ? 0.03 : 0.05; kind = kind.replace(/3$/,''); if(kind!=='naive') S.lag = true;
     while(S.status==='run' && guard++ < 6000){
       const sc = S.sc;
       if(kind==='naive'){ if(S.stuck || S.shut){ S.status='fail'; S.fail='abandon'; break; } S.mw = 1.08; S.wob = 200; S.rpm = 200; S.q = 900; S.drilling = true; tick(S); continue; }
       if(kind==='mid'){ // réagit correctement aux incidents mais n'anticipe pas la surpression et ne tube pas
         if(S.block==='kick'){ act(S,'shut'); continue; }
         if(S.shut){ act(S,'kill', Math.min(sc.gp(S.z)+0.05, gfOpen(S)-0.02)); continue; }
-        if(S.stuck){ if(S.stuck.type==='diff'){ S.mw = Math.max(sc.gp(S.z)+0.04, 1.02); act(S,'pill'); act(S,'jar'); } else { S.q = 3200; act(S,'circ'); act(S,'jar'); } continue; }
+        if(S.stuck){ if(S.stuck.type==='diff'){ act(S,'setmw', Math.max(sc.gp(S.z)+0.04, 1.02)); act(S,'pill'); act(S,'circ'); act(S,'jar'); } else { S.q = 3200; act(S,'circ'); act(S,'jar'); } continue; }
         if(S.block==='packoff'){ S.q = 3200; act(S,'circ'); continue; }
         if(S.block==='bit' || S.wear>=0.85){ act(S,'trip'); continue; }
-        if(S.block==='loss'){ if(S.mw - 0.05 >= sc.gp(S.z)+0.03) S.mw -= 0.05; else act(S,'lcm'); continue; }
+        if(S.block==='loss'){ if(S.mwTarget - 0.05 >= sc.gp(S.z)+0.03){ act(S,'setmw', S.mwTarget-0.05); act(S,'circ'); } else act(S,'lcm'); continue; }
         S.wob = 100; S.rpm = 120; { const r = ropOf(S); S.q = Math.min(3200, qMin(r) + 300); } S.drilling = true; tick(S); continue; }
       // bon foreur : anticipe la pression 120 m devant, tube avant la rampe, réagit à chaque incident
       if(S.block==='kick'){ act(S,'shut'); continue; }
       if(S.shut){ const w = sc.gp(S.z) + 0.05; act(S,'kill', Math.min(w, gfOpen(S)-0.02)); marg = 0.10; continue; }
-      if(S.stuck){ if(S.stuck.type==='diff'){ S.mw = Math.max(sc.gp(S.z)+0.04, 1.02); act(S,'pill'); act(S,'jar'); } else { S.q = 3200; act(S,'circ'); act(S,'jar'); } continue; }
+      if(S.stuck){ if(S.stuck.type==='diff'){ act(S,'setmw', Math.max(sc.gp(S.z)+0.04, 1.02)); act(S,'pill'); act(S,'circ'); act(S,'jar'); } else { S.q = 3200; act(S,'circ'); act(S,'jar'); } continue; }
       if(S.block==='packoff'){ S.q = 3200; act(S,'circ'); continue; }
       if(S.block==='bit' || S.wear>=0.85){ act(S,'trip'); continue; }
-      if(S.block==='loss'){ if(S.mw - 0.05 >= sc.gp(S.z)+0.03) S.mw -= 0.05; else if(!act(S,'casing')) act(S,'lcm'); continue; }
-      const need = sc.gpPred(Math.min(sc.TD, S.z+120)) + marg;
-      if(S.strings===0 && sc.gpPred(S.z+150) > 1.02 && S.z > S.shoe+30) { act(S,'casing'); continue; }
-      S.mw = Math.max(1.05, Math.min(need, gfOpenPred(S)-MARGIN));
+      if(S.block==='loss'){ if(S.mwTarget - 0.05 >= sc.gp(S.z)+0.03){ act(S,'setmw', S.mwTarget-0.05); act(S,'circ'); } else if(!act(S,'casing')) act(S,'lcm'); continue; }
+      const ahead = kind==='follow' ? 0 : 120 + S.rop*bottomsUp(S)*1.2, need = sc.gpPred(Math.min(sc.TD, S.z+ahead)) + marg;
+      if(S.strings===0 && sc.gpPred(S.z+150+S.rop*bottomsUp(S)) > 1.02 && S.z > S.shoe+30) { act(S,'casing'); continue; }
+      act(S,'setmw', Math.max(1.05, Math.min(need, gfOpenPred(S)-MARGIN)));
       S.wob = 100; S.rpm = 120; { const r = ropOf(S); S.q = Math.min(3200, qMin(r) + 300); if(qMin(r) + 300 > 3200){ S.wob = 70; S.rpm = 100; } } S.drilling = true; tick(S);
     }
     return S;
@@ -8863,6 +8882,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
       <polyline points="${lp}" fill="none" stroke="#2c6fbb" stroke-width="1.4"/><polyline points="${lf}" fill="none" stroke="#c0392b" stroke-width="1.4"/>
       ${shoes}
       <line x1="${X(S.mw)}" y1="${y0}" x2="${X(S.mw)}" y2="${Y(zb)}" stroke="#b8860b" stroke-width="2"/>
+      ${Math.abs(S.mwTarget-S.mw)>0.004 ? `<line x1="${X(S.mwTarget)}" y1="${y0}" x2="${X(S.mwTarget)}" y2="${Y(zb)}" stroke="#b8860b" stroke-width="1.2" stroke-dasharray="3 2"/>` : ''}
       <circle cx="${X(S.mw)}" cy="${Y(zb)}" r="4.5" fill="#b8860b" stroke="var(--panel2)" stroke-width="1.2"/>
       <text x="${x0+3}" y="${y0+8}" font-size="7.5" fill="#2c6fbb">pression des pores (prévue, ± incertitude)</text><text x="${x1-3}" y="${y0+8}" font-size="7.5" text-anchor="end" fill="#c0392b">fracturation</text>
       <text x="${(x0+x1)/2}" y="${H-14}" font-size="7.5" text-anchor="middle" fill="var(--muted)">densité équivalente (sg)</text></svg>`;
@@ -8879,21 +8899,30 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
       const inc = incidentHtml(); if(inc) h += inc;
       h += `<div class="rg-hint">Formation : <b>${L.name}</b> (${L.perm?'perméable':'peu perméable'}, résistance estimée ${Math.round(sc.ucs(Math.max(S.z,5)))} MPa). Outil n°${S.bits}, usure ${Math.round(Math.min(1,S.wear)*100)} %. ${S.strings} tubage(s) posé(s).</div>
         <div class="rg-ctl">
-          <label>Densité de boue <b id="rgMwV">${f2(S.mw)} sg</b></label><label>Débit de pompe <b id="rgQV">${Math.round(S.q)} L/min</b></label>
-          <input type="range" id="rgMw" min="0.9" max="2.3" step="0.01" value="${S.mw}" aria-label="Densité de boue"><input type="range" id="rgQ" min="800" max="3200" step="50" value="${S.q}" aria-label="Débit de pompe">
+          <label>Densité demandée <b id="rgMwV">${f2(S.mwTarget)} sg</b></label><label>Débit de pompe <b id="rgQV">${Math.round(S.q)} L/min</b></label>
+          <input type="range" id="rgMw" min="0.9" max="2.3" step="0.01" value="${S.mwTarget}" aria-label="Densité de boue demandée"><input type="range" id="rgQ" min="800" max="3200" step="50" value="${S.q}" aria-label="Débit de pompe">
           <label>Poids sur l'outil <b id="rgWobV">${Math.round(S.wob)} kN</b></label><label>Rotation <b id="rgRpmV">${Math.round(S.rpm)} tr/min</b></label>
           <input type="range" id="rgWob" min="40" max="220" step="5" value="${S.wob}" aria-label="Poids sur l'outil"><input type="range" id="rgRpm" min="40" max="220" step="5" value="${S.rpm}" aria-label="Rotation">
         </div>
+        <div class="rg-hint" id="rgMwNote">${mwNote()}</div>
         <div class="rg-btns"><button class="go" id="rgGo">${S.drilling?'⏸ Pause':'▶ Forer'}</button><button id="rgSpeed">Vitesse ×${speed}</button><button id="rgCirc">Circuler</button><button id="rgCase" ${S.strings>=3||S.z<S.shoe+30||S.stuck||S.shut?'disabled':''}>Tubage ici (14 h)</button><button id="rgTrip" ${S.stuck||S.shut?'disabled':''}>Changer l'outil</button></div>`;
     }
+    h += `
+        <details class="rg-help"><summary>Règles du simulateur (simplifiées)</summary>
+          <p><b>Venues du moteur du jeu.</b> Formations, densités et vitesses soniques des couches ; contrainte verticale = densité moyenne des couches au-dessus ; pression des pores hydrostatique (1,00 sg) plus une zone de surpression générée par ce mini-jeu, car le moteur n'en a pas ; fracturation par la loi d'Eaton, Pf = Pp + ν/(1−ν) × (σv − Pp) avec ν = 0,35 ; résistance de la roche UCS = 1277 × exp(−0,036 × Δt) (corrélation de McNally), bornée de 15 à 300 MPa.</p>
+          <p><b>Règles de jeu simplifiées, pas de la physique exacte.</b> Avancement = 14 m/h × (poids/100)^0,8 × (rotation/120)^0,6 × (50/UCS)^0,7, réduit par l'usure et, au-delà de 0,04 sg de surpression de boue, de 3 % par centième de sg en plus (effet de maintien des déblais). Usure de l'outil = 0,0005 par mètre × (UCS/50)^0,6 × (rotation/120)^0,9 × (poids/100)^0,7. Débit minimal de nettoyage = 1100 + 22 × avancement (L/min). Kick : le bac gagne tant que la pression des pores dépasse la boue, éruption au-delà de 6 m³. Pertes : la boue dépasse la fracturation du trou ouvert. Coincement différentiel : outil immobile 3 pas ou plus en face d'une couche perméable avec plus de 0,12 sg de surpression.</p>
+          <p><b>Retard de circulation.</b> La densité demandée n'atteint le fond qu'après un fond-en-haut, soit 0,4 h + profondeur / 1800 × 1500 / débit. C'est pourquoi il faut anticiper la rampe de pression, pas la suivre.</p>
+          <p><b>Tuer un puits.</b> Densité de contrôle = densité actuelle + SIDPP / (0,00981 × profondeur), plus une marge de 0,03 à 0,10 sg. <b>Score</b> = temps rapporté à une référence (profondeur / 15 m/h + 25 h) moins une pénalité par incident. Simplification pédagogique : ce n'est pas une procédure opérationnelle de contrôle de puits.</p>
+        </details>`;
     h += `<div class="rg-log" id="rgLog">${S.ev.slice(-6).reverse().map(e=>`<div class="${e.kind}">${f1(e.h)} h, ${Math.round(e.z)} m : ${e.msg}</div>`).join('')}</div>`;
     $('rgBody').innerHTML = h; bind();
   }
+  function mwNote(){ const lagOn = S.mwQ.length>0; return lagOn ? `Densité au fond : <b>${f2(S.mw)} sg</b>. La boue demandée (${f2(S.mwTarget)} sg) y arrivera après un fond-en-haut (environ ${f1(Math.max(0, S.mwQ[0].t - S.hours))} h de forage ou de circulation).` : `Densité au fond : <b>${f2(S.mw)} sg</b>. Une nouvelle densité n'atteint le fond qu'après un fond-en-haut (environ ${f1(bottomsUp(S))} h) : anticipez la pression.`; }
   function incidentHtml(){
     const sc=S.sc, b=S.block;
     if(S.shut){ const sidpp = Math.max(0,(sc.gp(S.z)-S.mw)*G0*S.z), kmw = S.mw + sidpp/(G0*S.z);
       return `<div class="rg-inc"><h4>Puits fermé : à vous de le tuer</h4>Pression de fermeture en tiges (SIDPP) : <b>${f2(sidpp)} MPa</b>. Profondeur : ${Math.round(S.z)} m. Densité actuelle : ${f2(S.mw)} sg.<br>Densité de contrôle = densité actuelle + SIDPP / (0,00981 × profondeur), soit <b>${f2(kmw)} sg</b> à l'équilibre. Ajoutez une marge de 0,03 à 0,10 sg, puis réglez la densité de boue et tuez le puits.
-        <div class="rg-btns"><button class="go" id="rgKill">Tuer le puits avec ${f2(S.mw)} sg</button></div></div>`; }
+        <div class="rg-btns"><button class="go" id="rgKill">Tuer le puits avec ${f2(S.mwTarget)} sg</button></div></div>`; }
     if(b==='kick') return `<div class="rg-inc"><h4>⚠ Kick probable</h4>Le débit de retour dépasse le débit de pompe et le bac gagne ${f2(S.gain)} m³. Chaque mètre supplémentaire aggrave l'afflux : fermez le puits tout de suite.<div class="rg-btns"><button class="go" id="rgShut">Fermer le puits (BOP)</button></div></div>`;
     if(b==='loss') return `<div class="rg-inc"><h4>⚠ Perte de circulation</h4>Le bac baisse (${f2(S.loss)} m³ perdus). La boue est plus lourde que la fracturation du trou ouvert (${f2(gfOpen(S))} sg). Baissez la densité sans passer sous la pression des pores (${f2(sc.gp(S.z))} sg plus marge), bouchez avec du colmatant, ou posez un tubage.<div class="rg-btns"><button id="rgLcm">Colmatant (2 h)</button><button id="rgDown">Densité −0,05 sg</button></div></div>`;
     if(b==='packoff') return `<div class="rg-inc"><h4>⚠ Mauvais nettoyage du trou</h4>Les déblais s'accumulent : le débit (${Math.round(S.q)} L/min) est trop faible pour ${f1(S.rop)} m/h. Augmentez la pompe, réduisez l'avancement, et circulez fond en haut avant de reprendre.<div class="rg-btns"><button class="go" id="rgCircMax">Pompe au maximum et circuler</button></div></div>`;
@@ -8919,7 +8948,8 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
   function loop(){ stop(); if(S.status==='run' && S.drilling) timer = setInterval(()=>{ for(let i=0;i<speed;i++){ if(!S.drilling) break; const b0=S.block; tick(S); if(S.block && S.block!==b0) S.drilling=false; if(S.status!=='run') break; } render(); if(S.status!=='run' || !S.drilling) stop(); }, 380); }
   function setCtl(id, key, unit, dec){ const el=$(id); if(!el) return; el.addEventListener('input', ()=>{ S[key] = +el.value; const v=$(id+'V'); if(v) v.textContent = (dec? f2(S[key]) : Math.round(S[key]))+' '+unit; drawChart(); }); }
   function bind(){
-    setCtl('rgMw','mw','sg',true); setCtl('rgQ','q','L/min'); setCtl('rgWob','wob','kN'); setCtl('rgRpm','rpm','tr/min');
+    { const el=$('rgMw'); if(el) el.addEventListener('input', ()=>{ act(S,'setmw', +el.value); const v=$('rgMwV'); if(v) v.textContent = f2(S.mwTarget)+' sg'; const n=$('rgMwNote'); if(n) n.innerHTML = mwNote(); drawChart(); }); }
+    setCtl('rgQ','q','L/min'); setCtl('rgWob','wob','kN'); setCtl('rgRpm','rpm','tr/min');
     const on = (id,fn)=>{ const e=$(id); if(e) e.addEventListener('click', fn); };
     on('rgGo', ()=>{ S.drilling = !S.drilling; render(); loop(); });
     on('rgSpeed', ()=>{ speed = speed===1?3:1; render(); });
@@ -8927,21 +8957,21 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
     on('rgCase', ()=>{ act(S,'case'==='case'?'casing':'casing'); render(); });
     on('rgTrip', ()=>{ act(S,'trip'); render(); }); on('rgTrip2', ()=>{ act(S,'trip'); render(); });
     on('rgShut', ()=>{ act(S,'shut'); render(); });
-    on('rgKill', ()=>{ act(S,'kill', S.mw); render(); });
+    on('rgKill', ()=>{ act(S,'kill', S.mwTarget); render(); });
     on('rgLcm', ()=>{ act(S,'lcm'); render(); });
-    on('rgDown', ()=>{ S.mw = Math.max(0.9, Math.round((S.mw-0.05)*100)/100); render(); });
+    on('rgDown', ()=>{ act(S,'setmw', Math.max(0.9, Math.round((S.mwTarget-0.05)*100)/100)); render(); });
     on('rgPill', ()=>{ act(S,'pill'); render(); });
     on('rgJar', ()=>{ act(S,'jar'); render(); });
     on('rgCircMax', ()=>{ S.q = 3200; act(S,'circ'); render(); });
     on('rgAgain', ()=>openRig());
   }
   function openRig(){
-    stop(); const sc = rigScenario(); if(!sc) return; S = rigNew(sc); speed = 1;
+    stop(); const sc = rigScenario(); if(!sc) return; S = rigNew(sc); S.lag = true; speed = 1;
     $('rigModal').classList.add('open'); render();
   }
   $('rigOpenBtn').addEventListener('click', openRig);
   $('rgClose').addEventListener('click', ()=>{ stop(); $('rigModal').classList.remove('open'); });
-  window.__rig = { rigScenario, rigNew, tick, act, playBot, scoreOf, ropOf, qMin, gfOpen, gfOpenPred, get S(){ return S; }, render: ()=>render(), openRig, DZ, MARGIN, G0 };
+  window.__rig = { bottomsUp, rigScenario, rigNew, tick, act, playBot, scoreOf, ropOf, qMin, gfOpen, gfOpenPred, get S(){ return S; }, render: ()=>render(), openRig, DZ, MARGIN, G0 };
 })();
 </script>
 </body>

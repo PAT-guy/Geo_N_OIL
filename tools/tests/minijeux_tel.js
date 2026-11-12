@@ -8,7 +8,7 @@ const { chromium, devices } = require('playwright'); const path = require('path'
     await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}});
     await open(pg, '.mg-card#logGameOpenBtn');
     for(let q=0;q<2;q++){
-      await pg.waitForTimeout(150);
+      await pg.waitForTimeout(450);   // laisse la mise en page se stabiliser (polices, hauteur du panneau) avant de mesurer
       const r = await pg.evaluate(()=>{ const R=e=>document.querySelector(e).getBoundingClientRect(); const pane=R('#lgmLog'), qb=R('#lgmQuestion'), ch=[...document.querySelectorAll('#lgmChoices .qz-choice')].map(e=>e.getBoundingClientRect()), cl=R('#lgmClose');
         const marks=[...document.querySelectorAll('#lgmLog .wl-svg line[stroke="#d4380d"]')].map(l=>{const b=l.getBoundingClientRect(); return {y:b.y+b.height/2}});
         return { paneH:Math.round(pane.height), paneW:Math.round(pane.width), choixDansEcran: ch.every(c=>c.bottom<=innerHeight+0.5&&c.top>=0), minChoix:Math.min(...ch.map(c=>c.height)), close:cl.height, scrollPage: document.documentElement.scrollHeight>innerHeight+1, scrollX: document.documentElement.scrollWidth>innerWidth,

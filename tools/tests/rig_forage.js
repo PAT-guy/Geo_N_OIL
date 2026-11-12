@@ -40,12 +40,24 @@ const { chromium, devices } = require('playwright'); const path = require('path'
   ok(ph.packYes>=N*0.95 && ph.packNo===ph.packYes, 'nettoyage : débit trop faible provoque le blocage de déblais, la circulation à fort débit le règle ('+ph.packYes+' cas)');
   ok(ph.bitYes>=N*0.95, 'outil usé : incident puis manœuvre qui remet l\'usure à zéro');
   ok(ph.killShort===N && ph.killOk===N && ph.killFrac===N, 'tuer le puits : trop léger échoue, pression des pores + 0,05 réussit, trop lourd fracture');
+  // 1 bis. retard de circulation : la densité demandée n'arrive au fond qu'après un fond-en-haut
+  const lg = await pg.evaluate(()=>{ const R=window.__rig; let okT=0, okImm=0, okDrill=0, n=0;
+    for(let i=0;i<30;i++){ const sc=R.rigScenario(); if(!sc) continue; n++;
+      let S=R.rigNew(sc); S.lag=true; S.z=Math.round(sc.TD*0.5/10)*10; S.q=1800; S.mw=1.08; S.mwTarget=1.08; const T=R.bottomsUp(S); if(Math.abs(T-(0.4+S.z/1800*1500/1800))<1e-9) okT++;
+      R.act(S,'setmw',1.20); const imm = S.mw===1.08 && S.mwTarget===1.20; R.act(S,'circ'); if(imm && Math.abs(S.mw-1.20)<1e-9) okImm++;
+      // en forant : l'effet arrive après le temps de fond-en-haut, pas avant
+      S=R.rigNew(sc); S.lag=true; S.z=300; S.q=3000; S.mw=1.08; S.mwTarget=1.08; S.drilling=true; R.act(S,'setmw',1.15); const t0=S.hours, tb=R.bottomsUp(S); let before=true, after=false; for(let k=0;k<60 && S.status==='run' && S.z<sc.TD-20;k++){ R.tick(S); if(S.hours < t0+tb-1e-9 && S.mw!==1.08) before=false; if(S.hours >= t0+tb && S.mw===1.15) after=true; if(after) break; } if(before && after) okDrill++; }
+    return {n, okT, okImm, okDrill}; });
+  ok(lg.okT===lg.n && lg.okImm===lg.n && lg.okDrill===lg.n, 'retard de circulation : durée = 0,4 + z/1800 × 1500/débit, densité inchangée au fond avant le fond-en-haut puis appliquée ('+lg.okT+', '+lg.okImm+', '+lg.okDrill+' sur '+lg.n+')');
   // 2. joueurs automatiques
-  const bots = await pg.evaluate(()=>{ const R=window.__rig, o={good:{td:0,h:0,n:0,blow:0},mid:{td:0,h:0,n:0},naive:{td:0,n:0}}; const score=(S)=>R.scoreOf(S).score;
-    for(let i=0;i<60;i++){ const sc=R.rigScenario(); if(!sc) continue; for(const k of ['good','mid','naive']){ const S=R.rigNew(sc); R.playBot(S,k); const x=o[k]; x.n++; if(S.status==='td'){ x.td++; if(k!=='naive') x.h+=score(S); } if(S.fail==='blowout') x.blow=(x.blow||0)+1; } }
-    return o; });
-  ok(bots.good.td>=bots.good.n*0.95, 'bon foreur (anticipe, tube, réagit) : '+bots.good.td+'/'+bots.good.n+' puits menés au bout, score moyen '+Math.round(bots.good.h/Math.max(1,bots.good.td)));
-  ok(bots.mid.td>=bots.mid.n*0.6 && bots.mid.h/Math.max(1,bots.mid.td) < bots.good.h/Math.max(1,bots.good.td)-10, 'foreur qui réagit sans anticiper : '+bots.mid.td+'/'+bots.mid.n+' puits, score moyen '+Math.round(bots.mid.h/Math.max(1,bots.mid.td))+' (nettement sous le bon foreur)');
+  const bots = await pg.evaluate(()=>{ const R=window.__rig, o={}; const kinds=['good','good3','follow','follow3','mid','naive'];
+    kinds.forEach(k=>o[k]={td:0,n:0,score:0,kicks:0});
+    for(let i=0;i<80;i++){ const sc=R.rigScenario(); if(!sc) continue; for(const k of kinds){ const S=R.rigNew(sc); R.playBot(S,k); const x=o[k]; x.n++; if(S.status==='td'){ x.td++; x.score+=R.scoreOf(S).score; } S.ev.forEach(e=>{ if(e.type==='kick'&&e.kind==='bad') x.kicks++; }); } }
+    for(const k of kinds){ const x=o[k]; x.kicks=x.kicks/Math.max(1,x.n); x.score=x.score/Math.max(1,x.td); } return o; });
+  const sc_ = k => Math.round(bots[k].score), kk = k => Math.round(bots[k].kicks*100)/100;
+  ok(bots.good.td>=bots.good.n*0.95 && bots.good3.td>=bots.good3.n*0.95, 'bon foreur (anticipe, tube, réagit) : '+bots.good.td+'/'+bots.good.n+' puits menés au bout, score moyen '+sc_('good'));
+  ok(bots.mid.td>=bots.mid.n*0.6 && bots.mid.score < bots.good.score-10, 'foreur qui réagit sans anticiper : '+bots.mid.td+'/'+bots.mid.n+' puits, score moyen '+sc_('mid')+' (nettement sous le bon foreur), '+kk('mid')+' kicks par puits');
+  ok(bots.follow.kicks >= bots.good.kicks+0.2 && bots.follow3.kicks >= bots.good3.kicks*1.5, 'avec le retard de circulation, suivre la pression sans l\'anticiper donne plus de kicks : '+kk('follow')+' contre '+kk('good')+' (marge 0,05), '+kk('follow3')+' contre '+kk('good3')+' (marge 0,03)');
   ok(bots.naive.td<=bots.naive.n*0.1, 'foreur qui ignore les incidents : '+bots.naive.td+'/'+bots.naive.n+' puits menés au bout');
   // 3. isolation : la partie en cours n'est pas touchée
   await pg.click('#startBtn'); await pg.click('#labOptGo'); await pg.waitForTimeout(500);
@@ -60,8 +72,11 @@ const { chromium, devices } = require('playwright'); const path = require('path'
   await ph2.locator('#quickTrain button[data-open="rig"]').tap(); await ph2.waitForTimeout(500);
   const ui = await ph2.evaluate(()=>{ const bt=[...document.querySelectorAll('#rgBody button, #rigModal .cg-close')].filter(e=>e.offsetParent).map(e=>Math.round(e.getBoundingClientRect().height)); const sl=[...document.querySelectorAll('#rgBody input[type=range]')].map(e=>Math.round(e.getBoundingClientRect().height)); return { open: document.getElementById('rigModal').classList.contains('open'), chart: !!document.querySelector('#rgChart svg'), minBtn: Math.min(...bt), minSlider: Math.min(...sl), debord: document.documentElement.scrollWidth>innerWidth }; });
   ok(ui.open && ui.chart && ui.minBtn>=39 && ui.minSlider>=28 && !ui.debord, 'téléphone : console ouverte, graphique présent, boutons >= 40 px ('+ui.minBtn+'), curseurs >= 28 px ('+ui.minSlider+'), pas de débordement');
+  // curseur de densité : la note annonce le retard, sans balise visible
+  const nt = await ph2.evaluate(()=>{ const el=document.getElementById('rgMw'); el.value='1.30'; el.dispatchEvent(new Event('input')); const n=document.getElementById('rgMwNote'); return { txt:n.innerText, mw: window.__rig.S.mw, tgt: window.__rig.S.mwTarget, dashed: !!document.querySelector('#rgChart line[stroke-dasharray="3 2"]'), help: !!document.querySelector('.rg-help') }; });
+  ok(/Densité au fond/.test(nt.txt) && !/<b>/.test(nt.txt) && /fond-en-haut/.test(nt.txt) && nt.mw===1.08 && nt.tgt===1.30 && nt.dashed && nt.help, 'téléphone : le curseur annonce le retard de circulation (au fond 1,08 sg, demandée 1,30), ligne pointillée sur le graphique, règles simplifiées affichées');
   // parcours complet au doigt : boue trop légère devant la rampe, kick, fermeture, tuer
-  await ph2.evaluate(()=>{ const S=window.__rig.S; S.z=S.sc.zop-40; S.mw=1.0; });
+  await ph2.evaluate(()=>{ const S=window.__rig.S; S.z=S.sc.zop-40; S.mw=1.0; S.mwTarget=1.0; S.mwQ=[]; });
   await ph2.locator('#rgSpeed').tap(); await ph2.locator('#rgGo').tap(); await ph2.waitForFunction(()=>window.__rig.S.block==='kick', null, {timeout:15000});
   const k1 = await ph2.evaluate(()=>({ banner: /Kick probable/.test(document.getElementById('rgBody').innerText), shut: !!document.getElementById('rgShut'), drilling: window.__rig.S.drilling }));
   ok(k1.banner && k1.shut && !k1.drilling, 'téléphone : le kick met le forage en pause et propose « Fermer le puits »');

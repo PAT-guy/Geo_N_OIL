@@ -8,12 +8,14 @@ const { chromium } = require('playwright'); const path = require('path');
     for(let i=0;i<N;i++){ const f=['eau','huile','gaz'][i%3]; const l=window.__lgm.makeLog(f); if(!l){out.nul++; continue;} out.n++; out.cnt[l.fluid]++;
       const rt=l.rB.rt, gap=l.rB.gap; const pred = rt<10 ? 'eau' : (gap>7 ? 'gaz' : 'huile'); if(pred!==l.fluid) out.faux.push([l.fluid,pred,+rt.toFixed(1),+gap.toFixed(1)]);
       if(!l.qs.every(q=>/<table class="lgm-read"/.test(q.table||''))) out.sansTable++;
-      if(l.qs[1].good!==l.fluid) out.verdictFaux++; }
+      if(l.qs[1].good!==l.fluid) out.verdictFaux++;
+      if(!(l.rng.zA>=l.rng.z0 && l.rng.zA<=l.rng.z1-10 && l.rng.zB>=l.rng.z0 && l.rng.zB<=l.rng.z1-10)) out.horsLog=(out.horsLog||0)+1; }
     out.msParLog=(performance.now()-t0)/N; return out; }, 300);
   console.log(JSON.stringify({n:r.n,nul:r.nul,cnt:r.cnt,faux:r.faux.length,msParLog:Math.round(r.msParLog)}));
   ok(r.nul===0, 'aucun log introuvable (génération par rejet) : '+r.nul+' échecs sur 300');
   ok(r.faux.length===0, 'lecteur idéal : 0 erreur sur '+r.n+' questions de fluide '+JSON.stringify(r.faux.slice(0,4)));
   ok(Math.abs(r.cnt.eau-r.cnt.huile)<=2 && Math.abs(r.cnt.huile-r.cnt.gaz)<=2, 'fluides équilibrés '+JSON.stringify(r.cnt));
+  ok(!r.horsLog, 'les repères A et B sont toujours dans la portion tracée du log ('+(r.horsLog||0)+' hors du dessin sur '+r.n+')');
   ok(r.sansTable===0, 'tableau de valeurs lues présent pour chaque question'); ok(r.verdictFaux===0, 'bonne réponse cohérente avec le fluide imposé');
   ok(r.msParLog<250, 'génération rapide : '+Math.round(r.msParLog)+' ms par log');
   // une manche contient bien les trois fluides
