@@ -8313,7 +8313,9 @@ function _doStartGame(){
         // dans une même manche, on évite de redemander la même roche en A (sinon argile, socle et sédiments meubles reviennent sans cesse)
         const fresh = Object.keys(byCls).filter(k=>!avoid.includes(k)), clsKeys = fresh.length ? fresh : Object.keys(byCls), pickCls = byCls[clsKeys[Math.floor(Math.random()*clsKeys.length)]];
         const A = pickCls[Math.floor(Math.random()*pickCls.length)];
-        const zA = A.h.top + (A.h.thicknessLocal??A.h.thickness)*0.5;
+        // la portion de la couche réellement tracée s'arrête à la fin du log (z1) : le repère A doit tomber dans cette portion, sinon il sort du dessin
+        const visTh = Math.min(A.h.top + (A.h.thicknessLocal??A.h.thickness), g.z1) - A.h.top; if(visTh < 25) continue;
+        const zA = A.h.top + visTh*0.5;
         // log et repères
         let html = wellLogHtml(b);
         const VBW=382, left=38, top=40, plotH=560, right=376, span=g.z1-g.z0;
@@ -8337,7 +8339,7 @@ function _doStartGame(){
           : fluid==='huile' ? `C'était de l'<b>huile</b> : résistivité profonde de ${rtTxt}, bien au-dessus de celle de l'eau salée (une roche aquifère comparable lit moins de 10 Ω·m dans ce jeu), mais écart densité-neutron de ${gapTxt} points seulement : pas de croisement, donc pas de gaz.`
           : `C'était de l'<b>eau salée</b> : résistivité de ${rtTxt} seulement, l'eau de formation conduit. Un puits sec peut avoir un réservoir parfaitement poreux, c'est le fluide qui manque.`;
         const q2 = { text:'En B, dans le réservoir (couche poreuse à ' + Math.round(zB) + ' m), que contient la roche ?', opts:[{k:'gaz',t:'Gaz'},{k:'huile',t:'Huile'},{k:'eau',t:'Eau salée seule (réservoir aquifère)'}], good:fluid, y:yB, why:why2, table: readTable(rB,'B') };
-        return { html, qs:[q1,q2], fluid, rB, rA };
+        return { html, qs:[q1,q2], fluid, rB, rA, rng:{z0:g.z0, z1:g.z1, zA, zB} };
       }
       return null;
     } finally {
