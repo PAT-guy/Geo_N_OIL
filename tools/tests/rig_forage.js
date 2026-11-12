@@ -76,7 +76,7 @@ const { chromium, devices } = require('playwright'); const path = require('path'
   const nt = await ph2.evaluate(()=>{ const el=document.getElementById('rgMw'); el.value='1.30'; el.dispatchEvent(new Event('input')); const n=document.getElementById('rgMwNote'); return { txt:n.innerText, mw: window.__rig.S.mw, tgt: window.__rig.S.mwTarget, dashed: !!document.querySelector('#rgChart line[stroke-dasharray="3 2"]'), help: !!document.querySelector('.rg-help') }; });
   ok(/Densité au fond/.test(nt.txt) && !/<b>/.test(nt.txt) && /fond-en-haut/.test(nt.txt) && nt.mw===1.08 && nt.tgt===1.30 && nt.dashed && nt.help, 'téléphone : le curseur annonce le retard de circulation (au fond 1,08 sg, demandée 1,30), ligne pointillée sur le graphique, règles simplifiées affichées');
   // parcours complet au doigt : boue trop légère devant la rampe, kick, fermeture, tuer
-  await ph2.evaluate(()=>{ const S=window.__rig.S; S.z=S.sc.zop-40; S.mw=1.0; });
+  await ph2.evaluate(()=>{ const S=window.__rig.S; S.z=S.sc.zop-40; S.mw=1.0; S.mwTarget=1.0; S.mwQ=[]; });
   await ph2.locator('#rgSpeed').tap(); await ph2.locator('#rgGo').tap(); await ph2.waitForFunction(()=>window.__rig.S.block==='kick', null, {timeout:15000});
   const k1 = await ph2.evaluate(()=>({ banner: /Kick probable/.test(document.getElementById('rgBody').innerText), shut: !!document.getElementById('rgShut'), drilling: window.__rig.S.drilling }));
   ok(k1.banner && k1.shut && !k1.drilling, 'téléphone : le kick met le forage en pause et propose « Fermer le puits »');
