@@ -35,7 +35,7 @@ const LABO = 'file://' + require('path').resolve(__dirname, '../../index.html');
       Object.entries(EQUIPMENT).forEach(([k,eq])=>{
         if(depth>eq.maxDepth) return;
         const cost = depth*eq.costM*siteCost(b);
-        const ev = pEst*eq.reliability*V - cost;
+        const ev = pEst*(typeof eqReliability==='function' ? eqReliability(eq, depth) : eq.reliability)*V - cost;
         if(!best || ev>best.ev) best={equip:k, cost, ev, V};
       });
       return best;

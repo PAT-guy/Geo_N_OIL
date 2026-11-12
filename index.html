@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.49</title>
+<title>GeoExplorer V4.50</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -682,6 +682,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
         <button type="button" data-quiz="rockeval">🧪 Quiz Rock-Eval<i data-best="rockeval">8 questions</i></button>
         <button type="button" data-quiz="seismic">📡 Quiz sismique<i data-best="seismic">8 questions</i></button>
         <button type="button" data-open="logs">📈 Lire un log<i data-best="logs">8 questions</i></button>
+        <button type="button" data-quiz="forage">⛏ Dimensionner son forage<i data-best="forage">8 questions</i></button>
       </div>
       <button type="button" class="est-clear" id="menuCustomBtn" style="margin-top:14px;">⚙ <span class="i18n" data-fr="Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)" data-en="Customize (map, seed, difficulty, display, mini-games)">Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)</span></button>
     </div>
@@ -849,6 +850,11 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
         <div class="mode-name">🧪 Quiz Rock-Eval</div>
         <div class="mode-desc">TOC, indice d'hydrogène, Tmax : entraînez-vous à interpréter ces trois mesures pour juger du potentiel générateur d'une roche-mère.</div>
         <div class="mode-stats">Durée <span>~1 min</span> · Format <span>Quiz</span></div>
+      </div>
+      <div class="mode-card mg-card" data-quiz="forage" style="cursor:pointer;">
+        <div class="mode-name">⛏ Dimensionner son forage</div>
+        <div class="mode-desc">Choisissez le matériel de forage qui maximise le gain net espéré, ou repérez le puits qui sollicite le plus son matériel. Les coûts, limites et fiabilités sont ceux du jeu, calculés sur des blocs générés.</div>
+        <div class="mode-stats">Durée <span>~2 min</span> · Format <span>Quiz</span></div>
       </div>
       <div class="mode-card mg-card" data-quiz="seismic" style="cursor:pointer;">
         <div class="mode-name">📡 Quiz Sismique</div>
@@ -2624,6 +2630,13 @@ const EQUIPMENT = {
   standard: {label:'Matériel standard', costM:900, reliability:.90, maxDepth:4200},
   renforce: {label:'Matériel renforcé', costM:1350,reliability:.97, maxDepth:5800},
 };
+// V4.50 : la fiabilité d'un matériel dépend de sa charge, c'est-à-dire de la part de sa limite de profondeur utilisée.
+// `reliability` est la valeur à mi-limite ; elle monte pour un puits peu profond et baisse près de la limite
+// (fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)), bornée à 80-110 % de la base, puis à 50-99 %).
+// Règle de jeu assumée : plus un puits sollicite son matériel, plus le risque d'incident technique augmente.
+const EQ_LOAD_SLOPE = 0.3;
+function eqLoadFactor(eq, depth){ return clamp(1 + EQ_LOAD_SLOPE*(0.5 - depth/eq.maxDepth), 0.8, 1.1); }
+function eqReliability(eq, depth){ return clamp(eq.reliability*eqLoadFactor(eq, depth), 0.5, 0.99); }
 const METHODS = {
   vertical:   {label:'Vertical',   costMult:1.0, prodMult:1.0},
   horizontal: {label:'Horizontal', costMult:1.8, prodMult:1.7},
@@ -2748,11 +2761,11 @@ function resolveDrilling(d){
   const labResIdx = STRAT.findIndex(l=>l.role==='reservoir');
   const labMissed = G.labPick!=null && G.labPick!==labResIdx;
   if(labMissed) geoOk = false;
-  const techRoll = Math.random() < eq.reliability;
   // Le coût payé au lancement repose sur la profondeur ESTIMÉE. Une fois le
   // trou foré, on règle l'écart avec la profondeur réelle (dépassement ou
   // économie), et un matériel trop faible pour la vraie profondeur échoue.
   const trueDepth = (G.labPick!=null && b.horizons[G.labPick]) ? b.horizons[G.labPick].top : b.topOfReservoir;
+  const techRel = eqReliability(eq, trueDepth), techRoll = Math.random() < techRel;
   const settleDelta = (trueDepth - d.depth) * eq.costM * me.costMult * siteCost(b, d.cf ?? 1);
   if(Math.abs(settleDelta) > 1000){
     G.budget -= settleDelta; d.cost += settleDelta;
@@ -2787,7 +2800,8 @@ function resolveDrilling(d){
     revealTrueGeology(b);
     b.dryHole = true;
     b.wrongTarget = !!labMissed;
-    b.dryHoleInfo = {cost:d.cost, studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month, techFail: !geoOk ? false : true};
+    b.dryHoleInfo = {cost:d.cost, studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month, techFail: !geoOk ? false : true,
+      techDetail: (!geoOk ? null : {equip:d.equip, depth:Math.round(trueDepth), rel:techRel, tooDeep})};
     b.el?.classList.add('dry-hole');
     const why = !geoOk ? 'aucun HC (puits sec)' : 'échec technique';
     addLog(`✗ Forage infructueux : bloc (${b.x},${b.y}), ${why}.`,'bad');
@@ -3543,7 +3557,7 @@ function debriefEntry(b, info, success){
       `Décision prise avec ${studyNote}.`;
   } else {
     verdict = `<b>Bloc (${b.x},${b.y})</b>, ${formatM(info.cost)} : puits sec. `+
-      (info.techFail ? `Échec technique du matériel (géologie potentiellement correcte, la fiabilité du forage a joué). ` :
+      (info.techFail ? `Échec technique du matériel (géologie potentiellement correcte). ${info.techDetail ? (info.techDetail.tooDeep ? `Le réservoir était à ${info.techDetail.depth} m, au-delà de la limite du ${EQUIPMENT[info.techDetail.equip].label.toLowerCase()} (${EQUIPMENT[info.techDetail.equip].maxDepth} m). ` : `Le ${EQUIPMENT[info.techDetail.equip].label.toLowerCase()} avait une fiabilité de ${Math.round(info.techDetail.rel*100)} % à ${info.techDetail.depth} m (${Math.round(info.techDetail.depth/EQUIPMENT[info.techDetail.equip].maxDepth*100)} % de sa limite) : un matériel plus robuste réduit ce risque. `) : ''}` :
       `Le facteur limitant était <b>${FACTOR_LABEL[worstName]}</b> (${(worstVal*100).toFixed(0)}%) : ${FACTOR_EXPLAIN_BAD[worstName]}. `)+
       (underInformed ? `Décision prise avec seulement ${studyNote} : une étude plus poussée (sismique, log) aurait pu révéler ce problème avant de forer.`
                      : `Décision prise avec ${studyNote} : l'information disponible ne permettait pas forcément d'anticiper ce problème précis.`);
@@ -4350,7 +4364,7 @@ function renderStudiesPanel(b){
         ${Object.entries(METHODS).filter(([k])=>k!=='strati'||LABOPT.strati).map(([k,m])=>`<option value="${k}" ${k==='vertical'?'selected':''}>${m.label}</option>`).join('')}
       </select>
       <select class="drill-select" id="drillEquip" onchange="updateDrillSummary(${b.id})">
-        ${Object.entries(EQUIPMENT).map(([k,e])=>`<option value="${k}" ${k==='standard'?'selected':''}>${e.label} (max ${e.maxDepth}m, fiab. ${(e.reliability*100).toFixed(0)}%)</option>`).join('')}
+        ${Object.entries(EQUIPMENT).map(([k,e])=>`<option value="${k}" ${k==='standard'?'selected':''}>${e.label} (max ${e.maxDepth} m, fiab. ${(e.reliability*100).toFixed(0)} % à mi-limite)</option>`).join('')}
       </select>
       <div class="drill-summary" id="drillSummary"></div>
       <div class="est-card">
@@ -4445,11 +4459,12 @@ function updateDrillSummary(blockId){
   const breakeven=proj.payback;
   const beClass=breakeven===null?'ds-bad':breakeven<18?'ds-good':breakeven<36?'ds-warn':'ds-bad';
   const beText=breakeven===null?'Non rentabilisé en 10 ans au cours actuel, même si le puits produit':`Rentabilisé en ~${breakeven} mois si le puits produit (déclin inclus)`;
-  const evNet=probKnown?prob*eq.reliability*proj.cum-(G.mode==='sandbox'?0:cost):null;
+  const relHere = eqReliability(eq, depth);
+  const evNet=probKnown?prob*relHere*proj.cum-(G.mode==='sandbox'?0:cost):null;
 
   summary.innerHTML=`
     <div class="tr"><span class="tl">Coût forage estimé</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}${b.isOffshore?' (offshore)':''}</span></div>
-    <div class="tr"><span class="tl">Probabilité de succès</span><span>${probKnown?`${(prob*100).toFixed(0)}% × ${(eq.reliability*100).toFixed(0)}% (fiabilité)`:'Inconnue : réalisez une sismique 3D pour l\'estimer'}</span></div>
+    <div class="tr"><span class="tl">Probabilité de succès</span><span>${probKnown?`${(prob*100).toFixed(0)}% × ${(relHere*100).toFixed(0)}% (fiabilité du matériel à ${Math.round(depth)} m, soit ${Math.round(depth/eq.maxDepth*100)}% de sa limite)`:'Inconnue : réalisez une sismique 3D pour l\'estimer'}</span></div>
     <div class="tr"><span class="tl">Production si succès</span><span>~${Math.round(estProd)} ${b.estimate.isGas?'Mcf':'barils'}/mois</span></div>
     <div class="tr"><span class="tl">Profit mensuel net au départ</span><span style="color:${netMonth>0?'var(--green)':'var(--red)'};">${formatM(netMonth)}/mois</span></div>
     ${evNet===null?'':`<div class="tr"><span class="tl">Gain net espéré sur 10 ans</span><span style="color:${evNet>0?'var(--green)':'var(--red)'};">${formatM(evNet)}</span></div>`}
@@ -5908,7 +5923,7 @@ function guideEV(b){
   let best = null;
   eqs.forEach(([k,e])=>{
     const cost = depth*e.costM*METHODS.vertical.costMult*siteCost(b);
-    const ev = b.estimate.prob*e.reliability*cum - cost;
+    const ev = b.estimate.prob*eqReliability(e, depth)*cum - cost;
     if(!best || ev>best.ev) best = {ev, cost, equip:k};
   });
   return best;
@@ -7578,6 +7593,26 @@ function _doStartGame(){
   };
 
   let qzBank = null, qzKey = null, qzOrder = [], qzIdx = 0, qzScore = 0, qzAsked = 0;
+
+  QUIZ_BANKS.forage = {
+      title: '⛏ Dimensionner son forage',
+      gen: ()=>qzGenForage(), // 6 questions de calcul tirées de blocs générés + 2 questions de la liste fixe
+      questions: [
+        {q:'Un puits exploratoire est prévu à 1 800 m. Pourquoi ne pas choisir systématiquement le matériel le plus robuste ?',
+         choices:['Il coûte plus cher au mètre : si la probabilité de succès est faible ou le gain modeste, le surcoût n\'est pas payé par la fiabilité en plus','Il fore moins vite et ne peut pas atteindre 1 800 m','Il est interdit en dessous de 2 000 m'], correct:0,
+         explain:'Le matériel renforcé coûte 1 350 par mètre contre 600 pour le léger. Sa fiabilité plus haute rapporte seulement si le gain espéré est assez grand pour payer l\'écart de coût ; sur un puits peu profond et peu probable, il fait perdre de l\'argent.'},
+        {q:'Le réservoir est estimé à 4 000 m mais se révèle à 4 600 m. Matériel choisi : standard (limite 4 200 m). Que se passe-t-il ?',
+         choices:['Le matériel est insuffisant : le puits échoue techniquement, même si la géologie est bonne','Rien, la limite est indicative','Le coût diminue puisque le puits est plus profond'], correct:0,
+         explain:'La limite de profondeur est une contrainte dure : au-delà, le matériel ne peut pas terminer le puits. C\'est pourquoi une incertitude de profondeur sur la sismique se paie : elle pousse à choisir un matériel avec de la marge.'},
+        {q:'Deux puits de même profondeur, 3 000 m, l\'un avec un matériel standard (limite 4 200 m), l\'autre avec un matériel léger. Lequel est le plus sûr ?',
+         choices:['Le standard : à 3 000 m il est à 71 % de sa limite, le léger dépasserait la sienne','Le léger, car il est plus simple','Les deux sont aussi sûrs'], correct:0,
+         explain:'Un matériel léger plafonne à 2 500 m : il ne peut pas forer à 3 000 m. La sécurité d\'un puits se juge en rapportant la profondeur à la limite du matériel, pas à la profondeur seule.'},
+        {q:'Quel est le principal effet d\'un coût de forage qui augmente avec le prix du pétrole ?',
+         choices:['Quand le prix monte, les loyers de rigs montent aussi : forer coûte plus cher au moment où le gain espéré est le plus haut','Les puits deviennent gratuits quand le prix baisse','Le prix n\'a aucun lien avec les coûts'], correct:0,
+         explain:'Les contractants de forage ajustent leurs tarifs au cycle pétrolier. Le jeu relie le coût de forage au prix du brut : un bon prix ne rend donc pas automatiquement chaque puits rentable.'},
+      ],
+  };
+
   const QZ_ROUND = 8; // questions par manche, tirées au hasard sans répétition
 
   function qzShuffled(arr){ return [...arr].sort(()=>Math.random()-.5); }
@@ -7753,6 +7788,62 @@ function _doStartGame(){
     });
   }
 
+
+  // ── Quiz « Dimensionner son forage » : coûts, limites et fiabilités du jeu (EQUIPMENT, eqReliability) sur des blocs générés ──
+  const QZ_EQ = ['leger','standard','renforce'];
+  const qzM = v => { const a=Math.abs(v), t = a>=1e6 ? (a/1e6).toFixed(a>=1e7?1:2)+' M$' : Math.round(a/1e3)+' k$'; return (v<0?'−':'')+t.replace('.',','); };
+  function qzGenForage(){
+    const out = [];
+    return qzIsolated(()=>{
+      // 4 questions de gain net espéré : le matériel qui maximise p × fiabilité × gain − coût, avec la limite de profondeur comme contrainte
+      // une question par bonne réponse possible (léger, standard, renforcé) pour que « le standard » ne soit pas toujours juste ; la 4e est
+      // « ne pas forer » une fois sur deux, sinon un second standard
+      const targets = qzShuffled(['leger','standard','renforce', Math.random()<0.5 ? 'none' : 'standard']);
+      for(let k=0;k<4;k++){
+        const target = targets[k], wantNone = (target==='none');
+        let done = false;
+        for(let gen=0; gen<12 && !done; gen++){
+          generateGeology(12, QZ_BT[Math.floor(Math.random()*QZ_BT.length)], true, (Math.random()*1e9)|0);
+          for(const b of qzShuffled(blocks.filter(x=>!x.inSalt)).slice(0,40)){
+          if(done) break;
+          const depth = Math.round(b.topOfReservoir/50)*50; if(depth<600 || depth>5600) continue;
+          const p = Math.round(Math.min(0.9, Math.max(0.1, b.trueProbability))*20)/20;
+          const gain = Math.round((wantNone ? 1 + Math.random()*4 : target==='renforce' ? 8 + Math.random()*32 : 3 + Math.random()*22)*2)/2*1e6;   // valeur d'un succès, en $
+          const rows = QZ_EQ.map(id=>{ const e=EQUIPMENT[id]; const ok = depth<=e.maxDepth, rel = eqReliability(e, depth), cost = depth*e.costM; return {id, e, ok, rel, cost, ev: ok ? p*rel*gain - cost : -Infinity}; });
+          const valid = rows.filter(r=>r.ok); if(!valid.length) continue;
+          const sorted = [...valid].sort((a,c)=>c.ev-a.ev), top = sorted[0], second = sorted[1];
+          const none = top.ev <= 0;
+          if(none !== wantNone || (!none && top.id !== target)) continue;
+          const margin = none ? Math.abs(top.ev) : (second ? top.ev - second.ev : top.ev);
+          if(margin < Math.max(0.04*gain, 120000)) continue;
+          const fr = v => String(v).replace('.',',');
+          const opts = [...QZ_EQ.map(id=>({k:id, t:`${EQUIPMENT[id].label.replace('Matériel ','Matériel ')} (${qzM(depth*EQUIPMENT[id].costM)}, limite ${EQUIPMENT[id].maxDepth} m)`})), {k:'none', t:'Ne pas forer'}];
+          const good = none ? 'none' : top.id;
+          out.push({ gen:true, kind:'ev', meta:{depth,p,gain,none, rows:rows.map(r=>({id:r.id,ok:r.ok,rel:r.rel,cost:r.cost,ev:r.ev}))}, q:`Bloc dont le réservoir est à ${depth} m, probabilité de succès géologique estimée à ${Math.round(p*100)} %. Un succès rapporterait ${qzM(gain)} sur la durée de vie du puits. Coût = coût au mètre du matériel (600, 900 ou 1 350) × profondeur. Fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)) : bases 78 % (léger), 90 % (standard), 97 % (renforcé). Quel choix maximise le gain net espéré (p × fiabilité × gain − coût) ?`,
+            choices:opts.map(o=>o.t), correct:opts.findIndex(o=>o.k===good),
+            explain: rows.map(r=> r.ok ? `${r.e.label.replace('Matériel ','')} : fiabilité ${Math.round(r.rel*100)} % à ${Math.round(depth/r.e.maxDepth*100)} % de sa limite, gain net espéré ${Math.round(p*100)} % × ${Math.round(r.rel*100)} % × ${qzM(gain)} − ${qzM(r.cost)} = ${qzM(r.ev)}` : `${r.e.label.replace('Matériel ','')} : exclu, la limite de ${r.e.maxDepth} m est inférieure à ${depth} m`).join(' ; ')+`. ${none ? 'Aucun matériel n\'a un gain net espéré positif : il vaut mieux ne pas forer.' : (top.id===valid[0].id ? 'Ici le matériel le moins cher l\'emporte : la fiabilité qu\'il perd coûte moins que le surcoût des autres.' : 'Le matériel le moins cher n\'est pas toujours le meilleur : un surcoût peut être payé par une fiabilité plus haute.')}` });
+          done = true; break;
+          }
+        }
+      }
+      // 2 questions : parmi trois puits, lequel a le matériel le moins fiable (profondeur rapportée à la limite)
+      for(let k=0;k<2;k++){
+        for(let tries=0; tries<200; tries++){
+          const trio = [];
+          for(let i=0;i<3;i++){ const id = QZ_EQ[Math.floor(Math.random()*3)], e = EQUIPMENT[id]; const depth = Math.round((0.25 + Math.random()*0.72)*e.maxDepth/50)*50; trio.push({id,e,depth,rel:eqReliability(e,depth)}); }
+          if(new Set(trio.map(t=>t.id+t.depth)).size<3) continue;
+          const rs = trio.map(t=>t.rel), mn = Math.min(...rs), sorted=[...rs].sort((a,c)=>a-c); if(sorted[1]-sorted[0] < 0.025) continue;
+          const names = ['A','B','C'];
+          out.push({ gen:true, kind:'fiab', meta:{trio:trio.map(t=>({id:t.id,depth:t.depth,rel:t.rel}))}, q:`Trois puits. A : ${trio[0].e.label.toLowerCase()} (limite ${trio[0].e.maxDepth} m, base ${Math.round(trio[0].e.reliability*100)} %) à ${trio[0].depth} m. B : ${trio[1].e.label.toLowerCase()} (limite ${trio[1].e.maxDepth} m, base ${Math.round(trio[1].e.reliability*100)} %) à ${trio[1].depth} m. C : ${trio[2].e.label.toLowerCase()} (limite ${trio[2].e.maxDepth} m, base ${Math.round(trio[2].e.reliability*100)} %) à ${trio[2].depth} m. Lequel risque le plus un échec technique ? (fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)))`,
+            choices:['Puits A','Puits B','Puits C'], correct: rs.indexOf(mn),
+            explain: trio.map((t,i)=>`${names[i]} : ${t.depth} / ${t.e.maxDepth} = ${Math.round(t.depth/t.e.maxDepth*100)} % de la limite, fiabilité ${Math.round(t.rel*100)} %`).join(' ; ')+'. Ce qui compte est la part de la limite utilisée, pas la profondeur absolue : un puits profond avec un matériel renforcé peut être plus sûr qu\'un puits moyen avec un matériel léger.' });
+          break;
+        }
+      }
+      return out;
+    });
+  }
+
   function qzGenRockeval(){
     return qzIsolated(()=>{
       const out = [];
@@ -7881,7 +7972,7 @@ function _doStartGame(){
   document.querySelectorAll('.mg-card[data-quiz]').forEach(card=>{
     card.addEventListener('click', ()=>qzOpen(card.dataset.quiz));
   });
-  window.__qz = { qzGenMaturation, qzGenRockeval, qzGenSeismic, qzGenLitho, qzLithProto, qzLithDist, qzBuildRound, QUIZ_BANKS };   // pour les tests
+  window.__qz = { qzGenForage, qzGenMaturation, qzGenRockeval, qzGenSeismic, qzGenLitho, qzLithProto, qzLithDist, qzBuildRound, QUIZ_BANKS };   // pour les tests
   document.getElementById('qzCloseBtn').addEventListener('click', ()=>{
     document.getElementById('quizModal').classList.remove('open');
   });
