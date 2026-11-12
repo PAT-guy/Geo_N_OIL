@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.51</title>
+<title>GeoExplorer V4.52</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -7425,6 +7425,7 @@ function _doStartGame(){
 .qz-choice:hover{border-color:var(--amber);}
 .qz-choice.correct{border-color:var(--green);background:var(--panel2);color:var(--green);}
 .qz-choice.wrong{border-color:var(--red);color:var(--red);}
+.qz-tbl{width:100%;border-collapse:collapse;margin:6px 0;font-family:var(--mono);font-size:10.5px;color:var(--text);}.qz-tbl th,.qz-tbl td{border:1px solid var(--line);padding:4px 4px;text-align:center;}.qz-tbl th{background:var(--panel);font-family:var(--sans);font-size:10px;font-weight:600;}.qz-tbl tr.best td{background:var(--panel2);color:var(--green);}.qz-tbl tr.off td{color:var(--muted);}
 .qz-feedback{width:100%;max-width:600px;margin-top:14px;font-size:11px;color:var(--muted);line-height:1.6;display:none;}
 .qz-feedback.show{display:block;}
 .qz-footer{width:100%;max-width:600px;margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
@@ -7802,34 +7803,47 @@ function _doStartGame(){
   function qzGenForage(){
     const out = [];
     return qzIsolated(()=>{
-      // 4 questions de gain net espéré : le matériel qui maximise p × fiabilité × gain − coût, avec la limite de profondeur comme contrainte
-      // une question par bonne réponse possible (léger, standard, renforcé) pour que « le standard » ne soit pas toujours juste ; la 4e est
-      // « ne pas forer » une fois sur deux, sinon un second standard
+      // 4 questions de gain net espéré : le matériel qui maximise p × fiabilité × gain − coût, avec la limite de profondeur comme contrainte.
+      // Le gain d'un succès vient du bloc : production initiale estimée (qualité × épaisseur × règles du jeu) projetée sur 10 ans au prix du brut affiché.
+      // Une question par bonne réponse possible (léger, standard, renforcé), la 4e est « ne pas forer » une fois sur deux, sinon un second standard.
       const targets = qzShuffled(['leger','standard','renforce', Math.random()<0.5 ? 'none' : 'standard']);
+      const CF = DRILL_COST_LEVEL;                     // niveau de coût du jeu au prix de départ (80 $)
       for(let k=0;k<4;k++){
         const target = targets[k], wantNone = (target==='none');
         let done = false;
-        for(let gen=0; gen<12 && !done; gen++){
-          generateGeology(12, QZ_BT[Math.floor(Math.random()*QZ_BT.length)], true, (Math.random()*1e9)|0);
-          for(const b of qzShuffled(blocks.filter(x=>!x.inSalt)).slice(0,40)){
-          if(done) break;
-          const depth = Math.round(b.topOfReservoir/50)*50; if(depth<600 || depth>5600) continue;
-          const p = Math.round(Math.min(0.9, Math.max(0.1, b.trueProbability))*20)/20;
-          const gain = Math.round((wantNone ? 1 + Math.random()*4 : target==='renforce' ? 8 + Math.random()*32 : 3 + Math.random()*22)*2)/2*1e6;   // valeur d'un succès, en $
-          const rows = QZ_EQ.map(id=>{ const e=EQUIPMENT[id]; const ok = depth<=e.maxDepth, rel = eqReliability(e, depth), cost = depth*e.costM; return {id, e, ok, rel, cost, ev: ok ? p*rel*gain - cost : -Infinity}; });
-          const valid = rows.filter(r=>r.ok); if(!valid.length) continue;
-          const sorted = [...valid].sort((a,c)=>c.ev-a.ev), top = sorted[0], second = sorted[1];
-          const none = top.ev <= 0;
-          if(none !== wantNone || (!none && top.id !== target)) continue;
-          const margin = none ? Math.abs(top.ev) : (second ? top.ev - second.ev : top.ev);
-          if(margin < Math.max(0.04*gain, 120000)) continue;
-          const fr = v => String(v).replace('.',',');
-          const opts = [...QZ_EQ.map(id=>({k:id, t:`${EQUIPMENT[id].label.replace('Matériel ','Matériel ')} (${qzM(depth*EQUIPMENT[id].costM)}, limite ${EQUIPMENT[id].maxDepth} m)`})), {k:'none', t:'Ne pas forer'}];
-          const good = none ? 'none' : top.id;
-          out.push({ gen:true, kind:'ev', meta:{depth,p,gain,none, rows:rows.map(r=>({id:r.id,ok:r.ok,rel:r.rel,cost:r.cost,ev:r.ev}))}, q:`Bloc dont le réservoir est à ${depth} m, probabilité de succès géologique estimée à ${Math.round(p*100)} %. Un succès rapporterait ${qzM(gain)} sur la durée de vie du puits. Coût = coût au mètre du matériel (600, 900 ou 1 350) × profondeur. Fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)) : bases 78 % (léger), 90 % (standard), 97 % (renforcé). Quel choix maximise le gain net espéré (p × fiabilité × gain − coût) ?`,
-            choices:opts.map(o=>o.t), correct:opts.findIndex(o=>o.k===good),
-            explain: rows.map(r=> r.ok ? `${r.e.label.replace('Matériel ','')} : fiabilité ${Math.round(r.rel*100)} % à ${Math.round(depth/r.e.maxDepth*100)} % de sa limite, gain net espéré ${Math.round(p*100)} % × ${Math.round(r.rel*100)} % × ${qzM(gain)} − ${qzM(r.cost)} = ${qzM(r.ev)}` : `${r.e.label.replace('Matériel ','')} : exclu, la limite de ${r.e.maxDepth} m est inférieure à ${depth} m`).join(' ; ')+`. ${none ? 'Aucun matériel n\'a un gain net espéré positif : il vaut mieux ne pas forer.' : (top.id===valid[0].id ? 'Ici le matériel le moins cher l\'emporte : la fiabilité qu\'il perd coûte moins que le surcoût des autres.' : 'Le matériel le moins cher n\'est pas toujours le meilleur : un surcoût peut être payé par une fiabilité plus haute.')}` });
-          done = true; break;
+        for(let gen=0; gen<30 && !done; gen++){
+          generateGeology(12, QZ_BT[Math.floor(Math.random()*QZ_BT.length)], false, (Math.random()*1e9)|0);
+          for(const b of qzShuffled(blocks.filter(x=>!x.inSalt && (target!=='renforce' || x.topOfReservoir>=3300)))){
+            if(done) break;
+            const depth = Math.round(b.topOfReservoir/50)*50; if(depth<600 || depth>5600) continue;
+            const p = Math.round(Math.min(0.9, Math.max(0.1, b.trueProbability))*20)/20;
+            const res = b.horizons.find(h=>h.role==='reservoir'); if(!res) continue;
+            const prod0 = Math.round((b.trueQuality/100)*(res.thicknessLocal ?? res.thickness)*PROD_BASE*METHODS.vertical.prodMult*prodSite(b));
+            // prix du brut tiré dans la plage du jeu : il fait varier le gain, donc la bonne réponse
+            const price = Math.round((wantNone ? 30 + Math.random()*30 : target==='renforce' ? 100 + Math.random()*50 : 45 + Math.random()*75));
+            const gain = Math.round(projectWell(prod0, price, false, false, 0, 120).cum/1e5)/10*1e6;   // arrondi à 0,1 M$
+            if(gain < 0.5e6) continue;
+            const rows = QZ_EQ.map(id=>{ const e=EQUIPMENT[id]; const ok = depth<=e.maxDepth, rel = eqReliability(e, depth), cost = Math.round(depth*e.costM*CF/1e4)/100*1e6; return {id, e, ok, rel, cost, ev: ok ? p*rel*gain - cost : -Infinity}; });
+            const valid = rows.filter(r=>r.ok); if(!valid.length) continue;
+            const sorted = [...valid].sort((a,c)=>c.ev-a.ev), top = sorted[0], second = sorted[1];
+            const none = top.ev <= 0;
+            if(none !== wantNone || (!none && top.id !== target)) continue;
+            const margin = none ? Math.abs(top.ev) : (second ? top.ev - second.ev : top.ev);
+            if(margin < Math.max(0.04*gain, 120000)) continue;
+            const good = none ? 'none' : top.id;
+            const opts = [...QZ_EQ.map(id=>{ const r=rows.find(x=>x.id===id); return {k:id, t:`${EQUIPMENT[id].label} (${qzM(r.cost)}, limite ${EQUIPMENT[id].maxDepth} m)`}; }), {k:'none', t:'Ne pas forer'}];
+            // tableau des issues : chance de réussir, résultat si réussi, si raté, gain net moyen (exact, pas simulé)
+            const chosenIdx = opts.findIndex(o=>o.k===good);
+            const tbl = rows.map(r=>{ const pw = p*r.rel; return r.ok ? `<tr${r.id===good?' class="best"':''}><td>${r.e.label.replace('Matériel ','')}</td><td>${Math.round(pw*100)} %</td><td>${qzM(gain-r.cost)}</td><td>${qzM(-r.cost)}</td><td><b>${qzM(r.ev)}</b></td></tr>` : `<tr class="off"><td>${r.e.label.replace('Matériel ','')}</td><td colspan="4">exclu : limite ${r.e.maxDepth} m &lt; ${depth} m</td></tr>`; }).join('')
+              + `<tr${none?' class="best"':''}><td>Ne pas forer</td><td>-</td><td>0</td><td>0</td><td><b>0</b></td></tr>`;
+            out.push({ gen:true, kind:'ev', meta:{depth,p,gain,price,prod0,cf:CF,none, rows:rows.map(r=>({id:r.id,ok:r.ok,rel:r.rel,cost:r.cost,ev:r.ev}))},
+              q:`Bloc à terre dont le réservoir est à ${depth} m, probabilité de succès géologique estimée à ${Math.round(p*100)} %. Production initiale attendue : ${prod0} barils par mois. Au brut à ${price} $, un succès rapporterait ${qzM(gain)} net sur 10 ans (règles de production du jeu). Coût = coût au mètre × profondeur × ${String(CF).replace('.',',')} (niveau de coût du jeu). Fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)), bases 78 % (léger), 90 % (standard), 97 % (renforcé). Quel choix maximise le gain net espéré (p × fiabilité × gain − coût) ?`,
+              choices:opts.map(o=>o.t), correct:opts.findIndex(o=>o.k===good),
+              explainHtml: `<div>${none ? 'Aucun matériel n\'a un gain net espéré positif : il vaut mieux ne pas forer.' : (top.id===valid[0].id ? 'Ici le matériel le moins cher l\'emporte : la fiabilité qu\'il perd coûte moins que le surcoût des autres.' : 'Le matériel le moins cher n\'est pas toujours le meilleur : un surcoût peut être payé par une fiabilité plus haute.')} Voici les issues, calculées exactement pour chaque choix :</div>
+                <table class="qz-tbl"><tr><th>Choix</th><th>Chance de réussir</th><th>Si réussi</th><th>Si raté</th><th>Gain net moyen</th></tr>${tbl}</table>
+                <div style="margin-top:6px;">Chance de réussir = probabilité géologique × fiabilité du matériel à cette profondeur. Le gain net moyen est une moyenne : un puits isolé réussit ou rate, seule une série de puits s'en approche.</div>`,
+              explain: 'Voir le tableau des issues.' });
+            done = true; break;
           }
         }
       }
@@ -7940,7 +7954,7 @@ function _doStartGame(){
         else { btn.classList.add('wrong'); }
         document.getElementById('qzScore').textContent = `Question ${qzIdx+1}/${qzOrder.length} · score ${qzScore}/${qzAsked}`;
         const fb = document.getElementById('qzFeedback');
-        fb.textContent = (chosen===q.correct ? '✓ Correct. ' : '✗ Pas tout à fait. ') + q.explain;
+        if(q.explainHtml) fb.innerHTML = (chosen===q.correct ? '✓ Correct. ' : '✗ Pas tout à fait. ') + q.explainHtml; else fb.textContent = (chosen===q.correct ? '✓ Correct. ' : '✗ Pas tout à fait. ') + q.explain;
         fb.classList.add('show');
         document.getElementById('qzNextBtn').style.display = '';
       });
