@@ -1,0 +1,7 @@
+// Mesure (pas de verdict) : part de blocs prometteurs et taille des gisements (blocs voisins >= 60 %) selon la taille de carte. Sert à recalibrer les grandes cartes.
+const { chromium } = require('playwright');
+(async()=>{ const br=await chromium.launch();
+for(const f of [require('path').resolve(__dirname,'../../index.html')]){ const pg=await br.newPage(); await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}}); await pg.goto('file://'+f); await pg.waitForTimeout(300);
+ console.log(f.split('/').pop(), JSON.stringify(await pg.evaluate(()=>{ const res={}; for(const gs of [12,25,50]){ let nb=0,sizes=[],good=0,tot=0,hi=0; for(const bt of ['paris','north_sea','aquitaine']) for(const seed of [1,2,3,4]){ generateGeology(gs,bt,true,seed*77+gs); const ok=new Set(blocks.filter(b=>b.trueProbability>=0.6).map(b=>b.id)); tot+=blocks.length; good+=ok.size; const seen=new Set(); blocks.forEach(b=>{ if(!ok.has(b.id)||seen.has(b.id)) return; let st=[b],n=0; seen.add(b.id); while(st.length){ const c=st.pop(); n++; blocks.forEach(o=>{ if(ok.has(o.id)&&!seen.has(o.id)&&Math.abs(o.x-c.x)+Math.abs(o.y-c.y)===1){ seen.add(o.id); st.push(o);} }); } sizes.push(n); nb++; }); }
+  sizes.sort((a,b)=>a-b); res[gs]={ pctGood:+(100*good/tot).toFixed(1), clustersPer100Blocks:+(100*nb/tot).toFixed(2), medianCluster:sizes[sizes.length>>1], p90:sizes[Math.floor(sizes.length*0.9)], max:sizes[sizes.length-1] }; } return res; })));
+ await pg.close(); } await br.close(); })();
