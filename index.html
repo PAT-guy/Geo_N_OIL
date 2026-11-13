@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.55</title>
+<title>GeoExplorer V4.56</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -8228,6 +8228,14 @@ function _doStartGame(){
   .lgm-q .qz-question{padding:9px 12px;font-size:13px;line-height:1.45;}
   .lgm-q .qz-choices{margin-top:8px;gap:6px;}
   .lgm-q .qz-footer{position:sticky;bottom:0;background:var(--bg);margin-top:6px;padding:6px 0 0;}
+  .lgm-q .qz-question{padding:8px 11px;margin-top:0;font-size:13px;border-radius:10px;}
+  .lgm-q .qz-kind, .lgm-q .qz-note{display:none;}   /* gain de place sur téléphone : les formules sont dans « Légende et aide » */
+  .lgm-q .qz-choices.two{grid-template-columns:1fr 1fr;}
+  .lgm-q .qz-facts{grid-template-columns:repeat(3,1fr);gap:5px;margin:0 0 6px;}
+  .lgm-q .qz-fact{padding:4px 6px;border-radius:8px;} .lgm-q .qz-fact span{font-size:8.5px;} .lgm-q .qz-fact b{font-size:11.5px;}
+  .lgm-q .qz-ask{font-size:13.5px;line-height:1.35;} .lgm-q .qz-note{font-size:11px;margin-top:4px;}
+  .lgm-q .qz-choice{min-height:44px;padding:5px 10px;gap:9px;font-size:13px;border-radius:10px;} .lgm-q .qz-letter{width:24px;height:24px;font-size:11.5px;}
+
   .lgm-q .qz-feedback{margin-top:8px;}
 }
 @media (max-width:720px){
@@ -8252,7 +8260,7 @@ function _doStartGame(){
       <div class="qz-choices" id="lgmChoices" style="margin-top:12px;"></div>
       <div class="qz-feedback" id="lgmFeedback"></div>
       <div class="qz-footer"><button class="study-btn" id="lgmNext" style="display:none;">Suite →</button><span style="font-size:11px;color:var(--muted);" id="lgmScore"></span></div>
-      <details class="lgm-det" id="lgmDet"><summary>Légende et aide</summary><div class="lgm-hint" id="lgmHint">Chaque log vient d'un puits tiré au hasard (bassin et seed différents). Les courbes : GR en vert, résistivité en rouge (trait plein : profonde, pointillé : peu profonde), densité en rouge et neutron en bleu pointillé (le jaune signale un croisement), sonique en violet. La colonne de gauche donne les couches, sans leur nom.<br><br><b>Repères de lecture du jeu.</b> Dans une roche poreuse, une résistivité profonde sous 10 Ω·m indique de l'eau salée, au-dessus des hydrocarbures. Le jaune (neutron nettement sous la porosité-densité) distingue le gaz de l'huile. Ces repères sont calibrés sur les puits du jeu et chaque question est choisie pour qu'ils tranchent : sur de vrais logs, les cas ambigus existent (roche argileuse, eau douce, gaz peu saturé) et les mêmes courbes se discutent.</div></details>
+      <details class="lgm-det" id="lgmDet"><summary>Légende et aide</summary><div class="lgm-hint" id="lgmHint">Chaque log vient d'un puits tiré au hasard (bassin et seed différents). Les courbes : GR en vert, résistivité en rouge (trait plein : profonde, pointillé : peu profonde), densité en rouge et neutron en bleu pointillé (le jaune signale un croisement), sonique en violet. La colonne de gauche donne les couches, sans leur nom.<br><br><b>Repères de lecture du jeu.</b> Dans une roche poreuse, une résistivité profonde sous 10 Ω·m indique de l'eau salée, au-dessus des hydrocarbures. Le jaune (neutron nettement sous la porosité-densité) distingue le gaz de l'huile. <b>Formules des questions de calcul.</b> Volume d'argile : Vsh = (GR − GR roche propre) / (GR argile − GR roche propre). Porosité-densité : φ = (ρ matrice − ρb) / (ρ matrice − ρ fluide). Saturation en eau (Archie, a = 1, m = n = 2) : Sw = √(Rw / (φ² × Rt)). Contact : la résistivité chute nettement sous le contact hydrocarbures-eau.<br><br>Ces repères sont calibrés sur les puits du jeu et chaque question est choisie pour qu'ils tranchent : sur de vrais logs, les cas ambigus existent (roche argileuse, eau douce, gaz peu saturé) et les mêmes courbes se discutent.</div></details>
     </div>
   </div>
 </div>
@@ -8265,7 +8273,7 @@ function _doStartGame(){
 // n'est jamais touchée.
 // =====================================================================
 (function(){
-  const LGM_LOGS = 4;
+  const LGM_LOGS = 3;   // 3 puits (eau, huile, gaz) de 3 questions : roche ou volume d'argile en A, fluide en B, calcul ou contact sur le réservoir
   const LABEL = {sandstone:'Grès', limestone:'Calcaire', dolomite:'Dolomie', shale:'Argile ou schiste', source:'Roche-mère organique (black shale)',
     halite:'Sel gemme (halite)', anhydrite:'Anhydrite', gypsum:'Gypse', potash:'Sel potassique', coal:'Charbon', basement:'Socle cristallin', basalt:'Basalte', uncons:'Sédiments meubles'};
   const FAMILY = [['halite','anhydrite','gypsum','potash'],['sandstone','limestone','dolomite'],['shale','source','coal'],['basement','basalt','uncons']];
@@ -8320,9 +8328,12 @@ function _doStartGame(){
   }
 
   // Un log complet + ses deux questions, dans un état de jeu isolé. `fluid` : 'eau', 'huile' ou 'gaz' (équilibré sur la manche).
-  function makeLog(fluid, avoid){
-    avoid = avoid || [];
+  function makeLog(fluid, avoid, opt){
+    avoid = avoid || []; opt = opt || {};
     fluid = fluid || ['eau','huile','gaz'][Math.floor(Math.random()*3)];
+    // 3e question : calcul sur le réservoir. Porosité-densité (puits aquifère : le fluide est connu), saturation en eau par Archie ou contact
+    // hydrocarbures-eau (puits à hydrocarbures). Un puits aquifère n'a ni saturation en hydrocarbures ni contact.
+    const calc = fluid==='eau' ? 'poro' : (opt.calc==='sw' || opt.calc==='contact' ? opt.calc : (Math.random()<0.5 ? 'sw' : 'contact'));
     const keep = { blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
     try {
       for(let tries=0; tries<160; tries++){
@@ -8340,11 +8351,14 @@ function _doStartGame(){
         const zB = pickDepthB(g, fluid); if(zB===null) continue;
         const cands = H.map((h,i)=>({h,i})).filter(o=>o.i!==ri && (o.h.thicknessLocal??o.h.thickness)>=25);
         if(!cands.length) continue;
+        // question de volume d'argile : une couche propre ou carbonatée assez argileuse (la nature de la roche est alors connue de l'énoncé)
+        const vcands = opt.vsh ? cands.filter(o=>['sandstone','limestone','dolomite'].includes(wlLithClass(o.h)) && (o.h.vshale??0) >= 18 && Math.min(o.h.top+(o.h.thicknessLocal??o.h.thickness), g.z1)-o.h.top >= 25) : [];
         // tirage par CLASSE de roche (et non par couche) : sinon les argiles, très nombreuses, reviennent une fois sur trois
         const byCls = {}; cands.forEach(o=>{ (byCls[wlLithClass(o.h)] = byCls[wlLithClass(o.h)] || []).push(o); });
         // dans une même manche, on évite de redemander la même roche en A (sinon argile, socle et sédiments meubles reviennent sans cesse)
         const fresh = Object.keys(byCls).filter(k=>!avoid.includes(k)), clsKeys = fresh.length ? fresh : Object.keys(byCls), pickCls = byCls[clsKeys[Math.floor(Math.random()*clsKeys.length)]];
-        const A = pickCls[Math.floor(Math.random()*pickCls.length)];
+        const A = vcands.length ? vcands[Math.floor(Math.random()*vcands.length)] : pickCls[Math.floor(Math.random()*pickCls.length)];
+        const q1type = vcands.length ? 'vsh' : 'lith';
         // la portion de la couche réellement tracée s'arrête à la fin du log (z1) : le repère A doit tomber dans cette portion, sinon il sort du dessin
         const visTh = Math.min(A.h.top + (A.h.thicknessLocal??A.h.thickness), g.z1) - A.h.top; if(visTh < 25) continue;
         const zA = A.h.top + visTh*0.5;
@@ -8356,22 +8370,66 @@ function _doStartGame(){
         html = html.replace('</svg>', mark(zA,'A') + mark(zB,'B') + '</svg>');
         const yA = ys(zA), yB = ys(zB);
         const rA = readAt(g, zA), rB = readAt(g, zB);
-        // question 1 : lithologie en A
+        // question 1 : lithologie en A, ou volume d'argile par le GR
         const truthA = wlLithClass(A.h);
         if(truthA==='source' && rA.gr<150) continue; // une roche-mère pauvre (GR proche de celui d'une argile) ne se distingue pas d'une argile : question écartée
         const fam = FAMILY.find(f=>f.includes(truthA)) || [];
         const near = shuffle(fam.filter(c=>c!==truthA));
         const far = shuffle(Object.keys(LABEL).filter(c=>c!==truthA && !fam.includes(c)));
         const optsA = shuffle([truthA, ...near.slice(0,2), ...far].slice(0,4));
-        const q1 = { text:'À la profondeur repérée par A (' + Math.round(zA) + ' m), quelle est la lithologie ?', opts:optsA.map(c=>({k:c, t:LABEL[c]})), good:truthA, y:yA,
+        let q1 = { text:'À la profondeur repérée par A (' + Math.round(zA) + ' m), quelle est la lithologie ?', opts:optsA.map(c=>({k:c, t:LABEL[c]})), good:truthA, y:yA,
           why:`C'était : <b>${LABEL[truthA].toLowerCase()}</b>. Indices : ${CUE[truthA]}`, table: readTable(rA,'A') };
+        const pctFmt = v => Math.round(v);
+        const mkNumOpts = (vals, unit) => { // 4 valeurs distinctes, écart d'au moins 3 points entre deux, mélangées ; renvoie null sinon
+          const u = [...new Set(vals.map(pctFmt))]; if(u.length<4) return null; const so = [...u].sort((a,c)=>a-c); for(let i=1;i<so.length;i++) if(so[i]-so[i-1] < 3) return null; return u.map(v=>({k:String(v), t:v+' '+unit})); };
+        if(q1type==='vsh'){
+          const L = WL_LITH[truthA], gr = Math.round(rA.gr), vsh = clamp((gr-L.gr)/(115-L.gr), 0, 1), pct = pctFmt(vsh*100);
+          const opts = (pct>=10 && pct<=90) ? mkNumOpts([pct, gr/115*100, 100-pct, pct*0.55+ (pct<45?25:0)], '%') : null;
+          if(!opts) continue;
+          q1 = { text:'Au repère A, le GR lit '+gr+' API dans une roche propre à '+L.gr+' API et une argile à 115 API. Quel est le volume d\'argile ?', opts:shuffle(opts), good:String(pct), y:yA, type:'vsh', meta:{gr, clean:L.gr, pct},
+            chip:'Calcul', facts:[['GR lu au repère A',gr+' API'],['GR de la roche propre',L.gr+' API'],['GR de l\'argile','115 API']], ask:'Quel est le volume d\'argile (Vsh) de cette couche ?', note:'Vsh = (GR − GR roche propre) / (GR argile − GR roche propre).',
+            why:`Vsh = (${gr} − ${L.gr}) / (115 − ${L.gr}) = ${f2(vsh)}, soit <b>${pct} %</b>. Diviser le GR par 115 sans retrancher la roche propre donnerait ${pctFmt(gr/115*100)} %. Le GR est le premier indicateur d'argile : plus il monte, plus la roche est argileuse.`, table: readTable(rA,'A') };
+        } else { q1.type = 'lith'; }
+        // question 3 : calcul sur le réservoir
+        const hr = H[ri], thr = hr.thicknessLocal ?? hr.thickness, Lres = WL_LITH[wlLithClass(hr)] || WL_LITH.sandstone;
+        let q3 = null;
+        if(calc==='poro'){
+          const rb = Math.round(rB.rho*100)/100, rma = Lres.rhoMa, phi = (rma-rb)/(rma-1.0), pct = pctFmt(phi*100);
+          const wrongFluid = pctFmt((rma-rb)/rma*100), wrongMat = pctFmt((2.71-rb)/(2.71-1.0)*100 + (rma===2.71 ? 6 : 0));
+          const opts = (phi>=0.05 && phi<=0.36) ? mkNumOpts([pct, wrongFluid, wrongMat===pct ? pct+9 : wrongMat, pct*1.5+4], '%') : null;
+          if(!opts) continue;
+          q3 = { text:'Au repère B (réservoir aquifère), la densité lit '+f2(rb)+' g/cc. Matrice '+f2(rma)+' g/cc, fluide 1,00 g/cc. Quelle est la porosité-densité ?', opts:shuffle(opts), good:String(pct), y:yB, type:'poro', meta:{rb, rma, rf:1.0, pct},
+            chip:'Calcul', facts:[['Densité lue au repère B',f2(rb)+' g/cc'],['Matrice ('+(Lres===WL_LITH.limestone?'calcaire':Lres===WL_LITH.dolomite?'dolomie':'grès')+')',f2(rma)+' g/cc'],['Fluide (eau salée)','1,00 g/cc']], ask:'Quelle est la porosité-densité au repère B ?', note:'φ = (ρ matrice − ρb) / (ρ matrice − ρ fluide).',
+            why:`φ = (${f2(rma)} − ${f2(rb)}) / (${f2(rma)} − 1,00) = ${f2(phi)}, soit <b>${pct} %</b>. Oublier la densité du fluide donnerait ${wrongFluid} %. Cette porosité-densité est apparente : l'argile et le fluide l'écartent de quelques points de la porosité réelle.`, table: readTable(rB,'B') };
+        } else if(calc==='sw'){
+          const rtv = Math.round(rB.rt*10)/10, phiv = Math.round(hr.porosity), gradient = (b.tempAtRes-14)/Math.max(0.3, b.topOfReservoir/1000), tz = 14 + zB/1000*gradient, Rw = Math.round(0.12*(25+21.5)/(tz+21.5)*1000)/1000;
+          const sw = Math.sqrt(Rw/((phiv/100)*(phiv/100)*rtv)), pct = pctFmt(sw*100);
+          const opts = (sw>=0.08 && sw<=0.85) ? mkNumOpts([pct, sw*100*2.0, sw*100*0.5, 100-pct], '%') : null;
+          if(!opts) continue;
+          q3 = { text:'Au repère B, Rt = '+f1(rtv)+' Ω·m, porosité '+phiv+' %, Rw = '+String(Rw).replace('.',',')+' Ω·m. Quelle est la saturation en eau par Archie (a = 1, m = n = 2) ?', opts:shuffle(opts), good:String(pct), y:yB, type:'sw', meta:{rt:rtv, phi:phiv, rw:Rw, pct},
+            chip:'Calcul', facts:[['Résistivité Rt',f1(rtv)+' Ω·m'],['Porosité',phiv+' %'],['Eau de formation Rw',String(Rw).replace('.',',')+' Ω·m']], ask:'Quelle est la saturation en eau (Archie, a = 1, m = n = 2) ?', note:'Sw = √( Rw / (φ² × Rt) ).',
+            why:`Sw = √(${String(Rw).replace('.',',')} / (${f2(phiv/100)}² × ${f1(rtv)})) = ${f2(sw)}, soit <b>${pct} %</b> d'eau et ${100-pct} % d'hydrocarbures. Confondre saturation en eau et en hydrocarbures donnerait ${100-pct} %. Estimation de manuel : l'argile du réservoir fait baisser Rt et écarte la valeur de quelques points de la saturation réelle du modèle.`, table: readTable(rB,'B') };
+        } else if(calc==='contact' && g.hcBase!==null && g.hcTop!==null){
+          const cd = g.hcBase, topR = hr.top, baseR = hr.top+thr;
+          if(thr < 70 || cd-topR < 25 || baseR-cd < 25) continue;
+          const win = (a,c)=>{ let m=0,n=0; for(let k=0;k<=g.n;k++){ const zz=g.z[k]; if(zz>=a && zz<=c){ m+=Math.log10(g.rt[k]); n++; } } return n ? Math.pow(10, m/n) : NaN; };
+          const above = win(cd-22, cd-6), below = win(cd+6, cd+22);
+          if(!(above >= 11 && below <= 9.5)) continue;           // le contact doit se voir : résistivité haute au-dessus, basse en dessous
+          const c5 = Math.round(cd/5)*5, offs = shuffle([-70,-45,45,70]).slice(0,3), vals = [c5, ...offs.map(o=>c5+o)];
+          if(vals.some(v=>v < topR-20 || v > baseR+40)) continue;
+          const opts = shuffle(vals.map(v=>({k:String(v), t:v+' m'})));
+          q3 = { text:'Le réservoir s\'étend de '+Math.round(topR/5)*5+' à '+Math.round(baseR/5)*5+' m. À quelle profondeur est le contact entre les hydrocarbures et l\'eau ?', opts, good:String(c5), y:ys(cd), type:'contact', meta:{contact:c5, top:topR, base:baseR},
+            chip:'Lecture du log', facts:[['Toit du réservoir',Math.round(topR/5)*5+' m'],['Base du réservoir',Math.round(baseR/5)*5+' m']], ask:'À quelle profondeur est le contact hydrocarbures-eau ?', note:'Sous le contact, la roche contient de l\'eau salée seule : la résistivité chute nettement.',
+            why:`Le contact est à environ <b>${c5} m</b> : au-dessus, la résistivité reste élevée (environ ${f0(above)} Ω·m), en dessous elle tombe à environ ${f1(below)} Ω·m. L'épaisseur d'hydrocarbures est donc d'environ ${Math.round(cd-topR)} m. ${fluid==='gaz' ? 'Dans un gaz, le croisement jaune densité-neutron s\'arrête lui aussi au contact.' : 'La saturation en hydrocarbures est constante au-dessus du contact dans ce modèle.'}`, table: '' };
+        }
+        if(!q3) continue;
         // question 2 : fluide du réservoir en B (le texte cite les valeurs réellement lues)
         const rtTxt = (rB.rt>=100?f0(rB.rt):f1(rB.rt)) + ' Ω·m', gapTxt = f0(rB.gap);
         const why2 = fluid==='gaz' ? `C'était du <b>gaz</b> : résistivité profonde de ${rtTxt} (élevée) et neutron ${gapTxt} points sous la porosité-densité, c'est le croisement jaune. Le gaz allège la roche (la densité baisse) et contient peu d'hydrogène (le neutron lit trop bas).`
           : fluid==='huile' ? `C'était de l'<b>huile</b> : résistivité profonde de ${rtTxt}, bien au-dessus de celle de l'eau salée (une roche aquifère comparable lit moins de 10 Ω·m dans ce jeu), mais écart densité-neutron de ${gapTxt} points seulement : pas de croisement, donc pas de gaz.`
           : `C'était de l'<b>eau salée</b> : résistivité de ${rtTxt} seulement, l'eau de formation conduit. Un puits sec peut avoir un réservoir parfaitement poreux, c'est le fluide qui manque.`;
-        const q2 = { text:'En B, dans le réservoir (couche poreuse à ' + Math.round(zB) + ' m), que contient la roche ?', opts:[{k:'gaz',t:'Gaz'},{k:'huile',t:'Huile'},{k:'eau',t:'Eau salée seule (réservoir aquifère)'}], good:fluid, y:yB, why:why2, table: readTable(rB,'B') };
-        return { html, qs:[q1,q2], fluid, rB, rA, rng:{z0:g.z0, z1:g.z1, zA, zB} };
+        const q2 = { chip:'Lecture du log', text:'En B, dans le réservoir (couche poreuse à ' + Math.round(zB) + ' m), que contient la roche ?', opts:[{k:'gaz',t:'Gaz'},{k:'huile',t:'Huile'},{k:'eau',t:'Eau salée seule (réservoir aquifère)'}], good:fluid, y:yB, why:why2, table: readTable(rB,'B') };
+        return { html, qs:[q1,q2,q3], fluid, calc: q3.type, q1type: q1.type, rB, rA, rng:{z0:g.z0, z1:g.z1, zA, zB, hcBase:g.hcBase, hcTop:g.hcTop} };
       }
       return null;
     } finally {
@@ -8395,20 +8453,22 @@ function _doStartGame(){
     const sc = svg.getBoundingClientRect().width/382, top = svg.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
     pane.scrollTop = Math.max(0, top + q.y*sc - pane.clientHeight/2);
   }
+  const qTotal = () => rounds.reduce((a,r)=>a+r.qs.length, 0), qNum = () => rounds.slice(0,logIdx).reduce((a,r)=>a+r.qs.length, 0) + qIdx + 1;
   function render(){
     if(logIdx >= rounds.length) return finish();
     const R = rounds[logIdx], q = R.qs[qIdx];
     cur = q;
     document.getElementById('lgmLog').innerHTML = R.html;
     lgmFocus(q);
-    document.getElementById('lgmQuestion').textContent = q.text;
+    document.getElementById('lgmQuestion').innerHTML = (q.chip ? `<span class="qz-kind">${q.chip}</span>` : '') + (q.facts ? `<div class="qz-facts">${q.facts.map(([l,v])=>`<div class="qz-fact"><span>${l}</span><b>${v}</b></div>`).join('')}</div><div class="qz-ask">${q.ask}</div>${q.note ? `<div class="qz-note">${q.note}</div>` : ''}` : `<div class="qz-ask">${q.text}</div>`);
     document.getElementById('lgmFeedback').classList.remove('show');
     { const qb = document.getElementById('lgmQ'); if(qb) qb.classList.remove('answered'); }
     const nb = document.getElementById('lgmNext'); nb.style.display = 'none';
     nb.textContent = (logIdx===rounds.length-1 && qIdx===R.qs.length-1) ? 'Voir le résultat →' : 'Suite →';
-    document.getElementById('lgmScore').textContent = `Question ${logIdx*2+qIdx+1}/${rounds.length*2} · score ${score}/${asked}`;
+    document.getElementById('lgmScore').textContent = `Question ${qNum()}/${qTotal()} · score ${score}/${asked}`;
     const ch = document.getElementById('lgmChoices');
-    ch.innerHTML = q.opts.map((o,i)=>`<button class="qz-choice" data-k="${o.k}">${o.t}</button>`).join('');
+    ch.classList.toggle('two', q.opts.length>=4 && q.opts.every(o=>String(o.t).length<=14));
+    ch.innerHTML = q.opts.map((o,i)=>`<button class="qz-choice" data-k="${o.k}"><span class="qz-letter">${'ABCDEF'[i]}</span><span class="qz-ct">${o.t}</span></button>`).join('');
     lgmCenter(q); requestAnimationFrame(()=>lgmCenter(q)); setTimeout(()=>lgmCenter(q), 120);
     { const pane = document.getElementById('lgmLog'); pane.dataset.auto = '1';
       if(!pane._ro){ pane._ro = new ResizeObserver(()=>{ if(pane.dataset.auto==='1' && cur) lgmCenter(cur); }); pane._ro.observe(pane);
@@ -8420,14 +8480,14 @@ function _doStartGame(){
       ch.innerHTML = okk ? `<div class="lgm-verdict ok">✓ Correct : ${lab(q.good)}</div>`
         : `<div class="lgm-verdict ko">✗ Votre réponse : ${lab(btn.dataset.k)}</div><div class="lgm-verdict ok">✓ Bonne réponse : ${lab(q.good)}</div>`;
       const fb = document.getElementById('lgmFeedback'); fb.innerHTML = q.why + (q.table||''); fb.classList.add('show');
-      document.getElementById('lgmScore').textContent = `Question ${logIdx*2+qIdx+1}/${rounds.length*2} · score ${score}/${asked}`;
+      document.getElementById('lgmScore').textContent = `Question ${qNum()}/${qTotal()} · score ${score}/${asked}`;
       nb.style.display = '';
       const qb = document.getElementById('lgmQ'); if(qb){ qb.classList.add('answered'); qb.scrollTop = 0; }
       if(window.matchMedia('(max-width:720px)').matches) nb.scrollIntoView({block:'nearest'});
     }));
   }
   function finish(){
-    const n = rounds.length*2, key = 'geoexplorer_quiz_best_logs';
+    const n = qTotal(), key = 'geoexplorer_quiz_best_logs';
     let prev = null; try { prev = JSON.parse(localStorage.getItem(key)||'null'); } catch(e){}
     const record = score>0 && (!prev || score/n > prev.s/prev.n);
     if(record){ try { localStorage.setItem(key, JSON.stringify({s:score, n})); } catch(e){} }
@@ -8445,7 +8505,8 @@ function _doStartGame(){
     if(typeof quickRefresh==='function') quickRefresh();
   }
   function open(){
-    rounds = []; const fl = shuffle(['eau','huile','gaz', ['eau','huile','gaz'][Math.floor(Math.random()*3)]]); const used = []; for(let i=0;i<LGM_LOGS;i++){ const r = makeLog(fl[i], used); if(r){ rounds.push(r); used.push(r.qs[0].good); } }
+    rounds = []; const fl = shuffle(['eau','huile','gaz']), hcCalc = shuffle(['sw','contact']), vshAt = Math.floor(Math.random()*3), used = [];
+    for(let i=0;i<LGM_LOGS;i++){ const r = makeLog(fl[i], used, { vsh: i===vshAt, calc: fl[i]==='eau' ? 'poro' : hcCalc.pop() }); if(r){ rounds.push(r); if(r.q1type==='lith') used.push(r.qs[0].good); } }
     if(!rounds.length) return;
     logIdx = 0; qIdx = 0; score = 0; asked = 0;
     document.getElementById('logGameModal').classList.add('open');
