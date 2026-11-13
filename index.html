@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.61</title>
+<title>GeoExplorer V4.62</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -872,6 +872,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
     <button class="adv-reset" id="continueSavedBtn" style="width:100%;text-align:center;margin-bottom:8px;display:none;">💾 <span class="i18n" data-fr="Reprendre la partie sauvegardée" data-en="Resume saved game">Reprendre la partie sauvegardée</span></button>
     <button class="adv-reset" id="openLithoHomeBtn" style="width:100%;text-align:center;margin-bottom:8px;">📚 <span class="i18n" data-fr="Bibliothèque des lithologies" data-en="Lithology library">Bibliothèque des lithologies</span></button>
     <button class="adv-reset" id="openTutorialBtn" style="width:100%;text-align:center;margin-bottom:8px;">🎓 <span class="i18n" data-fr="Tutoriel (2 min)" data-en="Tutorial (2 min)">Tutoriel (2 min)</span></button>
+    <button class="adv-reset" id="dailyBtn" style="width:100%;text-align:center;margin-bottom:8px;">🎯 <span id="dailyLbl">Défi du jour</span></button>
     <button class="start-btn" id="startBtn">▶ <span class="i18n" data-fr="DÉMARRER" data-en="START">DÉMARRER</span></button>
   </div>
 </div>
@@ -3445,6 +3446,14 @@ function showEnd(reason){
     <div><span class="end-lbl">Revenus cumulés</span><br><strong>${formatM(totalProd)}</strong></div>
     ${G.calib?.n?`<div><span class="end-lbl">Calibration (${G.calib.n} ${G.calib.n>1?"estimations":"estimation"})</span><br><strong>${G.calib.net>=0?'+':''}${formatM(G.calib.net)}</strong></div>`:''}
   `;
+  if(G.daily){
+    const nw = Math.round(netWorth()), st = dailyStore(), prev = st[G.daily], rec = !prev || nw > prev.nw;
+    if(rec){ st[G.daily] = { nw, years:+(G.month/12).toFixed(1), wells:G.wells.length }; try { localStorage.setItem('geoexplorer_daily', JSON.stringify(st)); } catch(e){} }
+    const shown = rec ? st[G.daily] : prev, line = `GeoExplorer défi du ${G.daily} (${BASIN_NAMES[G.basinType]}) : valeur nette ${formatM(nw)} en ${(G.month/12).toFixed(1)} ans, ${G.wells.length} puits productifs`;
+    document.getElementById('endStats').insertAdjacentHTML('afterbegin', `<div style="grid-column:1/-1;"><span class="end-lbl">🎯 Défi du ${G.daily}</span><br><strong>Valeur nette ${formatM(nw)}</strong> · meilleur du jour ${formatM(shown.nw)}${rec?' (nouveau record)':''}<br><button class="adv-reset" id="dailyShare" style="margin-top:6px;">Copier le résultat</button></div>`);
+    document.getElementById('dailyShare')?.addEventListener('click', e=>{ try { navigator.clipboard.writeText(line); e.target.textContent = 'Copié'; } catch(err){ e.target.textContent = line; } });
+    dailyRefreshBtn();
+  }
   buildDebriefReport();
   document.getElementById('endScreen').style.display='flex';
   document.getElementById('endRestartBtn').textContent = reason==='quit' ? '🏠 Retour à l\'accueil' : '▶ REJOUER';
@@ -6931,7 +6940,30 @@ document.getElementById('geoSeed')?.addEventListener('input', e=>{
   menuConfig.seed = e.target.value.trim() || null;
 });
 
-document.getElementById('startBtn').addEventListener('click',()=>{ labOptOpen('start'); });
+// Défi du jour : même carte et mêmes réglages pour tout le monde à une date donnée (date UTC). Seul le tirage des puits reste aléatoire.
+const DAILY_BASINS = ['paris','rift','passive','foreland','aquitaine','north_sea','gulf_coast'];
+function dailyConfig(){
+  const date = new Date().toISOString().slice(0,10), n = seedToInt('geoexplorer-'+date);
+  return { date, seed: n % 99999, basinType: DAILY_BASINS[n % DAILY_BASINS.length], gridSize: 20, offshore: true, mode:'junior', financeMode:true, uncertainty:'medium' };
+}
+function dailyStore(){ try { return JSON.parse(localStorage.getItem('geoexplorer_daily')||'{}'); } catch(e){ return {}; } }
+function dailyRefreshBtn(){
+  const c = dailyConfig(), best = dailyStore()[c.date], el = document.getElementById('dailyLbl');
+  if(el) el.textContent = 'Défi du jour · ' + (BASIN_NAMES[c.basinType]||c.basinType) + ' 20×20' + (best ? ' · meilleur : ' + formatM(best.nw) : '');
+}
+dailyRefreshBtn();
+document.getElementById('dailyBtn')?.addEventListener('click',()=>{
+  const c = dailyConfig(), inp = document.getElementById('geoSeed');
+  menuConfig._prev = { mode:menuConfig.mode, gridSize:menuConfig.gridSize, offshore:menuConfig.offshore, basinType:menuConfig.basinType, financeMode:menuConfig.financeMode, uncertainty:menuConfig.uncertainty, seed:menuConfig.seed, seedField: inp ? inp.value : '' };
+  Object.assign(menuConfig, { mode:c.mode, gridSize:c.gridSize, offshore:c.offshore, basinType:c.basinType, financeMode:c.financeMode, uncertainty:c.uncertainty, seed:c.seed, daily:c.date });
+  if(inp) inp.value = c.seed;
+  labOptOpen('start');
+});
+document.getElementById('startBtn').addEventListener('click',()=>{
+  // un départ normal après avoir cliqué sur le défi du jour rend ses réglages au joueur
+  if(menuConfig.daily && menuConfig._prev){ const p = menuConfig._prev, inp = document.getElementById('geoSeed'); Object.assign(menuConfig, p); if(inp) inp.value = p.seedField; menuConfig.daily = null; menuConfig._prev = null; }
+  labOptOpen('start');
+});
 function labOptLaunch(){
   const seedVal = document.getElementById('geoSeed')?.value.trim();
   menuConfig.seed = seedVal ? (parseInt(seedVal)||seedVal) : null;
@@ -7113,6 +7145,8 @@ function _doStartGame(){
   // Générer la géologie avec le seed si fourni
   const seedNum = menuConfig.seed ? seedToInt(menuConfig.seed) : null;
   generateGeology(menuConfig.gridSize, menuConfig.basinType, menuConfig.offshore, seedNum);
+  // défi du jour : valable seulement si les réglages sont ceux du jour (le joueur a pu les changer entre-temps)
+  { const dc = dailyConfig(); G.daily = (menuConfig.daily === dc.date && menuConfig.gridSize===dc.gridSize && menuConfig.basinType===dc.basinType && menuConfig.mode===dc.mode && String(menuConfig.seed)===String(dc.seed)) ? dc.date : null; }
 
   // Mode bac à sable : révéler toute la géologie (comme un log post-forage
   // pour tout le monde, sans avoir eu besoin de forer réellement)
