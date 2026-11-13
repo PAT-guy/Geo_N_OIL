@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.60</title>
+<title>GeoExplorer V4.61</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -8383,8 +8383,12 @@ function _doStartGame(){
         const byCls = {}; cands.forEach(o=>{ (byCls[wlLithClass(o.h)] = byCls[wlLithClass(o.h)] || []).push(o); });
         // dans une même manche, on évite de redemander la même roche en A (sinon argile, socle et sédiments meubles reviennent sans cesse)
         const fresh = Object.keys(byCls).filter(k=>!avoid.includes(k)), clsKeys = fresh.length ? fresh : Object.keys(byCls), pickCls = byCls[clsKeys[Math.floor(Math.random()*clsKeys.length)]];
-        const A = vcands.length ? vcands[Math.floor(Math.random()*vcands.length)] : pickCls[Math.floor(Math.random()*pickCls.length)];
-        const q1type = vcands.length ? 'vsh' : 'lith';
+        // piège : une roche compacte très résistante (sel, anhydrite, socle, calcaire serré) que l'on pourrait prendre pour des hydrocarbures
+        const tcands = opt.trap ? cands.filter(o=>{ const vt = Math.min(o.h.top+(o.h.thicknessLocal??o.h.thickness), g.z1)-o.h.top; if(vt < 25) return false; const r = readAt(g, o.h.top+vt*0.5);
+          return Math.round(r.rt) >= 30 && Math.round(r.nphi*10)/10 <= 6 && wlLithClass(o.h) !== 'shale'; }) : [];
+        if(opt.trap && !tcands.length) continue;
+        const A = tcands.length ? tcands[Math.floor(Math.random()*tcands.length)] : vcands.length ? vcands[Math.floor(Math.random()*vcands.length)] : pickCls[Math.floor(Math.random()*pickCls.length)];
+        const q1type = tcands.length ? 'piege' : vcands.length ? 'vsh' : 'lith';
         // la portion de la couche réellement tracée s'arrête à la fin du log (z1) : le repère A doit tomber dans cette portion, sinon il sort du dessin
         const visTh = Math.min(A.h.top + (A.h.thicknessLocal??A.h.thickness), g.z1) - A.h.top; if(visTh < 25) continue;
         const zA = A.h.top + visTh*0.5;
@@ -8415,6 +8419,18 @@ function _doStartGame(){
           q1 = { text:'Au repère A, le GR lit '+gr+' API dans une roche propre à '+L.gr+' API et une argile à 115 API. Quel est le volume d\'argile ?', opts:shuffle(opts), good:String(pct), y:yA, type:'vsh', meta:{gr, clean:L.gr, pct},
             chip:'Calcul', facts:[['GR lu au repère A',gr+' API'],['GR de la roche propre',L.gr+' API'],['GR de l\'argile','115 API']], ask:'Quel est le volume d\'argile (Vsh) de cette couche ?', note:'Vsh = (GR − GR roche propre) / (GR argile − GR roche propre).',
             why:`Vsh = (${gr} − ${L.gr}) / (115 − ${L.gr}) = ${f2(vsh)}, soit <b>${pct} %</b>. Diviser le GR par 115 sans retrancher la roche propre donnerait ${pctFmt(gr/115*100)} %. Le GR est le premier indicateur d'argile : plus il monte, plus la roche est argileuse.`, table: readTable(rA,'A') };
+        } else if(q1type==='piege'){
+          const rtv = Math.round(rA.rt), nph = Math.round(rA.nphi*10)/10, rhov = Math.round(rA.rho*100)/100;
+          q1 = { text:'Au repère A, la résistivité lit '+rtv+' Ω·m. Un collègue conclut : « résistivité élevée, donc hydrocarbures ». Qu\'en pensez-vous ?',
+            opts:shuffle([{k:'compact', t:'Non : la porosité est quasi nulle, la roche est compacte et ne peut pas contenir de fluide'},
+                          {k:'always', t:'Oui : au-dessus de 11 Ω·m, c\'est toujours des hydrocarbures'},
+                          {k:'grlow', t:'Oui, à condition que le GR soit bas'},
+                          {k:'fresh', t:'Non : une résistivité élevée indique de l\'eau douce, pas des hydrocarbures'}]),
+            good:'compact', y:yA, type:'piege', meta:{rt:rtv, nphi:nph, rho:rhov},
+            chip:'Piège', facts:[['Résistivité Rt', rtv+' Ω·m'],['Neutron NPHI', f1(nph)+' %'],['Densité ρb', f2(rhov)+' g/cc']], ask:'Cette résistivité élevée prouve-t-elle des hydrocarbures ?',
+            note:'Des hydrocarbures ont besoin de porosité pour exister : regardez le neutron avant de conclure.',
+            why:`Rt = ${rtv} Ω·m est élevée, mais le neutron ne lit que <b>${f1(nph)} %</b> : la roche est pleine, sans pore pour stocker de l'huile ou du gaz. C'était du <b>${LABEL[truthA].toLowerCase()}</b>. Une résistivité haute seule ne suffit pas : il faut une roche poreuse (neutron et densité) ET une résistivité haute. Indices de cette roche : ${CUE[truthA]}`,
+            table: readTable(rA,'A') };
         } else { q1.type = 'lith'; }
         // question 3 : calcul sur le réservoir
         const hr = H[ri], thr = hr.thicknessLocal ?? hr.thickness, Lres = WL_LITH[wlLithClass(hr)] || WL_LITH.sandstone;
@@ -8531,8 +8547,8 @@ function _doStartGame(){
     if(typeof quickRefresh==='function') quickRefresh();
   }
   function open(){
-    rounds = []; const fl = shuffle(['eau','huile','gaz']), hcCalc = shuffle(['sw','contact']), vshAt = Math.floor(Math.random()*3), used = [];
-    for(let i=0;i<LGM_LOGS;i++){ const r = makeLog(fl[i], used, { vsh: i===vshAt, calc: fl[i]==='eau' ? 'poro' : hcCalc.pop() }); if(r){ rounds.push(r); if(r.q1type==='lith') used.push(r.qs[0].good); } }
+    rounds = []; const fl = shuffle(['eau','huile','gaz']), hcCalc = shuffle(['sw','contact']), vshAt = Math.floor(Math.random()*3), trapAt = (vshAt + 1 + Math.floor(Math.random()*2)) % 3, used = [];
+    for(let i=0;i<LGM_LOGS;i++){ const r = makeLog(fl[i], used, { vsh: i===vshAt, trap: i===trapAt, calc: fl[i]==='eau' ? 'poro' : hcCalc.pop() }); if(r){ rounds.push(r); if(r.q1type==='lith') used.push(r.qs[0].good); } }
     if(!rounds.length) return;
     logIdx = 0; qIdx = 0; score = 0; asked = 0;
     document.getElementById('logGameModal').classList.add('open');
