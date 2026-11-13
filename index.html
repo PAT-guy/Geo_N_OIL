@@ -8421,15 +8421,15 @@ function _doStartGame(){
             why:`Vsh = (${gr} − ${L.gr}) / (115 − ${L.gr}) = ${f2(vsh)}, soit <b>${pct} %</b>. Diviser le GR par 115 sans retrancher la roche propre donnerait ${pctFmt(gr/115*100)} %. Le GR est le premier indicateur d'argile : plus il monte, plus la roche est argileuse.`, table: readTable(rA,'A') };
         } else if(q1type==='piege'){
           const rtv = Math.round(rA.rt), nph = Math.round(rA.nphi*10)/10, rhov = Math.round(rA.rho*100)/100;
-          q1 = { text:'Au repère A, la résistivité lit '+rtv+' Ω·m. Un collègue conclut : « résistivité élevée, donc hydrocarbures ». Qu\'en pensez-vous ?',
-            opts:shuffle([{k:'compact', t:'Non : la porosité est quasi nulle, la roche est compacte et ne peut pas contenir de fluide'},
-                          {k:'always', t:'Oui : au-dessus de 11 Ω·m, c\'est toujours des hydrocarbures'},
-                          {k:'grlow', t:'Oui, à condition que le GR soit bas'},
-                          {k:'fresh', t:'Non : une résistivité élevée indique de l\'eau douce, pas des hydrocarbures'}]),
+          q1 = { text:'Au repère A, Rt = '+rtv+' Ω·m. Un collègue conclut « hydrocarbures ». A-t-il raison ?',
+            opts:shuffle([{k:'compact', t:'Non : roche compacte, sans porosité'},
+                          {k:'always', t:'Oui : plus de 11 Ω·m, c\'est du pétrole'},
+                          {k:'grlow', t:'Oui, si le GR est bas'},
+                          {k:'fresh', t:'Non : c\'est de l\'eau douce'}]),
             good:'compact', y:yA, type:'piege', meta:{rt:rtv, nphi:nph, rho:rhov},
-            chip:'Piège', facts:[['Résistivité Rt', rtv+' Ω·m'],['Neutron NPHI', f1(nph)+' %'],['Densité ρb', f2(rhov)+' g/cc']], ask:'Cette résistivité élevée prouve-t-elle des hydrocarbures ?',
-            note:'Des hydrocarbures ont besoin de porosité pour exister : regardez le neutron avant de conclure.',
-            why:`Rt = ${rtv} Ω·m est élevée, mais le neutron ne lit que <b>${f1(nph)} %</b> : la roche est pleine, sans pore pour stocker de l'huile ou du gaz. C'était du <b>${LABEL[truthA].toLowerCase()}</b>. Une résistivité haute seule ne suffit pas : il faut une roche poreuse (neutron et densité) ET une résistivité haute. Indices de cette roche : ${CUE[truthA]}`,
+            chip:'Piège', facts:[['Résistivité Rt', rtv+' Ω·m'],['Neutron NPHI', f1(nph)+' %'],['Densité ρb', f2(rhov)+' g/cc']], ask:'Cette résistivité prouve-t-elle des hydrocarbures ?',
+            note:'Il faut de la porosité pour contenir un fluide : regardez le neutron.',
+            why:`Le neutron ne lit que <b>${f1(nph)} %</b> : roche pleine, sans pore pour un fluide. C'était du <b>${LABEL[truthA].toLowerCase()}</b>. Il faut une roche poreuse ET une résistivité haute.`,
             table: readTable(rA,'A') };
         } else { q1.type = 'lith'; }
         // question 3 : calcul sur le réservoir
