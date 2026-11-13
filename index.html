@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.59</title>
+<title>GeoExplorer V4.60</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -8812,6 +8812,11 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
 .rg-end{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:14px;margin:6px 0;font-size:13px;line-height:1.55;}
 .rg-end h3{margin:0 0 6px;font-size:16px;}
 .rg-end ul{margin:6px 0 0;padding-left:18px;}
+.rg-tbl{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:8px;font-size:11.5px;}
+.rg-tbl th{width:36%;text-align:left;font-weight:500;color:var(--muted);padding:4px 4px 4px 0;}
+.rg-tbl td{width:64%;padding:4px 6px 4px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);}
+.rg-tbl tr{height:26px;border-top:1px solid var(--border,rgba(128,128,128,.25));}
+.rg-hint#rgMwNote{min-height:4.7em;}
 .rg-hint{font-size:11.5px;color:var(--muted);line-height:1.55;margin-top:8px;}
 @media (min-width:900px){ #rigModal{align-items:center;} #rigModal > *{width:100%;max-width:760px;} }
 </style>
@@ -9100,8 +9105,14 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
     else if(S.brief) h += briefHtml();
     else {
       const inc = incidentHtml(); if(inc) h += inc;
-      h += `<div class="rg-hint">GR en direct : ${S.gr.length? '<b>'+Math.round(S.gr[S.gr.length-1].v)+' API</b> ('+(S.gr[S.gr.length-1].v>=95?'argile probable':S.gr[S.gr.length-1].v<=65?'roche propre probable, souvent perméable':'roche intermédiaire')+')':'pas encore de mesure'}. Cible prévue vers <b>${sc.resPred} m</b> (± ${sc.resUnc} m) : le GR dira où est vraiment le toit du réservoir. Outil n°${S.bits}, usure ${Math.round(Math.min(1,S.wear)*100)} %. ${S.strings} tubage(s) posé(s).</div>
-        <div class="rg-ctl">
+      { const gv = S.gr.length ? S.gr[S.gr.length-1].v : null;
+        h += `<table class="rg-tbl" aria-label="Mesures en direct"><tbody>
+          <tr><th>GR en direct</th><td>${gv===null?'pas de mesure':'<b>'+Math.round(gv)+' API</b> · '+(gv>=95?'argile':gv<=65?'roche propre':'intermédiaire')}</td></tr>
+          <tr><th>Cible prévue</th><td><b>${sc.resPred} m</b> (± ${sc.resUnc} m)</td></tr>
+          <tr><th>Outil</th><td>n°${S.bits} · usure <b>${Math.round(Math.min(1,S.wear)*100)} %</b></td></tr>
+          <tr><th>Tubages posés</th><td><b>${S.strings}</b></td></tr>
+        </tbody></table>`; }
+      h += `<div class="rg-ctl">
           <label>Densité demandée <b id="rgMwV">${f2(S.mwTarget)} sg</b></label><label>Débit de pompe <b id="rgQV">${Math.round(S.q)} L/min</b></label>
           <input type="range" id="rgMw" min="0.9" max="2.3" step="0.01" value="${S.mwTarget}" aria-label="Densité de boue demandée"><input type="range" id="rgQ" min="800" max="3200" step="50" value="${S.q}" aria-label="Débit de pompe">
           <label>Poids sur l'outil <b id="rgWobV">${Math.round(S.wob)} kN</b></label><label>Rotation <b id="rgRpmV">${Math.round(S.rpm)} tr/min</b></label>
