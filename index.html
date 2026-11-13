@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.64</title>
+<title>GeoExplorer V4.65</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -1745,6 +1745,7 @@ function buildStratigraphy(basinType, rng, nVariants=1){
     const isSrc  = item.role==='source';
     return {
       ...item,
+      deepSource: roleKey==='source#deep',
       thickness,
       porosity:    isRes ? R(8,35)   : isSrc ? R(3,12) : R(0,5),
       permeability:isRes ? Math.pow(10, rng()*3-1) : 0.001,
@@ -1763,6 +1764,9 @@ function buildStratigraphy(basinType, rng, nVariants=1){
     // Réservoir, roche-mère, couverture et évaporites ne sont jamais supprimés.
     if(i > 0) col.forEach((l, j)=>{
       if(baseOf(seq[j]).startsWith('neutral') && rng() < 0.15){ l.thickness = 0; l.hiatus = true; }
+      // roche-mère profonde absente de certaines provinces (milieu de dépôt sans matière organique) : ces zones ne génèrent rien
+      // par elles-mêmes. generateGeology garantit qu'une part suffisante de la carte la conserve.
+      else if(l.deepSource && rng() < 0.5){ l.thicknessOrig = l.thickness; l.thickness = 0; l.hiatus = true; }
     });
     variants.push(col);
   }
@@ -1913,6 +1917,23 @@ function generateGeology(gridSize, basinType, offshore, seed){
   const provinceField = smoothField(gridSize, Math.round(2*sizeScale), rng);
   const nProvinces = STRAT_PROVINCES.length;
 
+  // Garantie : au moins un quart de la carte conserve une roche-mère profonde fonctionnelle (système classique : roche-mère sous le
+  // réservoir, couverture au-dessus). Les provinces sans roche-mère profonde restent possibles (variété, zones stériles), mais pas partout.
+  { const jd = STRAT.findIndex(l=>l.deepSource);
+    if(jd>=0 && STRAT_PROVINCES.some(col=>col[jd]?.hiatus)){
+      const cnt = new Array(nProvinces).fill(0);
+      for(let y=0;y<gridSize;y++) for(let x=0;x<gridSize;x++){
+        let ft = 0; faults.forEach(f=>{ if((x-f.px)*f.nx + (y-f.py)*f.ny > 0) ft += f.throw; });
+        cnt[clamp(Math.floor((provinceField(x,y) + ft*0.0006)*nProvinces), 0, nProvinces-1)]++;
+      }
+      const share = () => STRAT_PROVINCES.reduce((t,col,i)=> t + (col[jd].hiatus ? 0 : cnt[i]), 0) / (gridSize*gridSize);
+      while(share() < 0.25){
+        let best = -1; STRAT_PROVINCES.forEach((col,i)=>{ if(col[jd].hiatus && (best<0 || cnt[i] > cnt[best])) best = i; });
+        if(best<0) break;
+        const l = STRAT_PROVINCES[best][jd]; l.thickness = l.thicknessOrig ?? 60; l.hiatus = false;
+      }
+    } }
+
   let raw = [];
   for(let y=0;y<gridSize;y++){
     for(let x=0;x<gridSize;x++){
@@ -2003,11 +2024,12 @@ function generateGeology(gridSize, basinType, offshore, seed){
       // Facteurs du système pétrolier
       const resFaciesVal = resFacies(x,y);
       const srcFaciesVal = sourceFacies(x,y);
+      const srcAbsent = !!(sourceIdx>=0 && localStrat[sourceIdx]?.hiatus); // province sans roche-mère profonde : rien n'est généré ici
       // V4.49 : le TOC de la roche-mère suit la richesse organique LOCALE (le faciès qui fixe aussi la force de génération),
       // de 0,3 à 9,5 %. Avant, il était tiré une fois par couche (1,5 à 9,5 %) sans lien avec la charge : une roche-mère affichée
       // « pauvre » pouvait remplir un piège. N'intervient dans aucun calcul de probabilité : seuls l'affichage du TOC,
       // le log de la couche (GR, densité, sonique) et son impédance sismique changent.
-      if(sourceIdx>=0 && horizons[sourceIdx] && horizons[sourceIdx].role==='source') horizons[sourceIdx].toc = (0.3 + 9.2*clamp(srcFaciesVal,0,1)).toFixed(1);
+      if(sourceIdx>=0 && horizons[sourceIdx] && horizons[sourceIdx].role==='source') horizons[sourceIdx].toc = srcAbsent ? '0.2' : (0.3 + 9.2*clamp(srcFaciesVal,0,1)).toFixed(1);
       const sealFaciesVal = sealFacies(x,y);
 
       const anticlineTop = anticlines.reduce((m,a)=>Math.max(m, a.str*Math.exp(-Math.hypot(x-a.x,y-a.y)/a.range)), 0);
@@ -2026,7 +2048,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       // était lui-même une kitchen (richesse en matière organique × maturité).
       // Ce n'est pas encore la charge du piège — voir la migration en 2e passe
       // après la double boucle, une fois toute la carte connue.
-      const genStrength    = clamp(.1+srcFaciesVal*.85, .02, .9) * maturity;
+      const genStrength    = srcAbsent ? .02 : clamp(.1+srcFaciesVal*.85, .02, .9) * maturity;
       // Compaction : la porosité décroît avec la profondeur d'enfouissement,
       // approximativement selon une loi type Athy (décroissance exponentielle).
       // Sans ça, un grès identique à 500m et à 5000m affichait la même
@@ -2060,7 +2082,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
         maturity, maturityClass, isGas,
         gradient, exhumation, paleoTemp, srcTopDepth, // exposés pour les quiz générés (Rock-Eval, Maturation) : aucun effet sur la géologie
         trapFactor, resFactor, sealFactor, genStrength, trueQuality,
-        resThicknessLocal, inSalt, faultThrow, isOffshore, provinceIdx,
+        resThicknessLocal, inSalt, faultThrow, isOffshore, provinceIdx, srcAbsent,
       });
     }
   }
@@ -2159,7 +2181,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       gradient:b.gradient, exhumation:b.exhumation, paleoTemp:b.paleoTemp, srcTopDepth:b.srcTopDepth,
       trapFactor:b.trapFactor, resFactor:b.resFactor, sealFactor:b.sealFactor, srcFactor:b.srcFactor,
       genStrength:b.genStrength,
-      resThicknessLocal:b.resThicknessLocal, inSalt:b.inSalt, faultThrow:b.faultThrow, provinceIdx:b.provinceIdx,
+      resThicknessLocal:b.resThicknessLocal, inSalt:b.inSalt, faultThrow:b.faultThrow, provinceIdx:b.provinceIdx, srcAbsent:b.srcAbsent,
       isOffshore:b.isOffshore,
       studies: [],
       studyLevel: 0,
@@ -7721,7 +7743,7 @@ function _doStartGame(){
   function qzSourceBlocks(){
     generateGeology(12, QZ_BT[Math.floor(Math.random()*QZ_BT.length)], true, (Math.random()*1e9)|0);
     const rng = makeRng((Math.random()*1e9)|0);
-    return qzShuffled(blocks.filter(b=>b.horizons.some(h=>h.role==='source') && b.srcTopDepth>0)).map(b=>({ b, re: STUDIES.rockeval.do(b, rng) }));
+    return qzShuffled(blocks.filter(b=>!b.srcAbsent && b.horizons.some(h=>h.role==='source') && b.srcTopDepth>0)).map(b=>({ b, re: STUDIES.rockeval.do(b, rng) }));
   }
   const QZ_MAT = ['Immature','Fenêtre à huile','Surmature (gaz)'];
   function qzGenMaturation(n){
