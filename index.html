@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.62</title>
+<title>GeoExplorer V4.63</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2920,12 +2920,23 @@ function wellEconomics(w){
   return {prodEffective, priceWell, fixedOp, varOp, revenue, opex, net:revenue-opex};
 }
 
+// Abandon d'un puits (bouchons de ciment, remise en état du site) : 12 % du coût de forage à terre, 18 % en mer. Payé une seule fois,
+// à la fermeture ou à l'épuisement. Les puits déjà fermés ou épuisés dans une sauvegarde plus ancienne ne sont pas rétroactivement facturés.
+const abandonCost = w => (G.mode==='sandbox' ? 0 : Math.round((w.cost||0) * (w.offshore ? 0.18 : 0.12)));
+const abandonLiability = () => G.wells.reduce((t,w)=> t + ((w.status==='producing' || w.status==='blowout') && !w.abandonPaid ? abandonCost(w) : 0), 0);
+function payAbandon(w){
+  if(w.abandonPaid) return 0;
+  w.abandonPaid = true; const c = abandonCost(w); if(c>0){ G.budget -= c; w.abandonCostPaid = c; }
+  return c;
+}
+
 function closeWell(blockId){
   const b = blocks[blockId];
   const w = b?.well;
   if(!w || w.status!=='producing') return;
   w.status = 'closed';
-  addLog(`🔧 Puits (${b.x},${b.y}) fermé volontairement après ${w.monthsActive} mois (${Math.round(w.production)} ${w.isGas?'Mcf':'barils'}/mois restants).`);
+  const ab = payAbandon(w);
+  addLog(`🔧 Puits (${b.x},${b.y}) fermé volontairement après ${w.monthsActive} mois (${Math.round(w.production)} ${w.isGas?'Mcf':'barils'}/mois restants).${ab>0?' Coût d\'abandon : '+formatM(ab)+'.':''}`);
   renderBlock(b); updateHud();
   if(selectedBlock===blockId) renderStudiesPanel(b);
   if(G.financeMode) renderFinancePanel();
@@ -2990,7 +3001,7 @@ function monthTick(){
     }
 
     w.production = wellRate(w);
-    if(w.production<5){ w.status='depleted'; addLog(`Puits (${blocks[w.blockId].x},${blocks[w.blockId].y}) épuisé après ${w.monthsActive} mois.`); }
+    if(w.production<5){ w.status='depleted'; const ab = payAbandon(w); addLog(`Puits (${blocks[w.blockId].x},${blocks[w.blockId].y}) épuisé après ${w.monthsActive} mois.${ab>0?' Coût d\'abandon : '+formatM(ab)+'.':''}`); }
   });
 
   if(strikeActive){
@@ -3439,6 +3450,7 @@ function showEnd(reason){
   document.getElementById('endStats').innerHTML = `
     <div><span class="end-lbl">Budget final</span><br><strong>${formatM(G.budget)}</strong></div>
     ${G.financeMode && debtTotal()>1000 ? `<div><span class="end-lbl">Dette restante</span><br><strong>${formatM(debtTotal())}</strong></div>` : ''}
+    ${abandonLiability()>0 ? `<div><span class="end-lbl">Abandon des puits encore actifs</span><br><strong>${formatM(abandonLiability())}</strong></div>` : ''}
     <div><span class="end-lbl">Budget initial</span><br><strong>${formatM(MODES[G.mode].budget)}</strong></div>
     <div><span class="end-lbl">Durée de partie</span><br><strong>${(G.month/12).toFixed(1)} ans</strong></div>
     <div><span class="end-lbl">Puits forés</span><br><strong>${G.wells.length + blocks.filter(b=>b.dryHole).length} (${G.wells.length} productifs, ${blocks.filter(b=>b.dryHole).length} secs, ${G.wells.filter(w=>w.status==='producing').length} encore actifs)</strong></div>
@@ -3447,10 +3459,10 @@ function showEnd(reason){
     ${G.calib?.n?`<div><span class="end-lbl">Calibration (${G.calib.n} ${G.calib.n>1?"estimations":"estimation"})</span><br><strong>${G.calib.net>=0?'+':''}${formatM(G.calib.net)}</strong></div>`:''}
   `;
   if(G.daily){
-    const nw = Math.round(netWorth()), st = dailyStore(), prev = st[G.daily], rec = !prev || nw > prev.nw;
+    const nw = Math.round(netWorth() - abandonLiability()), st = dailyStore(), prev = st[G.daily], rec = !prev || nw > prev.nw;
     if(rec){ st[G.daily] = { nw, years:+(G.month/12).toFixed(1), wells:G.wells.length }; try { localStorage.setItem('geoexplorer_daily', JSON.stringify(st)); } catch(e){} }
-    const shown = rec ? st[G.daily] : prev, line = `GeoExplorer défi du ${G.daily} (${BASIN_NAMES[G.basinType]}) : valeur nette ${formatM(nw)} en ${(G.month/12).toFixed(1)} ans, ${G.wells.length} puits productifs`;
-    document.getElementById('endStats').insertAdjacentHTML('afterbegin', `<div style="grid-column:1/-1;"><span class="end-lbl">🎯 Défi du ${G.daily}</span><br><strong>Valeur nette ${formatM(nw)}</strong> · meilleur du jour ${formatM(shown.nw)}${rec?' (nouveau record)':''}<br><button class="adv-reset" id="dailyShare" style="margin-top:6px;">Copier le résultat</button></div>`);
+    const shown = rec ? st[G.daily] : prev, line = `GeoExplorer défi du ${G.daily} (${BASIN_NAMES[G.basinType]}) : valeur nette après abandon ${formatM(nw)} en ${(G.month/12).toFixed(1)} ans, ${G.wells.length} puits productifs`;
+    document.getElementById('endStats').insertAdjacentHTML('afterbegin', `<div style="grid-column:1/-1;"><span class="end-lbl">🎯 Défi du ${G.daily}</span><br><strong>Valeur nette après abandon ${formatM(nw)}</strong> · meilleur du jour ${formatM(shown.nw)}${rec?' (nouveau record)':''}<br><button class="adv-reset" id="dailyShare" style="margin-top:6px;">Copier le résultat</button></div>`);
     document.getElementById('dailyShare')?.addEventListener('click', e=>{ try { navigator.clipboard.writeText(line); e.target.textContent = 'Copié'; } catch(err){ e.target.textContent = line; } });
     dailyRefreshBtn();
   }
@@ -4425,7 +4437,7 @@ function renderStudiesPanel(b){
     } else if(w.sidetrackDone){
       html+=`<div style="font-size:11px;color:var(--muted);margin-top:8px;">Side-track déjà tenté sur ce puits.</div>`;
     }
-    html+=`<button class="study-btn" style="margin-top:8px;background:var(--red);" onclick="confirmCloseWell(${b.id})">🔧 Fermer le puits</button>`;
+    html+=`<button class="study-btn" style="margin-top:8px;background:var(--red);" onclick="confirmCloseWell(${b.id})">🔧 Fermer le puits${abandonCost(w)>0?' (abandon : '+formatM(abandonCost(w))+')':''}</button>`;
   } else if(b.dryHole){
     html+=`<div style="color:var(--red);font-size:12px;margin-top:12px;">✗ Puits sec.</div>`;
   } else if(G.drilling.some(d=>d.blockId===b.id)){
@@ -6139,7 +6151,7 @@ function askConfirm(title, msg, yesLabel, onYes){
 }
 function confirmCloseWell(blockId){
   const b = blocks[blockId];
-  askConfirm(T('Fermer ce puits ?','Close this well?'), T(`Le puits (${b.x},${b.y}) cessera définitivement de produire. Cette action est irréversible.`, `Well (${b.x},${b.y}) will stop producing for good. This cannot be undone.`), T('Fermer le puits','Close well'), ()=>closeWell(blockId));
+  askConfirm(T('Fermer ce puits ?','Close this well?'), T(`Le puits (${b.x},${b.y}) cessera définitivement de produire. Coût d'abandon : ${formatM(abandonCost(b.well))}. Cette action est irréversible.`, `Well (${b.x},${b.y}) will stop producing for good. Abandonment cost: ${formatM(abandonCost(b.well))}. This cannot be undone.`), T('Fermer le puits','Close well'), ()=>closeWell(blockId));
 }
 document.addEventListener('keydown', e => { if(e.key==='Escape') document.getElementById('confirmModal')?.classList.remove('open'); });
 // ── Figurés lithologiques ──
