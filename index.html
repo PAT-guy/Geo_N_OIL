@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.63</title>
+<title>GeoExplorer V4.64</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -1361,13 +1361,18 @@ const BASIN_COLUMNS = {
     variants: [
       { id:'sud_gaz', label:'Mer du Nord sud : gaz du Rotliegend, roche-mère du Carbonifère sous le réservoir', w:1 },
       { id:'centre_huile', label:'Mer du Nord centrale : huile du Brent, roche-mère du Kimmeridge au-dessus du réservoir', w:1,
-        sequence: ['overburden','neutral_top','neutral_top#2','source','reservoir','neutral_mid','evaporite','basement'],
+        sequence: ['overburden','neutral_top','neutral_top#2','source','reservoir','neutral_mid','source#deep','evaporite','basement'],
         deepResProb: 0.3, deepAfter: 'neutral_mid',
         // Brent : réservoir moins profond et gradient plus modéré que le gaz du sud, pour que la
         // roche-mère placée au-dessus reste surtout dans la fenêtre à huile.
         bp: { dBase:2300, dRange:1300, gMin:28, gRange:8 },
-        thick: { source:[60,200], reservoir:[30,150], neutral_mid:[60,200], 'reservoir#deep':[30,120] },
+        thick: { source:[60,200], 'source#deep':[40,150], reservoir:[30,150], neutral_mid:[60,200], 'reservoir#deep':[30,120] },
         pools: {
+          // roche-mère profonde, sous le réservoir : le système classique est toujours présent dans toutes les provinces
+          'source#deep': [
+            {id:'ns_lias_sh', name:'Argilites organiques du Lias', lith:'Mudstone organique du Jurassique inférieur, kérogène de type II', col:'#2a3a20', light:'#3a4a30'},
+            {id:'ns_westph_coal', name:'Charbons du Westphalien', lith:'Houille et argilites charbonneuses, kérogène de type III (gaz)', col:'#0d0d0d', light:'#2a2a2a'},
+          ],
           'neutral_top#2': [
             {id:'ns_cret_inf',  name:'Marnes du Crétacé moyen', lith:'Marnes et argilites, couverture régionale', col:'#6a7a60', light:'#8a9a80'},
             {id:'ns_cret_inf2', name:'Argilites du Crétacé moyen', lith:'Argilite grise compacte', col:'#4a5568', light:'#6a7590'},
@@ -1533,8 +1538,8 @@ const GENERIC_TEMPLATES = {
   random: [
     { id:'classique', w:3, label:'Roche-mère sous le réservoir',
       seq:['overburden','neutral_top','seal','reservoir','neutral_mid','source','evaporite','basement'] },
-    { id:'source_dessus', w:2, label:'Roche-mère au-dessus du réservoir', deepAfter:'neutral_mid',
-      seq:['overburden','neutral_top','seal','source','reservoir','neutral_mid','evaporite','basement'] },
+    { id:'source_dessus', w:2, label:'Roche-mère superficielle au-dessus du réservoir, roche-mère profonde en dessous', deepAfter:'neutral_mid',
+      seq:['overburden','neutral_top','seal','source','reservoir','neutral_mid','source#deep','evaporite','basement'] },
     { id:'sandwich', w:2, label:'Roche-mère entre deux réservoirs',
       seq:['overburden','neutral_top','seal','reservoir','source','reservoir#deep','neutral_mid','basement'] },
     { id:'evaporite', w:2, label:'Réservoir scellé par des évaporites',
@@ -1543,24 +1548,24 @@ const GENERIC_TEMPLATES = {
   rift: [
     { id:'classique', w:3, label:'Roche-mère sous le réservoir',
       seq:['overburden','seal','reservoir','neutral_mid','source','neutral_mid','basement'] },
-    { id:'lacustre_dessus', w:2, label:'Roche-mère lacustre au-dessus du réservoir', deepAfter:'neutral_mid',
-      seq:['overburden','seal','source','reservoir','neutral_mid','basement'] },
+    { id:'lacustre_dessus', w:2, label:'Roche-mère lacustre au-dessus du réservoir, roche-mère profonde en dessous', deepAfter:'neutral_mid',
+      seq:['overburden','seal','source','reservoir','neutral_mid','source#deep','basement'] },
     { id:'sandwich', w:2, label:'Roche-mère entre deux réservoirs',
       seq:['overburden','seal','reservoir','source','reservoir#deep','neutral_mid','basement'] },
   ],
   passive: [
     { id:'classique', w:3, label:'Roche-mère sous le réservoir et les évaporites',
       seq:['overburden','neutral_top','seal','reservoir','evaporite','source','neutral_mid','basement'] },
-    { id:'source_dessus', w:2, label:'Roche-mère au-dessus du réservoir', deepAfter:'neutral_mid',
-      seq:['overburden','neutral_top','seal','source','reservoir','evaporite','neutral_mid','basement'] },
+    { id:'source_dessus', w:2, label:'Roche-mère superficielle au-dessus du réservoir, roche-mère profonde en dessous', deepAfter:'neutral_mid',
+      seq:['overburden','neutral_top','seal','source','reservoir','evaporite','neutral_mid','source#deep','basement'] },
     { id:'sandwich', w:2, label:'Roche-mère entre deux réservoirs',
       seq:['overburden','neutral_top','seal','reservoir','source','reservoir#deep','evaporite','basement'] },
   ],
   foreland: [
     { id:'classique', w:3, label:'Roche-mère sous le réservoir',
       seq:['overburden','seal','reservoir','seal','neutral_mid','source','basement'] },
-    { id:'source_dessus', w:2, label:'Roche-mère au-dessus du réservoir', deepAfter:'neutral_mid',
-      seq:['overburden','seal','source','reservoir','seal','neutral_mid','basement'] },
+    { id:'source_dessus', w:2, label:'Roche-mère superficielle au-dessus du réservoir, roche-mère profonde en dessous', deepAfter:'neutral_mid',
+      seq:['overburden','seal','source','reservoir','seal','neutral_mid','source#deep','basement'] },
     { id:'sandwich', w:2, label:'Roche-mère entre deux réservoirs',
       seq:['overburden','seal','reservoir','source','reservoir#deep','neutral_mid','basement'] },
   ],
@@ -1814,7 +1819,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
 
   // Identifier les couches pétrolières importantes
   const reservoirIdx = STRAT.findIndex(l=>l.role==='reservoir');
-  const sourceIdx    = STRAT.findIndex(l=>l.role==='source');
+  const sourceIdx    = STRAT.findLastIndex(l=>l.role==='source'); // la plus profonde : c'est elle qui charge (une roche-mère superficielle au-dessus du réservoir reste décorative)
   const sealIdx      = STRAT.slice(0, Math.max(reservoirIdx,0)).findLastIndex(l=>l.role==='seal');
   // Roche-mère au-dessus du réservoir (type Kimmeridge sur Brent) : les failles de grand rejet,
   // qui bloquent la migration latérale dans le cas classique, deviennent des conduits (la roche-mère
@@ -2401,7 +2406,7 @@ const STUDIES = {
       const gs = b.genStrength ?? 0.1;
       // Le TOC mesuré est celui de la roche-mère affichée dans les diagraphies (même couche), modulé
       // par la richesse locale (±15 %) : avant, il était recalculé à part et contredisait le log.
-      const srcL = b.horizons.find(h=>h.role==='source');
+      const srcL = b.horizons.findLast(h=>h.role==='source');
       const tocLayer = srcL && srcL.toc!=null ? parseFloat(srcL.toc) : null;
       const richness = clamp((gs/Math.max(0.05, b.maturity||0.05) - 0.1)/0.85, 0, 1);
       const toc = tocLayer!=null ? clamp(tocLayer*(0.85 + 0.3*richness)*(1 + (rng()-.5)*0.08), 0.05, 12)
