@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.58</title>
+<title>GeoExplorer V4.59</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -7950,8 +7950,27 @@ function _doStartGame(){
   function qzBuildRound(bank){
     let list = [];
     if(bank.gen){ try { list = bank.gen(); } catch(e){ list = []; } }
-    const fixed = qzShuffled(bank.questions).slice(0, Math.max(0, QZ_ROUND - list.length));
+    // Répétition espacée : les questions fixes ratées reviennent en priorité (jusqu'à la moitié
+    // de la manche), les autres complètent. Une bonne réponse à une question revue l'efface.
+    list.forEach(q => { q.__gen = true; });
+    const miss = qzMissGet(), need = Math.max(0, QZ_ROUND - list.length);
+    const pool = qzShuffled(bank.questions);
+    const due = pool.filter(q => miss[qzQid(q)]).sort((a,b) => (miss[qzQid(b)].n - miss[qzQid(a)].n) || (miss[qzQid(a)].ts - miss[qzQid(b)].ts)).slice(0, Math.ceil(need/2));
+    due.forEach(q => { q.__revoir = true; });
+    const rest = pool.filter(q => !due.includes(q)); rest.forEach(q => { q.__revoir = false; });
+    const fixed = [...due, ...rest].slice(0, need);
     return qzShuffled([...list, ...fixed]);
+  }
+  // Mémoire des erreurs par banque (stockage local, facultatif : tout fonctionne sans).
+  const qzQid = q => { let h = 0; const t = String(q.q || q.ask || ''); for(let i=0;i<t.length;i++) h = (h*31 + t.charCodeAt(i))|0; return String(h); };
+  function qzMissGet(){ try { return (JSON.parse(localStorage.getItem('geoexplorer_quiz_miss')||'{}')[qzKey]) || {}; } catch(e){ return {}; } }
+  function qzMissSet(q, ok){
+    try {
+      const all = JSON.parse(localStorage.getItem('geoexplorer_quiz_miss')||'{}'), m = all[qzKey] || (all[qzKey] = {}), id = qzQid(q);
+      if(!ok) m[id] = { n:(m[id]?.n||0)+1, ts:Date.now() };
+      else if(m[id]){ if(m[id].n > 1) m[id].n--; else delete m[id]; }
+      localStorage.setItem('geoexplorer_quiz_miss', JSON.stringify(all));
+    } catch(e){}
   }
 
   const qzEsc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -7959,7 +7978,7 @@ function _doStartGame(){
     if(qzIdx >= qzOrder.length){ qzFinish(); return; }
     const q = qzOrder[qzIdx];
     const qe = document.getElementById('qzQuestion');
-    qe.innerHTML = (q.chip ? `<span class="qz-kind">${qzEsc(q.chip)}</span>` : '')
+    qe.innerHTML = (q.__revoir ? `<span class="qz-kind">↻ À revoir</span>` : '') + (q.chip ? `<span class="qz-kind">${qzEsc(q.chip)}</span>` : '')
       + (q.facts ? `<div class="qz-facts">${q.facts.map(([l,v])=>`<div class="qz-fact"><span>${qzEsc(l)}</span><b>${qzEsc(v)}</b></div>`).join('')}</div><div class="qz-ask">${qzEsc(q.ask || q.q)}</div>${q.note ? `<div class="qz-note">${qzEsc(q.note)}</div>` : ''}`
                   : `<div class="qz-ask">${qzEsc(q.q)}</div>`);
     const fb0 = document.getElementById('qzFeedback'); fb0.classList.remove('show','ok','ko'); fb0.innerHTML = '';
@@ -7987,6 +8006,7 @@ function _doStartGame(){
         qzAsked++;
         if(chosen===q.correct){ qzScore++; }
         else { btn.classList.add('wrong'); }
+        if(!q.__gen) qzMissSet(q, chosen===q.correct);
         document.getElementById('qzScore').textContent = `Question ${qzIdx+1}/${qzOrder.length} · score ${qzScore}/${qzAsked}`;
         document.getElementById('qzBar').style.width = Math.round((qzIdx+1)/qzOrder.length*100)+'%';
         const fb = document.getElementById('qzFeedback'), okk = chosen===q.correct;
@@ -8031,7 +8051,7 @@ function _doStartGame(){
   document.querySelectorAll('.mg-card[data-quiz]').forEach(card=>{
     card.addEventListener('click', ()=>qzOpen(card.dataset.quiz));
   });
-  window.__qz = { qzGenForage, qzGenMaturation, qzGenRockeval, qzGenSeismic, qzGenLitho, qzLithProto, qzLithDist, qzBuildRound, QUIZ_BANKS };   // pour les tests
+  window.__qz = { qzGenForage, qzGenMaturation, qzGenRockeval, qzGenSeismic, qzGenLitho, qzLithProto, qzLithDist, qzBuildRound, QUIZ_BANKS, open: qzOpen, order: () => qzOrder };   // pour les tests
   document.getElementById('qzCloseBtn').addEventListener('click', ()=>{
     document.getElementById('quizModal').classList.remove('open');
   });
