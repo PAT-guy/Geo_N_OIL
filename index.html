@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.57</title>
+<title>GeoExplorer V4.58</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -1844,16 +1844,22 @@ function generateGeology(gridSize, basinType, offshore, seed){
   // distincts). On veut l'inverse : une carte plus grande doit révéler
   // davantage de structures en nombre brut, à taille comparable chacune.
   const sizeScale = Math.max(1, gridSize/12);
+  // Au-delà de 25×25, le nombre de structures croissait comme le côté de la carte alors que
+  // la surface croît comme son carré : la densité de pièges chutait et les gisements, chargés
+  // sur une portée proportionnelle à la carte, devenaient immenses. Facteur de densité ajouté
+  // (1 jusqu'à 25×25, donc cartes inchangées en dessous).
+  const bigExtra = gridSize > 25 ? Math.pow(gridSize/25, 0.8) : 1;
+  const structScale = sizeScale * bigExtra;
 
   // Structures anticlinales
-  const nAnticlines = Math.round((bp.aMin + Math.floor(rng()*(bp.aMax-bp.aMin+1))) * sizeScale);
+  const nAnticlines = Math.round((bp.aMin + Math.floor(rng()*(bp.aMax-bp.aMin+1))) * structScale);
   const anticlines = Array.from({length:nAnticlines}, ()=>({
     x: rng()*gridSize, y: rng()*gridSize,
     str: 0.6 + rng()*0.4, range: 2 + rng()*3,
   }));
 
   // Failles
-  const nFaults = Math.round((bp.fMin + Math.floor(rng()*(bp.fMax-bp.fMin+1))) * sizeScale);
+  const nFaults = Math.round((bp.fMin + Math.floor(rng()*(bp.fMax-bp.fMin+1))) * structScale);
   const faults = Array.from({length:nFaults}, ()=>{
     const ang = rng()*Math.PI;
     return { px:rng()*gridSize, py:rng()*gridSize,
@@ -1866,7 +1872,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
   // depuis les provinces : le test ne trouvait jamais de sel et aucune carte
   // n'avait de diapir. On repère maintenant le sel mobile par son drapeau.
   const hasSalt = STRAT_PROVINCES.some(col => col.some(l=>l.mobileSalt && l.thickness > 50));
-  const saltDomes = hasSalt && rng()<bp.saltP ? Array.from({length:Math.round((1+Math.floor(rng()*bp.saltMax))*sizeScale)}, ()=>({
+  const saltDomes = hasSalt && rng()<bp.saltP ? Array.from({length:Math.round((1+Math.floor(rng()*bp.saltMax))*structScale)}, ()=>({
     x:rng()*gridSize, y:rng()*gridSize, r:0.8+rng()*0.8, uplift:400+rng()*600,
   })) : [];
 
@@ -1892,8 +1898,8 @@ function generateGeology(gridSize, basinType, offshore, seed){
   // Faciès sédimentaires corrélés (champs lissés) : la résolution (nombre de
   // points de contrôle) grandit avec sizeScale pour garder des patches de
   // taille comparable, donc plus de patches distincts sur une grande carte.
-  const resFacies = smoothField(gridSize, Math.round(4*sizeScale), rng);
-  const sourceFacies = smoothField(gridSize, Math.round(5*sizeScale), rng);
+  const resFacies = smoothField(gridSize, Math.round(4*structScale), rng);
+  const sourceFacies = smoothField(gridSize, Math.round(5*structScale), rng);
   const sealFacies = smoothField(gridSize, Math.round(6*sizeScale), rng);
   // Champ à basse fréquence pour délimiter les provinces lithostratigraphiques
   // en grandes zones cohérentes (pas un bruit bloc par bloc, qui donnerait un
@@ -2066,7 +2072,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
   //     pièges qui se disputent la même source).
   const KITCHEN_MIN_STRENGTH = ADV.kitchenThreshold ?? 0.15; // seuil sous lequel un point n'est pas une kitchen active
   const kitchens = raw.filter(b => b.genStrength >= KITCHEN_MIN_STRENGTH);
-  const migrationRange = Math.max(2.5, gridSize*0.4) * (ADV.migrationRangeMult ?? 1); // portée de migration, en cases de grille
+  const migrationRange = Math.min(10, Math.max(2.5, gridSize*0.4)) * (ADV.migrationRangeMult ?? 1); // portée de migration, en cases de grille
   const TRAP_CANDIDATE_MIN = 0.25; // trapFactor mini pour compter comme concurrent au partage de charge
 
   function faultPathFactor(b, k){
