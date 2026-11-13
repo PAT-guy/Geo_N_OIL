@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.56</title>
+<title>GeoExplorer V4.57</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -8850,7 +8850,24 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
         // jouable : tubage possible avant la rampe, et fenêtre assez large au fond
         if(gfPred(zop-150) < Gmax + 0.17) continue;
         if(gf(maxZ) < Gmax + delta + 0.15) continue;
-        return { TD, maxZ, resTop:res.top, resPred:res.pred, resUnc:res.unc, gr:grAt, zop, ramp, Gmax, delta, layers:all, layerAt, gs, gp, gpPred, gf, gfPred, ucs: z => clamp(1277*Math.exp(-0.036*layerAt(z).dt), 15, 300), blockName:`bloc (${b.x}, ${b.y})` };
+        // ---- drain horizontal : réservoir et contact connus au talon (le puits vertical vient de les traverser), structure latérale inconnue ----
+        b.well = {status:'producing'}; b.dryHole = false; b.isGas = false; wlZoom = false;
+        const gg = wlGrid(b, false); if(!gg || gg.firstRes<0 || gg.hcBase===null) continue;
+        const hrr = gg.H[gg.firstRes], thR = hrr.thicknessLocal ?? hrr.thickness, topR = hrr.top, zc = gg.hcBase, baseR = topR + thR;
+        if(thR < 40 || zc - topR < 28) continue;
+        const gmean = (a2,c2)=>{ let m=0,n=0; for(let k=0;k<=gg.n;k++){ const zz=gg.z[k]; if(zz>=a2 && zz<=c2){ m += Math.log10(gg.rt[k]); n++; } } return n ? Math.pow(10, m/n) : NaN; };
+        const rtPay = gmean(topR+4, zc-4), rtW0 = zc+6 < baseR-4 ? gmean(zc+6, baseR-4) : 5, rtWater = Number.isFinite(rtW0) ? rtW0 : 5; if(!(rtPay >= 11) || rtWater > 0.7*rtPay) continue;   // la résistivité doit distinguer nettement la zone à hydrocarbures de la zone aquifère
+        const Ld = 700; let dr = null;
+        for(let k2=0; k2<400 && !dr; k2++){
+          const dipDeg = Math.random()<0.7 ? rnd(0.8, 3.8) : rnd(-3, -0.8), dip = Math.tan(dipDeg*Math.PI/180), A = rnd(0.10,0.22)*thR, lam = rnd(250,450), ph = rnd(0,6.28), xf = rnd(220, Ld-120), thF = (Math.random()<0.7?1:-1)*rnd(0.25,0.5)*thR;
+          const off = x => dip*x + A*Math.sin(2*Math.PI*x/lam+ph) - A*Math.sin(ph) + (x>xf ? thF : 0);
+          let okc = true; for(let x=0; x<=Ld+200; x+=10){ if(zc - (topR+off(x)) < 18 || topR+off(x) < 0) okc = false; }
+          // le puits doit être exigeant : une trajectoire horizontale sort de la zone (de plus de 6 m) entre 120 et 340 m, et y reste au moins 120 m
+          let xExit = Infinity; if(okc){ const hz = topR + 0.35*(zc-topR), outAt = x => { const tp = topR+off(x), bs = tp+thR; return (hz < tp-6 || hz > Math.min(bs, zc)+6) ? 1 : 0; }; for(let x=0; x<=Ld+200; x+=10){ if(outAt(x)){ let ok2 = true; for(let x2=x; x2<=Math.min(Ld, x+120); x2+=10) if(!outAt(x2)) ok2 = false; if(ok2){ xExit = x; break; } } } }
+          if(okc && xExit >= 120 && xExit <= 340) dr = { L:Ld, maxMD:Ld+200, top:topR, zc, base:baseR, thr:thR, off, dipDeg, xf, throw:thF, rtPay, rtWater, grPay:res.gr0, grAbove:above.gr0, grBelow:(all[ri+1] ? all[ri+1].gr0 : 115), heelZ: topR + 0.35*(zc-topR), ucs: clamp(1277*Math.exp(-0.036*res.dt), 15, 300) };
+        }
+        if(!dr) continue;
+        return { TD, maxZ, drain:dr, resTop:res.top, resPred:res.pred, resUnc:res.unc, gr:grAt, zop, ramp, Gmax, delta, layers:all, layerAt, gs, gp, gpPred, gf, gfPred, ucs: z => clamp(1277*Math.exp(-0.036*layerAt(z).dt), 15, 300), blockName:`bloc (${b.x}, ${b.y})` };
       }
       return null;
     });
@@ -8974,6 +8991,45 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
   function scoreOf(S){ const ref = S.sc.resTop/15 + 25, time = Math.round(clamp(100*ref/Math.max(ref, S.hours), 5, 100)), n = S.ev.filter(e=>e.kind==='bad' && INC_PEN[e.type]);
     const pen = n.reduce((a,e)=>a+INC_PEN[e.type], 0), tdPen = S.status==='td' ? Math.round(Math.min(25, (S.tdOver||0)/4) + (S.tdKind==='auto' ? 15 : 0)) : 0;
     return { ref, time, pen, tdPen, score: S.status==='td' ? Math.max(5, time - pen - tdPen) : 0, incidents: n.length }; }
+  // ---------- drain horizontal (géosteering) ----------
+  // Structure latérale inconnue : pendage, ondulation et une faille déplacent le toit du réservoir ; le contact eau-hydrocarbures reste plat.
+  // Le joueur ne voit que les diagraphies : GR (capteur 15 m derrière l'outil) et résistivité (8 m derrière). Il pilote l'inclinaison.
+  const DR_STEP = 10, DR_DLS = 2.0, DR_GR_BACK = 12, DR_RT_BACK = 6;     // pas de forage (m), variation d'inclinaison maximale par pas (2° / 10 m, soit 6° / 30 m), capteurs derrière l'outil (m)
+  const drZone = (d, x, z) => { const top = d.top + d.off(x), base = top + d.thr; return z < top ? 'above' : z <= Math.min(base, d.zc) ? 'pay' : z <= base ? 'water' : 'below'; };
+  function drMeasure(d, x, z){ const zn = drZone(d, x, z), nz = labHash(x*0.31 + z*0.17) - 0.5, n2 = labHash(x*0.57 - z*0.23) - 0.5;
+    const gr = (zn==='above' ? d.grAbove : zn==='below' ? d.grBelow : d.grPay) + nz*14, rt = zn==='pay' ? d.rtPay*(1+n2*0.18) : zn==='water' ? d.rtWater*(1+n2*0.18) : 3*(1+n2*0.3);
+    return { zone:zn, gr:Math.max(5, gr), rt:Math.max(0.5, rt) }; }
+  function drNew(S){ const d = S.sc.drain, z0 = d.heelZ; return { brief:false, x:0, z:z0, md:0, pitch:0, target:0, trail:[{x:-20,z:z0},{x:-10,z:z0},{x:0,z:z0}], logs:[], marks:[], steps:0, inPay:0, cnt:{pay:0,above:0,water:0,below:0}, hours:0, status:'run', lastGrZone:'pay', lastRtZone:'pay', auto:false }; }
+  const drInterp = (tr, back) => { const n = tr.length-1, i = Math.floor(back/DR_STEP), f = back/DR_STEP - i, a = tr[n-i], b = tr[n-i-1]; return { x:a.x + (b.x-a.x)*f, z:a.z + (b.z-a.z)*f }; };
+  function drStep(S){
+    const dr = S.dr; if(!dr || dr.status!=='run') return; const d = S.sc.drain;
+    dr.pitch += clamp(dr.target - dr.pitch, -DR_DLS, DR_DLS); dr.pitch = clamp(dr.pitch, -12, 12);
+    const r = dr.pitch*Math.PI/180; dr.x += DR_STEP*Math.cos(r); dr.z += DR_STEP*Math.sin(r); dr.md += DR_STEP; dr.trail.push({x:dr.x, z:dr.z});
+    const here = drZone(d, dr.x, dr.z); dr.cnt[here]++; dr.steps++; if(here==='pay') dr.inPay++;
+    const rop = 14*Math.pow(50/d.ucs, 0.7)*(here==='above' || here==='below' ? 0.55 : 1); dr.hours += DR_STEP/rop;
+    const gs = drInterp(dr.trail, DR_GR_BACK), rs = drInterp(dr.trail, DR_RT_BACK), mg = drMeasure(d, gs.x, gs.z), mr = drMeasure(d, rs.x, rs.z);
+    dr.logs.push({ x:dr.x, gr:mg.gr, rt:mr.rt, zoneGr:mg.zone, zoneRt:mr.zone, bit:here, gx:gs.x, gz:gs.z, rx:rs.x, rz:rs.z });
+    // limites détectées : le GR signale le toit ou la base (argile), la résistivité signale le contact
+    const sh = z => (z==='above' || z==='below');
+    if(sh(mg.zone) !== sh(dr.lastGrZone)) dr.marks.push({ at:dr.x, x:gs.x, z:gs.z, kind: sh(mg.zone) ? (mg.zone==='above' ? 'sortie par le toit' : 'sortie par la base') : 'retour dans le réservoir' });
+    if(!sh(mg.zone) && !sh(mr.zone) && (mr.zone==='water') !== (dr.lastRtZone==='water')) dr.marks.push({ at:dr.x, x:rs.x, z:rs.z, kind: mr.zone==='water' ? 'contact traversé' : 'retour au-dessus du contact' });
+    dr.lastGrZone = mg.zone; if(!sh(mr.zone)) dr.lastRtZone = mr.zone;
+    if(dr.md >= d.L){ dr.status = 'done'; dr.auto = false; }
+  }
+  function drScore(S){ const dr = S.dr, d = S.sc.drain, pct = dr.steps ? dr.inPay/dr.steps : 0, len = Math.min(1, dr.md/d.L), score = Math.round(100*pct*len);
+    return { pct, len, score, cnt:dr.cnt, md:dr.md, hours:dr.hours }; }
+  // joueurs automatiques du drain : « naïf » (garde l'horizontale), « suiveur » (réagit aux seules diagraphies)
+  function drainBot(S, kind){ const dr = S.dr, d = S.sc.drain; let guard = 0, anchor = { x:0, z:d.top }, slope = 0, used = 0;
+    while(dr.status==='run' && guard++ < 400){
+      if(kind==='naive'){ dr.target = 0; drStep(S); continue; }
+      // limites détectées : points du toit (sortie par le toit, retour dans le réservoir après une sortie par le toit) ; la pente vient de deux points successifs
+      while(used < dr.marks.length){ const mk = dr.marks[used++]; if(mk.kind==='sortie par le toit' || (mk.kind==='retour dans le réservoir' && dr.lastExit==='toit')){ if(mk.kind==='sortie par le toit') dr.lastExit = 'toit'; else dr.lastExit = null;
+          if(mk.x - anchor.x > 20) slope = (mk.z - anchor.z)/(mk.x - anchor.x); anchor = { x:mk.x, z:mk.z }; } else if(mk.kind==='sortie par la base') dr.lastExit = 'base'; else if(mk.kind==='retour dans le réservoir') dr.lastExit = null; }
+      const topEst = anchor.z + slope*(dr.x - anchor.x), payBase = Math.min(topEst + d.thr, d.zc), aim = Math.min(topEst + 0.4*(payBase - topEst), d.zc - 16), last = dr.logs[dr.logs.length-1];
+      dr.target = clamp(Math.atan(slope)*180/Math.PI + clamp((aim - dr.z)*0.35, -8, 8), -10, 10);
+      if(last && last.gr < 90 && last.rt < (d.rtPay + d.rtWater)/2 + 1) dr.target = Math.min(dr.target, -4);   // résistivité basse dans une roche propre : sous le contact, on remonte
+      drStep(S); }
+    return S; }
   // ---------- interface ----------
   let S = null, timer = null, speed = 1;
   const $ = id => document.getElementById(id);
@@ -9007,6 +9063,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
       <text x="${(x0+x1)/2}" y="${H-14}" font-size="7.5" text-anchor="middle" fill="var(--muted)">densité équivalente (sg)</text></svg>`;
   }
   function render(){
+    if(S.phase==='drain'){ renderDrain(); return; }
     const sc = S.sc, L = sc.layerAt(Math.max(S.z,5)), rop = S.drilling ? S.rop : ropOf(S);
     const lastGr = S.gr.length ? Math.round(S.gr[S.gr.length-1].v) : null, st = [['Profondeur', Math.round(S.z)+' m'], ['Avancement', f1(rop)+' m/h'], ['GR', lastGr===null ? '-' : lastGr+' API'], ['Heures', f1(S.hours)+' h'], ['Gain bac', f2(S.gain)+' m³', S.gain>=0.8], ['Pertes', f2(S.loss)+' m³', S.lossActive]];
     $('rgStats').innerHTML = st.map(([a,b,w])=>`<div class="${w?'warn':''}">${a}<b>${b}</b></div>`).join('');
@@ -9079,9 +9136,86 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
       ${ok ? `Arrêt à ${Math.round(S.z)} m pour un toit du réservoir à ${Math.round(sc.resTop)} m (prévu ${sc.resPred} m), en <b>${f1(S.hours)} h</b> (référence ${f1(ref)} h). Score : <b>${score}/100</b> (temps ${sco.time}, moins ${sco.pen} pour ${sco.incidents} incident(s) de forage${sco.tdPen ? ', moins '+sco.tdPen+' pour le surforage' : ''}). Outils utilisés : ${S.bits}, tubages : ${S.strings}.` : S.ev[S.ev.length-1].msg}
       ${lines ? `<ul>${lines}</ul>` : '<br>Aucun incident : forage propre.'}
       <div class="rg-hint">${rigBest(ok, score)}</div>
-      <div class="rg-btns" style="margin-top:10px;"><button class="go" id="rgAgain">↻ Nouveau puits</button></div></div>`;
+      <div class="rg-btns" style="margin-top:10px;">${ok && sc.drain ? '<button class="go" id="rgDrain">Continuer : forer le drain horizontal</button>' : ''}<button ${ok && sc.drain ? '' : 'class="go" '}id="rgAgain">↻ Nouveau puits</button></div></div>`;
   }
   function stop(){ if(timer){ clearInterval(timer); timer=null; } }
+  // ---------- interface du drain horizontal ----------
+  function drawDrain(){
+    const dr = S.dr, d = S.sc.drain, W=380, H=262, x0=34, x1=372, secY0=14, secY1=150, grY0=170, grY1=208, rtY0=222, rtY1=256, xmax = d.L + 20;
+    const zs = [d.top-25, d.zc+25, ...dr.trail.map(p=>p.z-8), ...dr.trail.map(p=>p.z+8), ...dr.marks.map(m=>m.z-8)], zmin = Math.min(...zs), zmax = Math.max(...zs);
+    const X = x => x0 + clamp(x,0,xmax)/xmax*(x1-x0), Z = z => secY0 + (z-zmin)/(zmax-zmin)*(secY1-secY0);
+    let g = '';
+    for(let x=0; x<=d.L; x+=100) g += `<line x1="${X(x)}" y1="${secY0}" x2="${X(x)}" y2="${rtY1}" stroke="var(--line)" stroke-width=".4"/><text x="${X(x)}" y="${H-1}" font-size="7.5" text-anchor="middle" fill="var(--muted)">${x}</text>`;
+    const zt = Math.ceil(zmin/20)*20; for(let z=zt; z<zmax; z+=20) g += `<line x1="${x0}" y1="${Z(z)}" x2="${x1}" y2="${Z(z)}" stroke="var(--line)" stroke-width=".3"/><text x="${x0-3}" y="${Z(z)+3}" font-size="7.5" text-anchor="end" fill="var(--muted)">${Math.round(z)}</text>`;
+    const prog = `<rect x="${x0}" y="${Z(d.top)}" width="${x1-x0}" height="${Z(d.zc)-Z(d.top)}" fill="#2e8b57" opacity=".13"/>
+      <line x1="${x0}" y1="${Z(d.top)}" x2="${x1}" y2="${Z(d.top)}" stroke="#b8860b" stroke-width="1" stroke-dasharray="4 3"/><text x="${x1-2}" y="${Z(d.top)-2}" font-size="7.5" text-anchor="end" fill="#8a6508">toit connu au talon</text>
+      <line x1="${x0}" y1="${Z(d.zc)}" x2="${x1}" y2="${Z(d.zc)}" stroke="#2c6fbb" stroke-width="1" stroke-dasharray="4 3"/><text x="${x1-2}" y="${Z(d.zc)+8}" font-size="7.5" text-anchor="end" fill="#2c6fbb">contact eau-hydrocarbures</text>`;
+    const col = z => z==='above' || z==='below' ? '#c0392b' : z==='water' ? '#2c6fbb' : '#2e8b57';
+    const dots = dr.logs.map(l=>`<circle cx="${X(l.gx).toFixed(1)}" cy="${Z(l.gz).toFixed(1)}" r="1.9" fill="${col(l.zoneGr==='above'||l.zoneGr==='below' ? l.zoneGr : l.zoneRt)}" opacity=".85"/>`).join('');
+    const path = `<polyline points="${dr.trail.slice(2).map(p=>X(p.x).toFixed(1)+','+Z(p.z).toFixed(1)).join(' ')}" fill="none" stroke="#1c170e" stroke-width="1.6"/>`;
+    const marks = dr.marks.map(m=>`<g><circle cx="${X(m.x).toFixed(1)}" cy="${Z(m.z).toFixed(1)}" r="3.4" fill="none" stroke="#1c170e" stroke-width="1"/></g>`).join('');
+    const bit = `<circle cx="${X(dr.x)}" cy="${Z(dr.z)}" r="4" fill="#b8860b" stroke="var(--panel2)" stroke-width="1.2"/>`;
+    const grPts = dr.logs.map(l=>`${X(l.x).toFixed(1)},${(grY1 - clamp(l.gr,0,200)/200*(grY1-grY0)).toFixed(1)}`).join(' ');
+    const lrt = v => Math.log10(clamp(v,1,100))/2, rtPts = dr.logs.map(l=>`${X(l.x).toFixed(1)},${(rtY1 - lrt(l.rt)*(rtY1-rtY0)).toFixed(1)}`).join(' ');
+    $('rgChart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Coupe du drain horizontal et diagraphies en direct">${g}${prog}${dots}${path}${marks}${bit}
+      <text x="${x0+2}" y="${secY0-4}" font-size="8" fill="var(--muted)">profondeur (m) selon la distance forée (m)</text>
+      <rect x="${x0}" y="${grY0}" width="${x1-x0}" height="${grY1-grY0}" fill="none" stroke="var(--line)" stroke-width=".6"/><text x="${x0+3}" y="${grY0+8}" font-size="7.5" fill="#2e8b57" font-weight="600">GR (0 à 200 API)</text>
+      ${dr.logs.length>1 ? `<polyline points="${grPts}" fill="none" stroke="#2e8b57" stroke-width="1.2"/>` : ''}
+      <rect x="${x0}" y="${rtY0}" width="${x1-x0}" height="${rtY1-rtY0}" fill="none" stroke="var(--line)" stroke-width=".6"/><text x="${x0+3}" y="${rtY0+8}" font-size="7.5" fill="#c0392b" font-weight="600">Rt (1 à 100 Ω·m)</text>
+      ${dr.logs.length>1 ? `<polyline points="${rtPts}" fill="none" stroke="#c0392b" stroke-width="1.2"/>` : ''}</svg>`;
+  }
+  function drainBrief(){ const d = S.sc.drain;
+    return `<div class="rg-end"><h3>Projet de drain horizontal</h3>
+      <b>Objectif.</b> Forer <b>${d.L} m</b> de drain horizontal en restant dans la zone d'hydrocarbures : entre le toit du réservoir et le contact eau-hydrocarbures. Le toit est connu au talon à <b>${Math.round(d.top)} m</b>, le contact à <b>${Math.round(d.zc)} m</b> : la colonne d'hydrocarbures fait <b>${Math.round(d.zc-d.top)} m</b>, dans un réservoir de ${Math.round(d.thr)} m.
+      <div style="margin-top:8px;"><b>Ce qu'on ignore.</b> Le pendage, les ondulations et les failles déplacent le toit le long du drain ; le contact reste horizontal. Une trajectoire horizontale finit par sortir de la zone.</div>
+      <div style="margin-top:8px;"><b>Vos outils.</b></div><ul>
+        <li>Le <b>GR</b> (capteur ${DR_GR_BACK} m derrière l'outil) : une argile (GR haut, au-dessus de 90 API) signale que vous sortez par le toit.</li>
+        <li>La <b>résistivité</b> (capteur ${DR_RT_BACK} m derrière l'outil) : une chute de Rt dans une roche propre signale que vous traversez le contact.</li>
+        <li>L'<b>inclinaison visée</b> : elle change de 2° au plus par 10 m (6° par 30 m). Un capteur en retard veut dire que l'outil est déjà sorti quand l'alerte arrive : anticipez.</li></ul>
+      <div class="rg-hint">Score : part de la longueur forée dans la zone. Au-dessus de 80 %, le drain est bien placé. Les cercles sur la coupe sont les limites détectées par les diagraphies : ils donnent la position réelle du toit et du contact là où vous êtes passé.</div>
+      <div class="rg-btns" style="margin-top:10px;"><button class="go" id="rgDrStart">Commencer le drain</button></div></div>`; }
+  function drainEnd(){ const dr = S.dr, d = S.sc.drain, sco = drScore(S), tot = Math.max(1, dr.steps), p = k => Math.round(dr.cnt[k]/tot*100);
+    let best = ''; { const key = 'geoexplorer_quiz_best_rigdrain'; let prev = null; try { prev = JSON.parse(localStorage.getItem(key)||'null'); } catch(e){}
+      if(!prev || sco.score > prev.s){ try { localStorage.setItem(key, JSON.stringify({s:sco.score, n:100})); } catch(e){} best = 'Nouveau meilleur score du drain.'; } else best = 'Meilleur score du drain : '+prev.s+'/100.'; }
+    const tips = []; if(p('above') >= 10) tips.push(`Vous êtes sorti par le toit sur ${p('above')} % de la longueur : quand le GR monte, c'est déjà tard ; la pente du toit se déduit des deux premières limites détectées, suivez-la.`);
+    if(p('water') >= 10) tips.push(`Vous avez traversé le contact sur ${p('water')} % de la longueur : le contact est horizontal, la zone se rétrécit quand le toit descend. Visez le haut de la colonne.`);
+    if(p('below') >= 5) tips.push(`Vous êtes sorti par la base du réservoir sur ${p('below')} % de la longueur.`);
+    return `<div class="rg-end"><h3>${sco.score>=80 ? '✓ Drain bien placé' : sco.score>=55 ? 'Drain correct' : '✗ Drain mal placé'}</h3>
+      ${Math.round(dr.md)} m forés en <b>${f1(dr.hours)} h</b> : <b>${Math.round(sco.pct*100)} %</b> dans la zone d'hydrocarbures, ${p('above')} % au-dessus du toit (argile), ${p('water')} % sous le contact (eau), ${p('below')} % sous le réservoir. Score : <b>${sco.score}/100</b>.
+      <div class="rg-hint">Le toit s'est déplacé de ${Math.round(Math.min(...Array.from({length:71},(_,i)=>d.off(i*10))))} à ${Math.round(Math.max(...Array.from({length:71},(_,i)=>d.off(i*10))))} m par rapport au talon : pendage ${f1(d.dipDeg)}°, faille de ${Math.round(Math.abs(d.throw))} m ${d.throw>0?'vers le bas':'vers le haut'} vers ${Math.round(d.xf)} m.</div>
+      ${tips.length ? `<ul>${tips.map(t=>`<li>${t}</li>`).join('')}</ul>` : '<br>Aucune sortie de zone notable.'}
+      <div class="rg-hint">${best}</div>
+      <div class="rg-btns" style="margin-top:10px;"><button class="go" id="rgAgain">↻ Nouveau puits</button></div></div>`; }
+  function renderDrain(){
+    const dr = S.dr, d = S.sc.drain, last = dr.logs.length ? dr.logs[dr.logs.length-1] : null, sco = drScore(S);
+    const st = [['Distance', Math.round(dr.md)+' m'], ['Inclinaison', (dr.pitch>=0?'+':'')+f1(dr.pitch)+'°'], ['GR', last ? Math.round(last.gr)+' API' : '-'], ['Rt', last ? (last.rt>=100?Math.round(last.rt):f1(last.rt))+' Ω·m' : '-'], ['Dans la zone', dr.steps ? Math.round(sco.pct*100)+' %' : '-'], ['Heures', f1(dr.hours)+' h']];
+    $('rgStats').innerHTML = st.map(([a,b])=>`<div>${a}<b>${b}</b></div>`).join('');
+    drawDrain();
+    let h = '';
+    if(dr.brief) h += drainBrief();
+    else if(dr.status!=='run') h += drainEnd();
+    else {
+      const gr = last ? last.gr : 0, rt = last ? last.rt : d.rtPay, txt = !last ? 'pas encore de mesure' : gr >= 90 ? '<b>argile</b> : vous êtes sorti de la zone (GR haut)' : rt < (d.rtPay+d.rtWater)/2+1 ? '<b>roche propre mais Rt bas</b> : vous avez traversé le contact' : '<b>roche propre, Rt haut</b> : vous êtes dans la zone';
+      h += `<div class="rg-hint">Diagraphies : ${txt}. Inclinaison actuelle <b>${(dr.pitch>=0?'+':'')+f1(dr.pitch)}°</b> pour <b>${(dr.target>=0?'+':'')+f1(dr.target)}°</b> visés (positif : vers le bas, 2° au plus par 10 m).</div>
+        <div class="rg-ctl" style="grid-template-columns:1fr;"><label>Inclinaison visée <b id="rgDrTV">${(dr.target>=0?'+':'')+f1(dr.target)}°</b></label>
+          <input type="range" id="rgDrT" min="-10" max="10" step="0.5" value="${dr.target}" aria-label="Inclinaison visée en degrés, positif vers le bas"></div>
+        <div class="rg-btns"><button class="go" id="rgDrGo">${dr.auto?'⏸ Pause':'▶ Forer'}</button><button id="rgDrOne">Forer 10 m</button><button id="rgDrSpeed">Vitesse ×${speed}</button><button id="rgDrEnd" ${dr.md<200?'disabled':''}>Terminer le drain</button></div>`;
+    }
+    h += `<div class="rg-log" id="rgLog">${dr.marks.slice(-5).reverse().map(m=>`<div>${Math.round(m.x)} m : ${m.kind}</div>`).join('')}</div>`;
+    $('rgBody').innerHTML = h; bindDrain();
+  }
+  function loopDrain(){ stop(); if(S.dr.status==='run' && S.dr.auto) timer = setInterval(()=>{ for(let i=0;i<speed;i++){ if(S.dr.status!=='run') break; drStep(S); } renderDrain(); if(S.dr.status!=='run'){ S.dr.auto=false; stop(); renderDrain(); } }, 320); }
+  function bindDrain(){
+    const on = (id,fn)=>{ const e=$(id); if(e) e.addEventListener('click', fn); };
+    const t = $('rgDrT'); if(t) t.addEventListener('input', ()=>{ S.dr.target = +t.value; const v=$('rgDrTV'); if(v) v.textContent = (S.dr.target>=0?'+':'')+f1(S.dr.target)+'°'; });
+    on('rgDrStart', ()=>{ S.dr.brief = false; renderDrain(); });
+    on('rgDrGo', ()=>{ S.dr.auto = !S.dr.auto; renderDrain(); loopDrain(); });
+    on('rgDrOne', ()=>{ S.dr.auto = false; stop(); drStep(S); renderDrain(); });
+    on('rgDrSpeed', ()=>{ speed = speed===1 ? 3 : 1; renderDrain(); });
+    on('rgDrEnd', ()=>{ S.dr.status = 'done'; S.dr.auto = false; stop(); renderDrain(); });
+    on('rgAgain', ()=>openRig());
+  }
+
   function loop(){ stop(); if(S.status==='run' && S.drilling) timer = setInterval(()=>{ for(let i=0;i<speed;i++){ if(!S.drilling) break; const b0=S.block; tick(S); if(S.block && S.block!==b0) S.drilling=false; if(S.status!=='run') break; } render(); if(S.status!=='run' || !S.drilling) stop(); }, 380); }
   function setCtl(id, key, unit, dec){ const el=$(id); if(!el) return; el.addEventListener('input', ()=>{ S[key] = +el.value; const v=$(id+'V'); if(v) v.textContent = (dec? f2(S[key]) : Math.round(S[key]))+' '+unit; drawChart(); }); }
   function bind(){
@@ -9094,6 +9228,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
     on('rgCase', ()=>{ act(S,'case'==='case'?'casing':'casing'); render(); });
     on('rgTd', ()=>{ if(!S.tdArm){ S.tdArm = true; S.drilling = false; stop(); render(); } else { S.tdArm = false; act(S,'td'); render(); } });
     on('rgStart', ()=>{ S.brief = false; render(); });
+    on('rgDrain', ()=>{ S.phase = 'drain'; S.dr = drNew(S); S.dr.brief = true; renderDrain(); });
     on('rgTrip', ()=>{ act(S,'trip'); render(); }); on('rgTrip2', ()=>{ act(S,'trip'); render(); });
     on('rgShut', ()=>{ act(S,'shut'); render(); });
     on('rgKill', ()=>{ act(S,'kill', S.mwTarget); render(); });
@@ -9105,12 +9240,12 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
     on('rgAgain', ()=>openRig());
   }
   function openRig(){
-    stop(); const sc = rigScenario(); if(!sc) return; S = rigNew(sc); S.lag = true; S.brief = true; speed = 1;
+    stop(); const sc = rigScenario(); if(!sc) return; S = rigNew(sc); S.lag = true; S.brief = true; S.phase = null; speed = 1;
     $('rigModal').classList.add('open'); render();
   }
   $('rigOpenBtn').addEventListener('click', openRig);
   $('rgClose').addEventListener('click', ()=>{ stop(); $('rigModal').classList.remove('open'); });
-  window.__rig = { grSaysReservoir, bottomsUp, rigScenario, rigNew, tick, act, playBot, scoreOf, ropOf, qMin, gfOpen, gfOpenPred, get S(){ return S; }, render: ()=>render(), openRig, DZ, MARGIN, G0 };
+  window.__rig = { drNew, drStep, drScore, drZone, drMeasure, drainBot, grSaysReservoir, bottomsUp, rigScenario, rigNew, tick, act, playBot, scoreOf, ropOf, qMin, gfOpen, gfOpenPred, get S(){ return S; }, render: ()=>render(), openRig, DZ, MARGIN, G0 };
 })();
 </script>
 </body>
