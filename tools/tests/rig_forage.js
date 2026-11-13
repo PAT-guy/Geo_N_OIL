@@ -49,13 +49,31 @@ const { chromium, devices } = require('playwright'); const path = require('path'
       S=R.rigNew(sc); S.lag=true; S.z=300; S.q=3000; S.mw=1.08; S.mwTarget=1.08; S.drilling=true; R.act(S,'setmw',1.15); const t0=S.hours, tb=R.bottomsUp(S); let before=true, after=false; for(let k=0;k<60 && S.status==='run' && S.z<sc.TD-20;k++){ R.tick(S); if(S.hours < t0+tb-1e-9 && S.mw!==1.08) before=false; if(S.hours >= t0+tb && S.mw===1.15) after=true; if(after) break; } if(before && after) okDrill++; }
     return {n, okT, okImm, okDrill}; });
   ok(lg.okT===lg.n && lg.okImm===lg.n && lg.okDrill===lg.n, 'retard de circulation : durée = 0,4 + z/1800 × 1500/débit, densité inchangée au fond avant le fond-en-haut puis appliquée ('+lg.okT+', '+lg.okImm+', '+lg.okDrill+' sur '+lg.n+')');
+  // 1 ter. GR, tops prévus, décision d'arrêt
+  const gt = await pg.evaluate(()=>{ const R=window.__rig, o={n:0,grOk:0,contraste:0,predOk:0,predVar:0,court:0,ok:0,late:0,penLate:0,auto:0,stuckNo:0,msgCourt:0};
+    for(let i=0;i<40;i++){ const sc=R.rigScenario(); if(!sc) continue; o.n++;
+      // le GR suit la nature de la couche (moyenne sur la couche à ±10 API de sa valeur de référence) ; toit argileux net au-dessus du réservoir
+      let ok=true; sc.layers.forEach(l=>{ if(l.th<20) return; let m=0,n=0; for(let z=Math.ceil(l.top/10)*10; z<l.top+l.th && n<30; z+=10){ m+=sc.gr(z); n++; } if(n && Math.abs(m/n-l.gr0)>10) ok=false; }); if(ok) o.grOk++;
+      const ri=sc.layers.findIndex(l=>l.role==='reservoir'), res=sc.layers[ri], above=sc.layers[ri-1]; if(above.gr0>=95 && res.gr0<=60 && above.th>=60) o.contraste++;
+      // tops prévus : écart borné par l'incertitude affichée, pas toujours nul
+      if(sc.layers.every(l=>Math.abs(l.pred-l.top) <= l.unc+10)) o.predOk++; if(sc.layers.some(l=>Math.abs(l.pred-l.top)>=10)) o.predVar++;
+      const mk=(z)=>{ const S=R.rigNew(sc); S.z=z; S.status='run'; return S; };
+      let S=mk(sc.resTop-30); R.act(S,'td'); if(S.status==='fail' && S.fail==='court' && /Objectif manqué/.test(S.ev[S.ev.length-1].msg)) { o.court++; o.msgCourt++; }
+      S=mk(sc.resTop+30); R.act(S,'td'); if(S.status==='td' && S.tdKind==='ok' && R.scoreOf(S).tdPen===0) o.ok++;
+      S=mk(sc.resTop+100); R.act(S,'td'); if(S.status==='td' && S.tdKind==='late' && Math.abs(S.tdOver-40)<1e-6 && R.scoreOf(S).tdPen>=10) o.late++;
+      S=mk(sc.maxZ-5); S.mw=1.4; S.drilling=true; R.tick(S); if(S.status==='td' && S.tdKind==='auto' && R.scoreOf(S).tdPen>=15) o.auto++;
+      S=mk(sc.resTop+30); S.stuck={type:'diff',att:0}; if(R.act(S,'td')===false && S.status==='run') o.stuckNo++; }
+    return o; });
+  ok(gt.grOk===gt.n && gt.contraste===gt.n, 'GR : valeur de chaque couche conforme à sa nature, toit argileux net au-dessus d\'un réservoir propre dans les '+gt.n+' scénarios');
+  ok(gt.predOk===gt.n && gt.predVar>=gt.n*0.9, 'tops prévus : écart borné par l\'incertitude affichée et réel (jamais confondus) dans '+gt.predVar+'/'+gt.n+' scénarios');
+  ok(gt.court===gt.n && gt.ok===gt.n && gt.late===gt.n && gt.auto===gt.n && gt.stuckNo===gt.n, 'arrêt décidé : trop court = objectif manqué, dans la tolérance de 60 m = réussi, au-delà = surforage pénalisé, filet de sécurité forcé à la profondeur limite, impossible coincé');
   // 2. joueurs automatiques
   const bots = await pg.evaluate(()=>{ const R=window.__rig, o={}; const kinds=['good','good3','follow','follow3','mid','naive'];
-    kinds.forEach(k=>o[k]={td:0,n:0,score:0,kicks:0});
-    for(let i=0;i<80;i++){ const sc=R.rigScenario(); if(!sc) continue; for(const k of kinds){ const S=R.rigNew(sc); R.playBot(S,k); const x=o[k]; x.n++; if(S.status==='td'){ x.td++; x.score+=R.scoreOf(S).score; } S.ev.forEach(e=>{ if(e.type==='kick'&&e.kind==='bad') x.kicks++; }); } }
+    kinds.forEach(k=>o[k]={td:0,n:0,score:0,kicks:0,ok:0});
+    for(let i=0;i<80;i++){ const sc=R.rigScenario(); if(!sc) continue; for(const k of kinds){ const S=R.rigNew(sc); R.playBot(S,k); const x=o[k]; x.n++; if(S.status==='td'){ x.td++; x.score+=R.scoreOf(S).score; if(S.tdKind==='ok') x.ok++; } S.ev.forEach(e=>{ if(e.type==='kick'&&e.kind==='bad') x.kicks++; }); } }
     for(const k of kinds){ const x=o[k]; x.kicks=x.kicks/Math.max(1,x.n); x.score=x.score/Math.max(1,x.td); } return o; });
   const sc_ = k => Math.round(bots[k].score), kk = k => Math.round(bots[k].kicks*100)/100;
-  ok(bots.good.td>=bots.good.n*0.95 && bots.good3.td>=bots.good3.n*0.95, 'bon foreur (anticipe, tube, réagit) : '+bots.good.td+'/'+bots.good.n+' puits menés au bout, score moyen '+sc_('good'));
+  ok(bots.good.td>=bots.good.n*0.95 && bots.good3.td>=bots.good3.n*0.95 && bots.good.ok>=bots.good.n*0.95, 'bon foreur (anticipe, tube, réagit, arrête au GR) : '+bots.good.td+'/'+bots.good.n+' puits menés au bout dont '+bots.good.ok+' arrêtés dans la tolérance, score moyen '+sc_('good'));
   ok(bots.mid.td>=bots.mid.n*0.6 && bots.mid.score < bots.good.score-10, 'foreur qui réagit sans anticiper : '+bots.mid.td+'/'+bots.mid.n+' puits, score moyen '+sc_('mid')+' (nettement sous le bon foreur), '+kk('mid')+' kicks par puits');
   ok(bots.follow.kicks >= bots.good.kicks+0.2 && bots.follow3.kicks >= bots.good3.kicks*1.5, 'avec le retard de circulation, suivre la pression sans l\'anticiper donne plus de kicks : '+kk('follow')+' contre '+kk('good')+' (marge 0,05), '+kk('follow3')+' contre '+kk('good3')+' (marge 0,03)');
   ok(bots.naive.td<=bots.naive.n*0.1, 'foreur qui ignore les incidents : '+bots.naive.td+'/'+bots.naive.n+' puits menés au bout');
@@ -70,13 +88,23 @@ const { chromium, devices } = require('playwright'); const path = require('path'
   await ph2.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}});
   await ph2.goto('file://'+path.resolve(__dirname,'../../index.html')); await ph2.waitForTimeout(300);
   await ph2.locator('#quickTrain button[data-open="rig"]').tap(); await ph2.waitForTimeout(500);
+  // récapitulatif du projet : affiché d'abord, sans commandes, avec objectif, formations prévues (± incertitude), pression et risques
+  const br_ = await ph2.evaluate(()=>{ const t=document.getElementById('rgBody').innerText, sc=window.__rig.S.sc; return { brief: window.__rig.S.brief, objectif:/Objectif/.test(t) && t.includes(String(sc.resPred)+' m'), tableau:/Top prévu/.test(t) && /±/.test(t) && /GR attendu/.test(t), risques:/Risques à gérer/.test(t) && /Surpression/.test(t), pasDeCurseurs: !document.getElementById('rgMw'), start: !!document.getElementById('rgStart'), chart: !!document.querySelector('#rgChart svg') }; });
+  ok(br_.brief && br_.objectif && br_.tableau && br_.risques && br_.pasDeCurseurs && br_.start && br_.chart, 'téléphone : récapitulatif du projet affiché avant de forer (objectif, formations prévues avec incertitude, risques), sans commandes');
+  await ph2.locator('#rgStart').tap(); await ph2.waitForTimeout(250);
   const ui = await ph2.evaluate(()=>{ const bt=[...document.querySelectorAll('#rgBody button, #rigModal .cg-close')].filter(e=>e.offsetParent).map(e=>Math.round(e.getBoundingClientRect().height)); const sl=[...document.querySelectorAll('#rgBody input[type=range]')].map(e=>Math.round(e.getBoundingClientRect().height)); return { open: document.getElementById('rigModal').classList.contains('open'), chart: !!document.querySelector('#rgChart svg'), minBtn: Math.min(...bt), minSlider: Math.min(...sl), debord: document.documentElement.scrollWidth>innerWidth }; });
   ok(ui.open && ui.chart && ui.minBtn>=39 && ui.minSlider>=28 && !ui.debord, 'téléphone : console ouverte, graphique présent, boutons >= 40 px ('+ui.minBtn+'), curseurs >= 28 px ('+ui.minSlider+'), pas de débordement');
+  // GR en direct : mesure affichée, courbe tracée, aucune indication directe de la formation traversée, arrêt avec confirmation
+  await ph2.evaluate(()=>{ const R=window.__rig, S=R.S; S.z=Math.round(S.sc.resPred*0.5/10)*10; S.mw=Math.min(R.gfOpen(S)-0.04, S.sc.gp(S.z+100)+0.06); S.mwTarget=S.mw; S.mwQ=[]; S.q=3000; S.drilling=true; for(let i=0;i<8;i++) R.tick(S); S.drilling=false; R.render(); });
+  const gr_ = await ph2.evaluate(()=>{ const S=window.__rig.S, t=document.getElementById('rgBody').innerText, st=document.getElementById('rgStats').innerText; return { stat:/GR\s*\n?\s*\d+ API/.test(st), courbe: !!document.querySelector('#rgChart polyline[stroke="#2e8b57"]'), hint:/GR en direct/.test(t), nomCache: !t.includes(S.sc.layerAt(S.z).name), n:S.gr.length }; });
+  ok(gr_.stat && gr_.courbe && gr_.hint && gr_.nomCache && gr_.n>=8, 'téléphone : le GR s\'affiche en direct (mesure et courbe), sans nom de formation ('+gr_.n+' mesures)');
+  await ph2.locator('#rgTd').tap(); await ph2.waitForTimeout(100); const td1 = await ph2.evaluate(()=>({ armed: /Confirmer l'arrêt/.test(document.getElementById('rgTd').innerText), run: window.__rig.S.status }));
+  ok(td1.armed && td1.run==='run', 'téléphone : l\'arrêt demande une confirmation avant de terminer le puits');
   // curseur de densité : la note annonce le retard, sans balise visible
-  const nt = await ph2.evaluate(()=>{ const el=document.getElementById('rgMw'); el.value='1.30'; el.dispatchEvent(new Event('input')); const n=document.getElementById('rgMwNote'); return { txt:n.innerText, mw: window.__rig.S.mw, tgt: window.__rig.S.mwTarget, dashed: !!document.querySelector('#rgChart line[stroke-dasharray="3 2"]'), help: !!document.querySelector('.rg-help') }; });
+  const nt = await ph2.evaluate(()=>{ const S0=window.__rig.S; S0.mw=1.08; S0.mwTarget=1.08; S0.mwQ=[]; S0.tdArm=false; window.__rig.render(); const el=document.getElementById('rgMw'); el.value='1.30'; el.dispatchEvent(new Event('input')); const n=document.getElementById('rgMwNote'); return { txt:n.innerText, mw: window.__rig.S.mw, tgt: window.__rig.S.mwTarget, dashed: !!document.querySelector('#rgChart line[stroke-dasharray="3 2"]'), help: !!document.querySelector('.rg-help') }; });
   ok(/Densité au fond/.test(nt.txt) && !/<b>/.test(nt.txt) && /fond-en-haut/.test(nt.txt) && nt.mw===1.08 && nt.tgt===1.30 && nt.dashed && nt.help, 'téléphone : le curseur annonce le retard de circulation (au fond 1,08 sg, demandée 1,30), ligne pointillée sur le graphique, règles simplifiées affichées');
   // parcours complet au doigt : boue trop légère devant la rampe, kick, fermeture, tuer
-  await ph2.evaluate(()=>{ const S=window.__rig.S; S.z=S.sc.zop-40; S.mw=1.0; S.mwTarget=1.0; S.mwQ=[]; });
+  await ph2.evaluate(()=>{ const S=window.__rig.S; S.z=S.sc.zop-40; S.mw=1.0; S.mwTarget=1.0; S.mwQ=[]; S.tdArm=false; S.drilling=false; });
   await ph2.locator('#rgSpeed').tap(); await ph2.locator('#rgGo').tap(); await ph2.waitForFunction(()=>window.__rig.S.block==='kick', null, {timeout:15000});
   const k1 = await ph2.evaluate(()=>({ banner: /Kick probable/.test(document.getElementById('rgBody').innerText), shut: !!document.getElementById('rgShut'), drilling: window.__rig.S.drilling }));
   ok(k1.banner && k1.shut && !k1.drilling, 'téléphone : le kick met le forage en pause et propose « Fermer le puits »');

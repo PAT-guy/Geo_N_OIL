@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.53</title>
+<title>GeoExplorer V4.54</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -8670,8 +8670,8 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
 #rigModal{position:fixed;inset:0;z-index:1200;background:var(--bg);display:none;flex-direction:column;}
 #rigModal.open{display:flex;}
 .rg-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;flex:none;}
-.rg-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:0 12px 4px;flex:none;font-size:11px;color:var(--muted);text-align:center;}
-.rg-stats b{display:block;font-family:var(--mono);font-size:14px;color:var(--text);font-weight:600;}
+.rg-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;padding:0 10px 4px;flex:none;font-size:10px;color:var(--muted);text-align:center;}
+.rg-stats b{display:block;font-family:var(--mono);font-size:12px;color:var(--text);font-weight:600;}
 .rg-stats .warn b{color:var(--red);}
 #rgChart{flex:none;margin:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);}
 #rgChart svg{display:block;width:100%;height:auto;max-height:34vh;}
@@ -8729,12 +8729,22 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
         if(!cand.length) continue;
         const b = cand[Math.floor(Math.random()*cand.length)];
         const layers = b.horizons.map(h=>{ const th = h.thicknessLocal ?? h.thickness, a = labAcoustic(h, h.top + th/2); const cls = wlLithClass(h);
-          return { name:h.name, role:h.role, cls, top:h.top, th, rho:a.rho, dt:304800/a.v, phi:h.porosity ?? 5, perm: h.role==='reservoir' || (['sandstone','limestone','dolomite'].includes(cls) && (h.porosity ?? 5) >= 8) }; })
+          // GR de la couche : mêmes lois que les diagraphies du jeu (argile 115, roche propre selon sa part d'argile, évaporites et socle fixes)
+          const vsh = clamp((h.vshale ?? 20)/100, 0, 1), toc = parseFloat(h.toc)||3, L = WL_LITH[cls];
+          const gr0 = cls==='uncons' ? 70 : cls==='shale' ? 115 : cls==='source' ? Math.min(300, 120+toc*12) : (L && L.fixed) ? L.gr : L ? L.gr*(1-vsh)+115*vsh : 90;
+          return { name:h.name, role:h.role, cls, top:h.top, th, gr0, rho:a.rho, dt:304800/a.v, phi:h.porosity ?? 5, perm: h.role==='reservoir' || (['sandstone','limestone','dolomite'].includes(cls) && (h.porosity ?? 5) >= 8) }; })
           .filter(l=>l.th>=3).sort((p,q)=>p.top-q.top);
         const res = layers.find(l=>l.role==='reservoir'); if(!res) continue;
         const TD = Math.round((res.top + 40)/10)*10;
-        const soft = { name:'Terrains de surface', role:'overburden', cls:'uncons', top:0, th:layers[0].top, rho:2.0, dt:140, phi:20, perm:false };
+        const soft = { name:'Terrains de surface', role:'overburden', cls:'uncons', top:0, th:layers[0].top, gr0:70, rho:2.0, dt:140, phi:20, perm:false };
         const all = [soft, ...layers];
+        // la cible doit être détectable au GR : un toit argileux net (GR >= 95 sur au moins 60 m) au-dessus d'un réservoir propre (GR <= 60)
+        const ri = all.indexOf(res), above = all[ri-1];
+        if(!above || above.gr0 < 95 || above.th < 60 || res.gr0 > 60) continue;
+        const maxZ = Math.round((res.top + 150)/10)*10;
+        // tops prévus (sismique) : écart de l'ordre de 3 % de la profondeur, plafonné à 60 m
+        all.forEach(l=>{ const u = Math.min(60, 0.03*l.top + 10); l.unc = Math.round(u/10)*10; l.pred = Math.max(0, Math.round((l.top + (Math.random()*2-1)*u)/10)*10); });
+        const grAt = z => { const l = layerAt(z), i = all.indexOf(l); return clamp(l.gr0 + (labHash(z*0.173 + i*7.1) - 0.5)*16, 5, 300); };
         const layerAt = z => { for(let i=all.length-1;i>=0;i--) if(z >= all[i].top) return all[i]; return all[0]; };
         // contrainte verticale : densité moyenne au-dessus de z (en sg)
         const gsArr = []; let acc = 0; for(let z=0; z<=TD+60; z+=DZ){ if(z>0) acc += layerAt(z-DZ/2).rho*DZ; gsArr.push(z===0 ? layerAt(5).rho : acc/z); }
@@ -8746,14 +8756,14 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
         const gfPred = z => { const p = gpPred(z); return p + KF*(gs(z) - p); };
         // jouable : tubage possible avant la rampe, et fenêtre assez large au fond
         if(gfPred(zop-150) < Gmax + 0.17) continue;
-        if(gf(TD) < Gmax + delta + 0.15) continue;
-        return { TD, zop, ramp, Gmax, delta, layers:all, layerAt, gs, gp, gpPred, gf, gfPred, ucs: z => clamp(1277*Math.exp(-0.036*layerAt(z).dt), 15, 300), blockName:`bloc (${b.x}, ${b.y})` };
+        if(gf(maxZ) < Gmax + delta + 0.15) continue;
+        return { TD, maxZ, resTop:res.top, resPred:res.pred, resUnc:res.unc, gr:grAt, zop, ramp, Gmax, delta, layers:all, layerAt, gs, gp, gpPred, gf, gfPred, ucs: z => clamp(1277*Math.exp(-0.036*layerAt(z).dt), 15, 300), blockName:`bloc (${b.x}, ${b.y})` };
       }
       return null;
     });
   }
   // ---------- simulation ----------
-  const rigNew = sc => ({ sc, lag:false, mwTarget:1.08, mwQ:[], z:0, shoe:0, strings:0, mw:1.08, wob:100, rpm:120, q:1500, drilling:false, wear:0, clean:0, gain:0, shut:false, loss:0, lossActive:false, lcm:0,
+  const rigNew = sc => ({ sc, brief:false, gr:[], tdKind:null, tdOver:0, lag:false, mwTarget:1.08, mwQ:[], z:0, shoe:0, strings:0, mw:1.08, wob:100, rpm:120, q:1500, drilling:false, wear:0, clean:0, gain:0, shut:false, loss:0, lossActive:false, lcm:0,
     stuck:null, stat:0, hours:0, bits:1, status:'run', fail:null, block:null, ev:[], rop:0, kickLogged:false, lossLogged:false, bitLogged:false, tripsNpt:0, caseNpt:0, kills:0 });
   const gfOpen = S => { let m = Infinity; for(let z=Math.max(S.shoe,10); z<=Math.max(S.z,S.shoe,10); z+=DZ) m = Math.min(m, S.sc.gf(z)); return m + S.lcm; };
   const gfOpenPred = S => { let m = Infinity; for(let z=Math.max(S.shoe,10); z<=Math.max(S.z,S.shoe,10); z+=DZ) m = Math.min(m, S.sc.gfPred(z)); return m + S.lcm; };
@@ -8797,13 +8807,18 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
       if(S.block!=='packoff'){ S.block='packoff'; log(S,'packoff','Mauvais nettoyage du trou : les déblais s\'accumulent (pression de pompe et couple en hausse). Le débit est trop faible pour la vitesse d\'avancement.','bad'); }
       if(S.clean >= 1.6){ S.stuck = {type:'mech', att:0}; S.block='stuck'; log(S,'stuck','Coincement mécanique : le train de tiges est bloqué par les déblais accumulés.','bad'); } }
     if(S.wear >= 0.9 && !S.bitLogged){ S.bitLogged = true; if(!S.block) S.block='bit'; log(S,'bit','Outil usé : la vitesse d\'avancement chute et le couple monte.','bad'); }
-    if(S.z >= sc.TD){ S.z = sc.TD; S.status='td'; S.drilling=false; log(S,'td','Profondeur finale atteinte : le toit du réservoir est traversé.','good'); }
+    S.gr.push({z:S.z, v:sc.gr(S.z)});
+    if(S.z >= sc.maxZ){ S.z = sc.maxZ; S.status='td'; S.tdKind='auto'; S.tdOver = S.z - sc.resTop - 60; S.drilling=false; log(S,'td','Profondeur limite atteinte sans décision d\'arrêt : le puits a été foré bien au-delà du toit du réservoir (surforage).','bad'); }
   }
   // ---------- actions ----------
   function act(S, name, arg){
     if(S.status!=='run') return false;
     const sc=S.sc, f2 = v=>(Math.round(v*100)/100).toString().replace('.',',');
     if(name==='setmw'){ const w = clamp(arg, 0.9, 2.3); S.mwTarget = w; if(S.lag){ const last = S.mwQ.length ? S.mwQ[S.mwQ.length-1].w : S.mw; if(Math.abs(w - last) >= 0.004) S.mwQ.push({t:S.hours + bottomsUp(S), w}); } else S.mw = w; return true; }
+    if(name==='td'){ if(S.stuck || S.shut || S.z < 50) return false; S.drilling = false; const d = S.z - sc.resTop;
+      if(d < 0) return !fail(S,'court','Arrêt à '+Math.round(S.z)+' m : le toit du réservoir est à '+Math.round(sc.resTop)+' m, soit '+Math.round(-d)+' m plus bas. Objectif manqué : le réservoir n\'est pas atteint.');
+      S.status = 'td'; S.tdKind = d <= 60 ? 'ok' : 'late'; S.tdOver = Math.max(0, d-60);
+      log(S,'td', d <= 60 ? 'Arrêt à '+Math.round(S.z)+' m : le toit du réservoir (à '+Math.round(sc.resTop)+' m) est traversé de '+Math.round(d)+' m, objectif atteint.' : 'Arrêt à '+Math.round(S.z)+' m : le toit du réservoir (à '+Math.round(sc.resTop)+' m) est dépassé de '+Math.round(d)+' m, surforage de '+Math.round(d-60)+' m au-delà de la tolérance de 60 m.', d <= 60 ? 'good' : 'bad'); return true; }
     if(name==='shut'){
       S.drilling = false;
       if(S.gain>0){ S.shut = true; S.block = 'kickshut'; addH(S, 0.2); log(S,'shut','Puits fermé (BOP). Pression de fermeture en tiges (SIDPP) : '+f2(Math.max(0,(sc.gp(S.z)-S.mw)*G0*S.z))+' MPa, gain '+f2(S.gain)+' m³.','good'); return true; }
@@ -8830,6 +8845,9 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
       log(S,'trip','Manœuvre pour changer l\'outil : '+f2(t)+' h, outil neuf.','good'); return true; }
     return false;
   }
+  // Détection au GR : les 3 derniers échantillons (30 m) nettement plus bas que la moyenne des 40 à 100 m au-dessus, une fois proche du top prévu
+  const grSaysReservoir = S => { const a = S.gr; if(a.length < 12 || S.z < S.sc.resPred - 60) return false; const last = a.slice(-3).reduce((x,y)=>x+y.v,0)/3, ref = a.filter(e=>e.z >= S.z-100 && e.z <= S.z-40);
+    if(ref.length < 4) return false; const m = ref.reduce((x,y)=>x+y.v,0)/ref.length; return last < m - 25 && last < 75; };
   // ---------- joueurs automatiques (tests) ----------
   function playBot(S, kind){
     let guard = 0, marg = /3$/.test(kind) ? 0.03 : 0.05; kind = kind.replace(/3$/,''); if(kind!=='naive') S.lag = true;
@@ -8843,7 +8861,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
         if(S.block==='packoff'){ S.q = 3200; act(S,'circ'); continue; }
         if(S.block==='bit' || S.wear>=0.85){ act(S,'trip'); continue; }
         if(S.block==='loss'){ if(S.mwTarget - 0.05 >= sc.gp(S.z)+0.03){ act(S,'setmw', S.mwTarget-0.05); act(S,'circ'); } else act(S,'lcm'); continue; }
-        S.wob = 100; S.rpm = 120; { const r = ropOf(S); S.q = Math.min(3200, qMin(r) + 300); } S.drilling = true; tick(S); continue; }
+        S.wob = 100; S.rpm = 120; { const r = ropOf(S); S.q = Math.min(3200, qMin(r) + 300); } S.drilling = true; tick(S); if(grSaysReservoir(S)) act(S,'td'); continue; }
       // bon foreur : anticipe la pression 120 m devant, tube avant la rampe, réagit à chaque incident
       if(S.block==='kick'){ act(S,'shut'); continue; }
       if(S.shut){ const w = sc.gp(S.z) + 0.05; act(S,'kill', Math.min(w, gfOpen(S)-0.02)); marg = 0.10; continue; }
@@ -8851,53 +8869,62 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
       if(S.block==='packoff'){ S.q = 3200; act(S,'circ'); continue; }
       if(S.block==='bit' || S.wear>=0.85){ act(S,'trip'); continue; }
       if(S.block==='loss'){ if(S.mwTarget - 0.05 >= sc.gp(S.z)+0.03){ act(S,'setmw', S.mwTarget-0.05); act(S,'circ'); } else if(!act(S,'casing')) act(S,'lcm'); continue; }
-      const ahead = kind==='follow' ? 0 : 120 + S.rop*bottomsUp(S)*1.2, need = sc.gpPred(Math.min(sc.TD, S.z+ahead)) + marg;
+      const ahead = kind==='follow' ? 0 : 120 + S.rop*bottomsUp(S)*1.2, need = sc.gpPred(Math.min(sc.maxZ, S.z+ahead)) + marg;
       if(S.strings===0 && sc.gpPred(S.z+150+S.rop*bottomsUp(S)) > 1.02 && S.z > S.shoe+30) { act(S,'casing'); continue; }
       act(S,'setmw', Math.max(1.05, Math.min(need, gfOpenPred(S)-MARGIN)));
-      S.wob = 100; S.rpm = 120; { const r = ropOf(S); S.q = Math.min(3200, qMin(r) + 300); if(qMin(r) + 300 > 3200){ S.wob = 70; S.rpm = 100; } } S.drilling = true; tick(S);
+      S.wob = 100; S.rpm = 120; { const r = ropOf(S); S.q = Math.min(3200, qMin(r) + 300); if(qMin(r) + 300 > 3200){ S.wob = 70; S.rpm = 100; } } S.drilling = true; tick(S); if(grSaysReservoir(S)) act(S,'td');
     }
     return S;
   }
   // Score : temps rapporté à une référence (TD / 15 m/h + 25 h), moins une pénalité de sécurité par incident subi
   const INC_PEN = {kick:6, loss:6, stuck:8, packoff:3, bit:2};
-  function scoreOf(S){ const ref = S.sc.TD/15 + 25, time = Math.round(clamp(100*ref/Math.max(ref, S.hours), 5, 100)), n = S.ev.filter(e=>e.kind==='bad' && INC_PEN[e.type]);
-    const pen = n.reduce((a,e)=>a+INC_PEN[e.type], 0); return { ref, time, pen, score: S.status==='td' ? Math.max(5, time - pen) : 0, incidents: n.length }; }
+  function scoreOf(S){ const ref = S.sc.resTop/15 + 25, time = Math.round(clamp(100*ref/Math.max(ref, S.hours), 5, 100)), n = S.ev.filter(e=>e.kind==='bad' && INC_PEN[e.type]);
+    const pen = n.reduce((a,e)=>a+INC_PEN[e.type], 0), tdPen = S.status==='td' ? Math.round(Math.min(25, (S.tdOver||0)/4) + (S.tdKind==='auto' ? 15 : 0)) : 0;
+    return { ref, time, pen, tdPen, score: S.status==='td' ? Math.max(5, time - pen - tdPen) : 0, incidents: n.length }; }
   // ---------- interface ----------
   let S = null, timer = null, speed = 1;
   const $ = id => document.getElementById(id);
   const f2 = v=>(Math.round(v*100)/100).toString().replace('.',','), f1 = v=>(Math.round(v*10)/10).toString().replace('.',',');
   function drawChart(){
-    const sc = S.sc, W=300, H=230, x0=34, x1=292, y0=10, y1=216, dmax = sc.TD+40;
-    const X = g => x0 + (g-0.9)/(2.4-0.9)*(x1-x0), Y = z => y0 + z/dmax*(y1-y0);
+    const sc = S.sc, W=380, H=230, x0=34, x1=250, gx0=264, gx1=372, y0=18, y1=212, dmax = sc.maxZ+10;
+    const X = g => x0 + (g-0.9)/(2.4-0.9)*(x1-x0), Y = z => y0 + z/dmax*(y1-y0), GX = v => gx0 + clamp(v,0,200)/200*(gx1-gx0);
     let lp='', lf='', up='', dn='';
     for(let z=0; z<=dmax; z+=20){ lp += `${X(sc.gpPred(z)).toFixed(1)},${Y(z).toFixed(1)} `; lf += `${X(sc.gfPred(z)).toFixed(1)},${Y(z).toFixed(1)} `; up += `${X(sc.gpPred(z)+0.05).toFixed(1)},${Y(z).toFixed(1)} `; dn += `${X(sc.gpPred(z)-0.03).toFixed(1)},${Y(z).toFixed(1)} `; }
     const poly = lp + lf.trim().split(' ').reverse().join(' ');
     let grid=''; for(let g=1.0; g<=2.31; g+=0.2) grid += `<line x1="${X(g)}" y1="${y0}" x2="${X(g)}" y2="${y1}" stroke="var(--line)" stroke-width=".4"/><text x="${X(g)}" y="${H-4}" font-size="8" text-anchor="middle" fill="var(--muted)">${f1(g)}</text>`;
-    for(let z=0; z<=dmax; z+=500) grid += `<line x1="${x0}" y1="${Y(z)}" x2="${x1}" y2="${Y(z)}" stroke="var(--line)" stroke-width=".4"/><text x="${x0-3}" y="${Y(z)+3}" font-size="8" text-anchor="end" fill="var(--muted)">${z}</text>`;
+    for(let z=0; z<=dmax; z+=500) grid += `<line x1="${x0}" y1="${Y(z)}" x2="${gx1}" y2="${Y(z)}" stroke="var(--line)" stroke-width=".4"/><text x="${x0-3}" y="${Y(z)+3}" font-size="8" text-anchor="end" fill="var(--muted)">${z}</text>`;
+    for(const v of [0,50,100,150,200]) grid += `<line x1="${GX(v)}" y1="${y0}" x2="${GX(v)}" y2="${y1}" stroke="var(--line)" stroke-width=".4"/><text x="${GX(v)}" y="${H-4}" font-size="7.5" text-anchor="middle" fill="var(--muted)">${v}</text>`;
     const shoes = S.shoe>0 ? `<rect x="${x0}" y="${Y(S.shoe)-1.5}" width="${x1-x0}" height="3" fill="var(--ink)" opacity=".18"/><text x="${x1-2}" y="${Y(S.shoe)-3}" font-size="7.5" text-anchor="end" fill="var(--ink)">sabot ${Math.round(S.shoe)} m</text>` : '';
     const zb = Math.max(S.z,2);
-    $('rgChart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Fenêtre de densité de boue">${grid}
+    // cible prévue (sismique) : bande ± incertitude ; le GR dira où est réellement le toit
+    const tgt = `<rect x="${x0}" y="${Y(sc.resPred-sc.resUnc)}" width="${gx1-x0}" height="${Math.max(2, Y(sc.resPred+sc.resUnc)-Y(sc.resPred-sc.resUnc))}" fill="#b8860b" opacity=".13"/><text x="${gx1-2}" y="${Y(sc.resPred-sc.resUnc)-2}" font-size="7" text-anchor="end" fill="#8a6508">réservoir prévu</text>`;
+    const gr = S.gr.length>1 ? `<polyline points="${S.gr.map(e=>GX(e.v).toFixed(1)+','+Y(e.z).toFixed(1)).join(' ')}" fill="none" stroke="#2e8b57" stroke-width="1.3"/>` : '';
+    const last = S.gr.length ? S.gr[S.gr.length-1] : null;
+    $('rgChart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Fenêtre de densité de boue et GR en direct">${grid}
       <polygon points="${poly}" fill="#2e8b57" opacity=".16"/>
       <polyline points="${up}" fill="none" stroke="#2c6fbb" stroke-width=".6" stroke-dasharray="2 2" opacity=".7"/><polyline points="${dn}" fill="none" stroke="#2c6fbb" stroke-width=".6" stroke-dasharray="2 2" opacity=".7"/>
       <polyline points="${lp}" fill="none" stroke="#2c6fbb" stroke-width="1.4"/><polyline points="${lf}" fill="none" stroke="#c0392b" stroke-width="1.4"/>
-      ${shoes}
+      ${tgt}${shoes}${gr}
       <line x1="${X(S.mw)}" y1="${y0}" x2="${X(S.mw)}" y2="${Y(zb)}" stroke="#b8860b" stroke-width="2"/>
       ${Math.abs(S.mwTarget-S.mw)>0.004 ? `<line x1="${X(S.mwTarget)}" y1="${y0}" x2="${X(S.mwTarget)}" y2="${Y(zb)}" stroke="#b8860b" stroke-width="1.2" stroke-dasharray="3 2"/>` : ''}
       <circle cx="${X(S.mw)}" cy="${Y(zb)}" r="4.5" fill="#b8860b" stroke="var(--panel2)" stroke-width="1.2"/>
-      <text x="${x0+3}" y="${y0+8}" font-size="7.5" fill="#2c6fbb">pression des pores (prévue, ± incertitude)</text><text x="${x1-3}" y="${y0+8}" font-size="7.5" text-anchor="end" fill="#c0392b">fracturation</text>
+      ${last ? `<circle cx="${GX(last.v)}" cy="${Y(last.z)}" r="3.5" fill="#2e8b57" stroke="var(--panel2)" stroke-width="1"/>` : ''}
+      <text x="${x0+3}" y="${y0-6}" font-size="7.5" fill="#2c6fbb">pression des pores (prévue, ± incertitude)</text><text x="${x1-3}" y="${y0-6}" font-size="7.5" text-anchor="end" fill="#c0392b">fracturation</text>
+      <text x="${(gx0+gx1)/2}" y="${y0-6}" font-size="8" text-anchor="middle" fill="#2e8b57" font-weight="600">GR en direct (API)</text>
       <text x="${(x0+x1)/2}" y="${H-14}" font-size="7.5" text-anchor="middle" fill="var(--muted)">densité équivalente (sg)</text></svg>`;
   }
   function render(){
     const sc = S.sc, L = sc.layerAt(Math.max(S.z,5)), rop = S.drilling ? S.rop : ropOf(S);
-    const st = [['Profondeur', Math.round(S.z)+' m'], ['Avancement', f1(rop)+' m/h'], ['Heures', f1(S.hours)+' h'], ['Gain bac', f2(S.gain)+' m³', S.gain>=0.8], ['Pertes', f2(S.loss)+' m³', S.lossActive]];
+    const lastGr = S.gr.length ? Math.round(S.gr[S.gr.length-1].v) : null, st = [['Profondeur', Math.round(S.z)+' m'], ['Avancement', f1(rop)+' m/h'], ['GR', lastGr===null ? '-' : lastGr+' API'], ['Heures', f1(S.hours)+' h'], ['Gain bac', f2(S.gain)+' m³', S.gain>=0.8], ['Pertes', f2(S.loss)+' m³', S.lossActive]];
     $('rgStats').innerHTML = st.map(([a,b,w])=>`<div class="${w?'warn':''}">${a}<b>${b}</b></div>`).join('');
     drawChart();
     const over = S.status==='run';
     let h = '';
     if(S.status!=='run') h += endHtml();
+    else if(S.brief) h += briefHtml();
     else {
       const inc = incidentHtml(); if(inc) h += inc;
-      h += `<div class="rg-hint">Formation : <b>${L.name}</b> (${L.perm?'perméable':'peu perméable'}, résistance estimée ${Math.round(sc.ucs(Math.max(S.z,5)))} MPa). Outil n°${S.bits}, usure ${Math.round(Math.min(1,S.wear)*100)} %. ${S.strings} tubage(s) posé(s).</div>
+      h += `<div class="rg-hint">GR en direct : ${S.gr.length? '<b>'+Math.round(S.gr[S.gr.length-1].v)+' API</b> ('+(S.gr[S.gr.length-1].v>=95?'argile probable':S.gr[S.gr.length-1].v<=65?'roche propre probable, souvent perméable':'roche intermédiaire')+')':'pas encore de mesure'}. Cible prévue vers <b>${sc.resPred} m</b> (± ${sc.resUnc} m) : le GR dira où est vraiment le toit du réservoir. Outil n°${S.bits}, usure ${Math.round(Math.min(1,S.wear)*100)} %. ${S.strings} tubage(s) posé(s).</div>
         <div class="rg-ctl">
           <label>Densité demandée <b id="rgMwV">${f2(S.mwTarget)} sg</b></label><label>Débit de pompe <b id="rgQV">${Math.round(S.q)} L/min</b></label>
           <input type="range" id="rgMw" min="0.9" max="2.3" step="0.01" value="${S.mwTarget}" aria-label="Densité de boue demandée"><input type="range" id="rgQ" min="800" max="3200" step="50" value="${S.q}" aria-label="Débit de pompe">
@@ -8905,17 +8932,34 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
           <input type="range" id="rgWob" min="40" max="220" step="5" value="${S.wob}" aria-label="Poids sur l'outil"><input type="range" id="rgRpm" min="40" max="220" step="5" value="${S.rpm}" aria-label="Rotation">
         </div>
         <div class="rg-hint" id="rgMwNote">${mwNote()}</div>
-        <div class="rg-btns"><button class="go" id="rgGo">${S.drilling?'⏸ Pause':'▶ Forer'}</button><button id="rgSpeed">Vitesse ×${speed}</button><button id="rgCirc">Circuler</button><button id="rgCase" ${S.strings>=3||S.z<S.shoe+30||S.stuck||S.shut?'disabled':''}>Tubage ici (14 h)</button><button id="rgTrip" ${S.stuck||S.shut?'disabled':''}>Changer l'outil</button></div>`;
+        <div class="rg-btns"><button class="go" id="rgGo">${S.drilling?'⏸ Pause':'▶ Forer'}</button><button id="rgSpeed">Vitesse ×${speed}</button><button id="rgCirc">Circuler</button><button id="rgCase" ${S.strings>=3||S.z<S.shoe+30||S.stuck||S.shut?'disabled':''}>Tubage ici (14 h)</button><button id="rgTrip" ${S.stuck||S.shut?'disabled':''}>Changer l'outil</button><button id="rgTd" ${S.stuck||S.shut||S.z<50?'disabled':''}>${S.tdArm?'Confirmer l\'arrêt à '+Math.round(S.z)+' m':'Arrêter ici (TD)'}</button></div>`;
     }
     h += `
         <details class="rg-help"><summary>Règles du simulateur (simplifiées)</summary>
           <p><b>Venues du moteur du jeu.</b> Formations, densités et vitesses soniques des couches ; contrainte verticale = densité moyenne des couches au-dessus ; pression des pores hydrostatique (1,00 sg) plus une zone de surpression générée par ce mini-jeu, car le moteur n'en a pas ; fracturation par la loi d'Eaton, Pf = Pp + ν/(1−ν) × (σv − Pp) avec ν = 0,35 ; résistance de la roche UCS = 1277 × exp(−0,036 × Δt) (corrélation de McNally), bornée de 15 à 300 MPa.</p>
           <p><b>Règles de jeu simplifiées, pas de la physique exacte.</b> Avancement = 14 m/h × (poids/100)^0,8 × (rotation/120)^0,6 × (50/UCS)^0,7, réduit par l'usure et, au-delà de 0,04 sg de surpression de boue, de 3 % par centième de sg en plus (effet de maintien des déblais). Usure de l'outil = 0,0005 par mètre × (UCS/50)^0,6 × (rotation/120)^0,9 × (poids/100)^0,7. Débit minimal de nettoyage = 1100 + 22 × avancement (L/min). Kick : le bac gagne tant que la pression des pores dépasse la boue, éruption au-delà de 6 m³. Pertes : la boue dépasse la fracturation du trou ouvert. Coincement différentiel : outil immobile 3 pas ou plus en face d'une couche perméable avec plus de 0,12 sg de surpression.</p>
+          <p><b>GR en direct.</b> Le GR de chaque couche suit les lois des diagraphies du jeu (argile 115 API, roche propre bas selon sa part d'argile, évaporites et socle fixes), plus un bruit de ±8 API. Les tops prévus s'écartent des tops réels d'environ 3 % de la profondeur (60 m au plus). L'arrêt est décidé par le joueur : tolérance de 60 m sous le toit réel du réservoir, arrêt forcé à 150 m.</p>
           <p><b>Retard de circulation.</b> La densité demandée n'atteint le fond qu'après un fond-en-haut, soit 0,4 h + profondeur / 1800 × 1500 / débit. C'est pourquoi il faut anticiper la rampe de pression, pas la suivre.</p>
           <p><b>Tuer un puits.</b> Densité de contrôle = densité actuelle + SIDPP / (0,00981 × profondeur), plus une marge de 0,03 à 0,10 sg. <b>Score</b> = temps rapporté à une référence (profondeur / 15 m/h + 25 h) moins une pénalité par incident. Simplification pédagogique : ce n'est pas une procédure opérationnelle de contrôle de puits.</p>
         </details>`;
     h += `<div class="rg-log" id="rgLog">${S.ev.slice(-6).reverse().map(e=>`<div class="${e.kind}">${f1(e.h)} h, ${Math.round(e.z)} m : ${e.msg}</div>`).join('')}</div>`;
     $('rgBody').innerHTML = h; bind();
+  }
+  function briefHtml(){
+    const sc = S.sc, nat = l => l.gr0>=95 ? 'argile (GR haut)' : l.perm ? 'roche propre, perméable' : l.gr0<=40 ? 'roche très propre' : 'peu perméable';
+    const rows = sc.layers.filter(l=>l.pred <= sc.resPred+60 && l.th >= 8).slice(0, 9).map(l=>`<tr${l.role==='reservoir'?' class="best"':''}><td>${l.name}</td><td>${l.pred} m ± ${l.unc}</td><td>≈ ${Math.round(l.gr0/5)*5}</td><td>${nat(l)}</td></tr>`).join('');
+    const risks = [];
+    risks.push(`Surpression à partir d'environ <b>${Math.round(sc.zop/50)*50} m</b>, jusqu'à environ <b>${f2(Math.round(sc.Gmax*20)/20)} sg</b> (± 0,05) : une boue trop légère provoque un kick, une boue trop lourde fracture le trou ouvert.`);
+    const perm = sc.layers.filter(l=>l.perm && l.role!=='reservoir' && l.pred>200 && l.pred < sc.resPred && l.th>=15)[0]; if(perm) risks.push(`Roche perméable vers <b>${perm.pred} m</b> (${perm.name}) : l'outil immobile avec une boue lourde risque de se coincer.`);
+    const hard = sc.layers.filter(l=>l.pred < sc.resPred && sc.ucs(l.top+l.th/2) > 110 && l.th>=20)[0]; if(hard) risks.push(`Roche dure vers <b>${hard.pred} m</b> (${hard.name}) : avancement lent et usure rapide de l'outil.`);
+    risks.push(`Le toit du réservoir peut se trouver à ± ${sc.resUnc} m de la prévision : on ne le connaît vraiment que par le GR.`);
+    return `<div class="rg-end"><h3>Projet de puits : ${sc.blockName}</h3>
+      <b>Objectif.</b> Traverser le toit du réservoir, prévu vers <b>${sc.resPred} m</b> (± ${sc.resUnc} m), et arrêter le forage dans les 60 m qui suivent. Trop court : objectif manqué. Trop loin : le puits est pénalisé.
+      <div style="margin-top:8px;"><b>Formations prévues</b> (sismique, avec incertitude)</div>
+      <table class="qz-tbl"><tr><th>Formation</th><th>Top prévu</th><th>GR attendu</th><th>Nature</th></tr>${rows}</table>
+      <div style="margin-top:8px;"><b>Risques à gérer</b></div><ul>${risks.map(r=>`<li>${r}</li>`).join('')}</ul>
+      <div class="rg-hint">Le GR s'affiche en direct à droite du graphique. GR haut : argile. GR qui chute nettement : roche propre, souvent perméable, parfois le réservoir. Quand le GR ne correspond pas à la prévision, le forage s'écarte du plan : adaptez le tubage, la boue et le moment de l'arrêt.</div>
+      <div class="rg-btns" style="margin-top:10px;"><button class="go" id="rgStart">Commencer le forage</button></div></div>`;
   }
   function mwNote(){ const lagOn = S.mwQ.length>0; return lagOn ? `Densité au fond : <b>${f2(S.mw)} sg</b>. La boue demandée (${f2(S.mwTarget)} sg) y arrivera après un fond-en-haut (environ ${f1(Math.max(0, S.mwQ[0].t - S.hours))} h de forage ou de circulation).` : `Densité au fond : <b>${f2(S.mw)} sg</b>. Une nouvelle densité n'atteint le fond qu'après un fond-en-haut (environ ${f1(bottomsUp(S))} h) : anticipez la pression.`; }
   function incidentHtml(){
@@ -8936,10 +8980,10 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
   function endHtml(){
     const sc=S.sc, ok = S.status==='td', sco = scoreOf(S), ref = sco.ref, score = sco.score;
     const inc = S.ev.filter(e=>e.kind==='bad');
-    const advice = { kick:'Gardez la densité au-dessus de la pression des pores prévue plus 0,05 sg et fermez le puits dès le premier gain.', loss:'Restez sous la fracturation du trou ouvert : posez un tubage avant la zone de surpression.', packoff:'Adaptez le débit à la vitesse d\'avancement : 1100 + 22 × m/h L/min dans ce jeu.', stuck:'Ne laissez pas l\'outil immobile en face d\'une couche perméable avec une boue lourde.', bit:'Changez l\'outil quand l\'avancement chute, avant qu\'il ne coûte plus que la manœuvre.', blowout:'Un kick non fermé tourne en éruption : fermez le puits au premier signe.', perte:'Les pertes massives viennent d\'une densité trop forte sur un trou non tubé.', coince:'Un coincement non réglé à temps coûte le puits : traitez la cause (densité ou nettoyage) avant de coulisser.' };
+    const advice = { kick:'Gardez la densité au-dessus de la pression des pores prévue plus 0,05 sg et fermez le puits dès le premier gain.', loss:'Restez sous la fracturation du trou ouvert : posez un tubage avant la zone de surpression.', packoff:'Adaptez le débit à la vitesse d\'avancement : 1100 + 22 × m/h L/min dans ce jeu.', stuck:'Ne laissez pas l\'outil immobile en face d\'une couche perméable avec une boue lourde.', bit:'Changez l\'outil quand l\'avancement chute, avant qu\'il ne coûte plus que la manœuvre.', blowout:'Un kick non fermé tourne en éruption : fermez le puits au premier signe.', perte:'Les pertes massives viennent d\'une densité trop forte sur un trou non tubé.', court:'Le GR n\'avait pas encore chuté nettement sous le toit argileux : continuez tant que la roche propre n\'apparaît pas. Une autre roche propre peut précéder le réservoir : comparez avec le tableau des formations prévues.', coince:'Un coincement non réglé à temps coûte le puits : traitez la cause (densité ou nettoyage) avant de coulisser.' };
     const seen = new Set(), lines = inc.filter(e=>!seen.has(e.type) && seen.add(e.type)).map(e=>`<li>${advice[e.type]||e.msg}</li>`).join('');
     return `<div class="rg-end"><h3>${ok ? '✓ Puits foré' : '✗ Puits perdu'} : ${sc.blockName}</h3>
-      ${ok ? `Profondeur finale ${sc.TD} m en <b>${f1(S.hours)} h</b> (référence ${f1(ref)} h). Score : <b>${score}/100</b> (temps ${sco.time}, moins ${sco.pen} pour ${sco.incidents} incident(s) de forage). Outils utilisés : ${S.bits}, tubages : ${S.strings}.` : S.ev[S.ev.length-1].msg}
+      ${ok ? `Arrêt à ${Math.round(S.z)} m pour un toit du réservoir à ${Math.round(sc.resTop)} m (prévu ${sc.resPred} m), en <b>${f1(S.hours)} h</b> (référence ${f1(ref)} h). Score : <b>${score}/100</b> (temps ${sco.time}, moins ${sco.pen} pour ${sco.incidents} incident(s) de forage${sco.tdPen ? ', moins '+sco.tdPen+' pour le surforage' : ''}). Outils utilisés : ${S.bits}, tubages : ${S.strings}.` : S.ev[S.ev.length-1].msg}
       ${lines ? `<ul>${lines}</ul>` : '<br>Aucun incident : forage propre.'}
       <div class="rg-hint">${rigBest(ok, score)}</div>
       <div class="rg-btns" style="margin-top:10px;"><button class="go" id="rgAgain">↻ Nouveau puits</button></div></div>`;
@@ -8955,6 +8999,8 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
     on('rgSpeed', ()=>{ speed = speed===1?3:1; render(); });
     on('rgCirc', ()=>{ act(S,'circ'); render(); });
     on('rgCase', ()=>{ act(S,'case'==='case'?'casing':'casing'); render(); });
+    on('rgTd', ()=>{ if(!S.tdArm){ S.tdArm = true; S.drilling = false; stop(); render(); } else { S.tdArm = false; act(S,'td'); render(); } });
+    on('rgStart', ()=>{ S.brief = false; render(); });
     on('rgTrip', ()=>{ act(S,'trip'); render(); }); on('rgTrip2', ()=>{ act(S,'trip'); render(); });
     on('rgShut', ()=>{ act(S,'shut'); render(); });
     on('rgKill', ()=>{ act(S,'kill', S.mwTarget); render(); });
@@ -8966,12 +9012,12 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
     on('rgAgain', ()=>openRig());
   }
   function openRig(){
-    stop(); const sc = rigScenario(); if(!sc) return; S = rigNew(sc); S.lag = true; speed = 1;
+    stop(); const sc = rigScenario(); if(!sc) return; S = rigNew(sc); S.lag = true; S.brief = true; speed = 1;
     $('rigModal').classList.add('open'); render();
   }
   $('rigOpenBtn').addEventListener('click', openRig);
   $('rgClose').addEventListener('click', ()=>{ stop(); $('rigModal').classList.remove('open'); });
-  window.__rig = { bottomsUp, rigScenario, rigNew, tick, act, playBot, scoreOf, ropOf, qMin, gfOpen, gfOpenPred, get S(){ return S; }, render: ()=>render(), openRig, DZ, MARGIN, G0 };
+  window.__rig = { grSaysReservoir, bottomsUp, rigScenario, rigNew, tick, act, playBot, scoreOf, ropOf, qMin, gfOpen, gfOpenPred, get S(){ return S; }, render: ()=>render(), openRig, DZ, MARGIN, G0 };
 })();
 </script>
 </body>
