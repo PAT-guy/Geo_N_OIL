@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.54</title>
+<title>GeoExplorer V4.55</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -7415,32 +7415,54 @@ function _doStartGame(){
      pour les deux jeux de questions.
      ===================================================================== -->
 <style>
-#quizModal{position:fixed;inset:0;z-index:1200;background:var(--bg);display:none;flex-direction:column;align-items:center;overflow-y:auto;padding:20px 14px 40px;}
+#quizModal{position:fixed;inset:0;z-index:1200;background:var(--bg);display:none;flex-direction:column;align-items:center;overflow-y:auto;padding:16px 14px 28px;}
 #quizModal.open{display:flex;}
-.qz-header{display:flex;justify-content:space-between;align-items:center;width:100%;max-width:600px;margin-bottom:6px;}
-.qz-title{font-size:16px;color:var(--amber);letter-spacing:1px;}
-.qz-question{width:100%;max-width:600px;border:1px solid var(--line);background:var(--panel);padding:18px;margin-top:14px;font-size:13px;line-height:1.6;border-radius:8px;}
-.qz-choices{display:flex;flex-direction:column;gap:8px;width:100%;max-width:600px;margin-top:14px;}
-.qz-choice{border:1px solid var(--line);background:var(--panel);color:var(--text);font-family:var(--sans);font-size:12px;padding:10px 12px;text-align:left;cursor:pointer;border-radius:6px;}
-.qz-choice:hover{border-color:var(--amber);}
+.qz-header{display:flex;justify-content:space-between;align-items:center;width:100%;max-width:720px;margin-bottom:8px;}
+.qz-title{font-family:var(--serif);font-size:20px;color:var(--amber);letter-spacing:.2px;font-weight:600;}
+.qz-progress{width:100%;max-width:720px;height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-bottom:4px;}
+.qz-progress i{display:block;height:100%;width:0;background:var(--amber);border-radius:3px;transition:width .35s ease;}
+.qz-question{width:100%;max-width:720px;border:1px solid var(--line);border-left:4px solid var(--amber);background:var(--panel2);padding:16px 18px;margin-top:12px;font-size:15px;line-height:1.55;border-radius:12px;box-shadow:0 1px 0 rgba(0,0,0,.04),0 6px 18px rgba(60,40,10,.06);}
+.qz-kind{display:inline-block;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--amber);border:1px solid var(--amber);border-radius:999px;padding:2px 9px;margin-bottom:10px;font-weight:600;}
+.qz-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:2px 0 12px;}
+.qz-fact{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;}
+.qz-fact span{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
+.qz-fact b{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--text);line-height:1.35;word-break:break-word;}
+.qz-ask{font-weight:600;font-size:15.5px;line-height:1.45;color:var(--text);}
+.qz-note{margin-top:8px;font-size:12px;color:var(--muted);line-height:1.5;}
+.qz-choices{display:grid;grid-template-columns:1fr;gap:8px;width:100%;max-width:720px;margin-top:12px;}
+@media (min-width:760px){ .qz-choices.two{grid-template-columns:1fr 1fr;} }
+.qz-choice{display:flex;align-items:center;gap:12px;min-height:52px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.35;padding:10px 14px;text-align:left;cursor:pointer;border-radius:12px;transition:border-color .15s,transform .15s,box-shadow .15s;}
+.qz-choice:hover:not(:disabled){border-color:var(--amber);transform:translateY(-1px);box-shadow:0 4px 12px rgba(60,40,10,.10);}
+.qz-letter{flex:none;width:28px;height:28px;border-radius:50%;border:1.5px solid var(--line-strong);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--muted);}
 .qz-choice.correct{border-color:var(--green);background:var(--panel2);color:var(--green);}
+.qz-choice.correct .qz-letter{background:var(--green);border-color:var(--green);color:#fff;}
 .qz-choice.wrong{border-color:var(--red);color:var(--red);}
-.qz-tbl{width:100%;border-collapse:collapse;margin:6px 0;font-family:var(--mono);font-size:10.5px;color:var(--text);}.qz-tbl th,.qz-tbl td{border:1px solid var(--line);padding:4px 4px;text-align:center;}.qz-tbl th{background:var(--panel);font-family:var(--sans);font-size:10px;font-weight:600;}.qz-tbl tr.best td{background:var(--panel2);color:var(--green);}.qz-tbl tr.off td{color:var(--muted);}
-.qz-feedback{width:100%;max-width:600px;margin-top:14px;font-size:11px;color:var(--muted);line-height:1.6;display:none;}
+.qz-choice.wrong .qz-letter{background:var(--red);border-color:var(--red);color:#fff;}
+.qz-choice:disabled{cursor:default;}
+.qz-tbl{width:100%;border-collapse:collapse;margin:8px 0;font-family:var(--mono);font-size:12px;color:var(--text);border:1px solid var(--line);border-radius:8px;overflow:hidden;}.qz-tbl th,.qz-tbl td{border:1px solid var(--line);padding:6px 6px;text-align:center;}.qz-tbl th{background:var(--panel);font-family:var(--sans);font-size:11px;font-weight:600;}.qz-tbl tr.best td{background:var(--panel2);color:var(--green);font-weight:600;}.qz-tbl tr.off td{color:var(--muted);}
+.qz-feedback{width:100%;max-width:720px;margin-top:12px;font-size:13.5px;color:var(--text);line-height:1.6;display:none;border:1px solid var(--line);border-left:4px solid var(--line-strong);background:var(--panel2);border-radius:12px;padding:12px 16px;}
 .qz-feedback.show{display:block;}
-.qz-footer{width:100%;max-width:600px;margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.qz-feedback.ok{border-left-color:var(--green);} .qz-feedback.ko{border-left-color:var(--red);}
+.qz-feedback .qz-verdict{display:block;font-weight:700;margin-bottom:4px;} .qz-feedback.ok .qz-verdict{color:var(--green);} .qz-feedback.ko .qz-verdict{color:var(--red);}
+.qz-footer{width:100%;max-width:720px;margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:nowrap;position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:10px 0 8px;}
+.qz-footer .study-btn{width:auto;flex:1 1 auto;min-height:46px;padding:0 20px;font-size:14px;font-weight:600;border-radius:10px;}
+.qz-footer .qz-pill{flex:none;}
+.qz-big{display:flex;align-items:baseline;gap:8px;margin:2px 0 6px;} .qz-big b{font-family:var(--serif);font-size:44px;line-height:1;color:var(--amber);} .qz-big span{font-size:20px;color:var(--muted);font-family:var(--mono);}
+.qz-pill{font-size:12px;color:var(--muted);font-family:var(--mono);}
+@media (max-width:520px){ .qz-title{font-size:17px;} .qz-question{padding:13px 14px;} .qz-facts{grid-template-columns:1fr 1fr;} .qz-fact b{font-size:13px;} .qz-ask{font-size:15px;} .qz-choice{font-size:13.5px;} }
 </style>
 <div id="quizModal">
   <div class="qz-header">
     <div class="qz-title" id="qzTitle">Quiz</div>
     <button class="cg-close" id="qzCloseBtn">✕ Fermer</button>
   </div>
+  <div class="qz-progress" aria-hidden="true"><i id="qzBar"></i></div>
   <div class="qz-question" id="qzQuestion"></div>
   <div class="qz-choices" id="qzChoices"></div>
   <div class="qz-feedback" id="qzFeedback"></div>
   <div class="qz-footer">
     <button class="study-btn" id="qzNextBtn" style="display:none;">Question suivante →</button>
-    <span style="font-size:11px;color:var(--muted);" id="qzScore">Score : 0/0</span>
+    <span class="qz-pill" id="qzScore">Score : 0/0</span>
   </div>
 </div>
 
@@ -7664,7 +7686,7 @@ function _doStartGame(){
           const pd = Math.round(top*e), T = Math.round(14 + top*e*g/1000);
           usedKey.add(top+'|'+g);
           const lbl = ['Immature','Fenêtre à huile','Fenêtre à gaz'], good = QZ_MAT.indexOf(tg);
-          out.push({ gen:true, q:`Roche-mère (toit de la couche) actuellement à ${top} m, gradient géothermique ${qzF1(g)} °C/km, exhumation ×${qzF2(e)}${e>=1.9?' (bassin fortement soulevé et érodé depuis son enfouissement maximal)':e<=1.15?' (bassin presque sans soulèvement)':''}.`,
+          out.push({ gen:true, chip:'Maturation', facts:[['Profondeur actuelle',`${top} m`],['Gradient géothermique',`${qzF1(g)} °C/km`],['Exhumation',`×${qzF2(e)}`]], ask:'Dans quelle fenêtre de maturité se trouve la roche-mère ?', note: e>=1.9 ? 'Bassin fortement soulevé et érodé depuis son enfouissement maximal.' : e<=1.15 ? 'Bassin presque sans soulèvement.' : '', q:`Roche-mère (toit de la couche) actuellement à ${top} m, gradient géothermique ${qzF1(g)} °C/km, exhumation ×${qzF2(e)}${e>=1.9?' (bassin fortement soulevé et érodé depuis son enfouissement maximal)':e<=1.15?' (bassin presque sans soulèvement)':''}.`,
             choices:lbl, correct:good,
             explain:`C'est la profondeur d'enfouissement MAXIMALE qui compte, pas la profondeur actuelle : ${top} × ${qzF2(e)} ≈ ${pd} m. Température ≈ 14 + ${qzF2(pd/1000)} × ${qzF1(g)} ≈ ${T} °C. Repères du jeu : sous 60 °C, immature ; de 60 à 150 °C, fenêtre à huile ; au-dessus, fenêtre à gaz.` });
           break;
@@ -7700,37 +7722,37 @@ function _doStartGame(){
           let q = null;
           if(kind==='pol'){
             const c = qzShuffled(P.filter(x=>Math.abs(x.R)>=0.04 && Math.sign(x.R)===Math.sign(x.Re))); if(!c.length) continue; const x=c[0];
-            q = { kind, meta:{R:x.R}, q:`Interface entre ${qzIface(x)}. Sur la sismique du jeu, que voit-on à cette interface ?`,
+            q = { kind, chip:'Sismique', facts:[['Au-dessus',`${x.A.name} : ρ ${qzFr(x.ra)} g/cc, V ${x.va} m/s`],['En dessous',`${x.B.name} : ρ ${qzFr(x.rb)} g/cc, V ${x.vb} m/s`]], ask:'Sur la sismique du jeu, que voit-on à cette interface ?', note:'Impédance Z = ρ × V ; bleu = l\'impédance augmente en descendant.', meta:{R:x.R}, q:`Interface entre ${qzIface(x)}. Sur la sismique du jeu, que voit-on à cette interface ?`,
               choices:['Un pic bleu : l\'impédance augmente en descendant','Un creux rouge : l\'impédance diminue en descendant','Aucun signal : seule la vitesse compte, pas la densité'], correct: x.R>0?0:1,
               explain:`Impédance Z = ρ × V : ${x.A.name} ≈ ${qzFr(Math.round(x.za*10)/10)}, ${x.B.name} ≈ ${qzFr(Math.round(x.zb*10)/10)} (10⁶ kg/m²/s). R = (Z2 − Z1) / (Z2 + Z1) ≈ ${qzFr(Math.round(x.R*100)/100)} : ${x.R>0?'positif, donc un pic bleu':'négatif, donc un creux rouge'}. La réflexion dépend de l'impédance, produit de la densité par la vitesse, jamais de la vitesse seule.` };
           } else if(kind==='force'){
             const c = qzShuffled(P.filter(x=>Math.abs(x.R)>=0.02 && Math.sign(x.R)===Math.sign(x.Re))); if(c.length<3) continue; const t3 = c.slice(0,3);
             const ab = t3.map(x=>Math.abs(x.R)), sorted=[...ab].sort((u,w)=>w-u); if(sorted[0]/sorted[1] < 1.4) continue;
-            q = { kind, meta:{Rs:t3.map(x=>x.R)}, q:`Trois interfaces d'un même puits. ① ${qzIface(t3[0])}. ② ${qzIface(t3[1])}. ③ ${qzIface(t3[2])}. Laquelle donne la réflexion la plus forte en amplitude ?`,
+            q = { kind, chip:'Sismique', facts:t3.map((x,i)=>['Interface '+['①','②','③'][i], qzIface(x)]), ask:'Laquelle donne la réflexion la plus forte en amplitude ?', note:'|R| = |Z2 − Z1| / (Z2 + Z1), avec Z = ρ × V.', meta:{Rs:t3.map(x=>x.R)}, q:`Trois interfaces d'un même puits. ① ${qzIface(t3[0])}. ② ${qzIface(t3[1])}. ③ ${qzIface(t3[2])}. Laquelle donne la réflexion la plus forte en amplitude ?`,
               choices:['Interface ①','Interface ②','Interface ③'], correct: ab.indexOf(sorted[0]),
               explain:`L'amplitude suit |R| = |Z2 − Z1| / (Z2 + Z1). ① ${qzFr(Math.round(ab[0]*1000)/1000)}, ② ${qzFr(Math.round(ab[1]*1000)/1000)}, ③ ${qzFr(Math.round(ab[2]*1000)/1000)}. Ce qui compte est le contraste relatif d'impédance, pas la dureté d'une couche prise seule.` };
           } else if(kind==='twt'){
             const k = 2 + Math.floor(Math.random()*(L.length-2)); const z = Math.round(L[k].top/10)*10; if(z<300) continue;
             let t=0; for(let i=0;i<L.length;i++){ const top=L[i].top, base=top+L[i].th; if(z<=top) break; t += 2*(Math.min(z,base)-top)/L[i].v*1000; } t += 2*L[0].top/L[0].v*1000;
             const V = qzV(2000*z/t); const t2 = Math.round(2000*z/V); if(V<1500) continue;
-            q = { kind, meta:{z,V,t:t2}, q:`Un réflecteur est à ${z} m de profondeur et la vitesse moyenne jusqu'à lui est de ${V} m/s. Quel est son temps double (aller-retour) ?`,
+            q = { kind, chip:'Sismique', facts:[['Profondeur du réflecteur',`${z} m`],['Vitesse moyenne',`${V} m/s`]], ask:'Quel est son temps double (aller-retour) ?', meta:{z,V,t:t2}, q:`Un réflecteur est à ${z} m de profondeur et la vitesse moyenne jusqu'à lui est de ${V} m/s. Quel est son temps double (aller-retour) ?`,
               choices:[`${t2} ms`,`${Math.round(t2/2)} ms`,`${t2*2} ms`], correct:0,
               explain:`Le temps double est le trajet aller-retour : t = 2 × z / V = 2 × ${z} / ${V} ≈ ${t2/1000} s, soit ${t2} ms. ${Math.round(t2/2)} ms serait le temps simple (oublier l'aller-retour).` };
           } else if(kind==='calage'){
             const k = 2 + Math.floor(Math.random()*(L.length-2)); const z = Math.round(L[k].top/10)*10; if(z<300) continue;
             let t=0; for(let i=0;i<L.length;i++){ const top=L[i].top, base=top+L[i].th; if(z<=top) break; t += 2*(Math.min(z,base)-top)/L[i].v*1000; } t += 2*L[0].top/L[0].v*1000; t = Math.round(t/10)*10; if(t<200) continue;
             const V = qzV(2000*z/t); if(V<1500) continue;
-            q = { kind, meta:{z,t,V}, q:`Au puits, un réflecteur connu est à ${z} m. Sur la sismique, il apparaît à ${t} ms (temps double). Quelle vitesse moyenne faut-il utiliser pour caler le puits sur la sismique ?`,
+            q = { kind, chip:'Sismique', facts:[['Réflecteur au puits',`${z} m`],['Temps double sur la sismique',`${t} ms`]], ask:'Quelle vitesse moyenne faut-il utiliser pour caler le puits sur la sismique ?', meta:{z,t,V}, q:`Au puits, un réflecteur connu est à ${z} m. Sur la sismique, il apparaît à ${t} ms (temps double). Quelle vitesse moyenne faut-il utiliser pour caler le puits sur la sismique ?`,
               choices:[`${V} m/s`,`${V*2} m/s`,`${qzV(V/2)} m/s`], correct:0,
               explain:`Le calage relie profondeur et temps : V moyenne = 2 × z / t = 2 × ${z} / ${t/1000} s ≈ ${V} m/s. ${V*2} m/s viendrait d'un temps pris pour un trajet simple.` };
           } else if(kind==='multiple'){
             const c = P.filter(x=>x.R>=0.12 && x.Re>0 && x.B.t0<1200).sort((u,w)=>Math.abs(w.R)-Math.abs(u.R)); if(!c.length) continue; const x=c[0]; const t0=Math.round(x.B.t0/10)*10; if(t0<80) continue;
-            q = { kind, meta:{t0,R:x.R}, q:`Sur une sismique, l'interface ${x.A.name} sur ${x.B.name} (R ≈ ${qzFr(Math.round(x.R*100)/100)}) donne un réflecteur très fort à ${t0} ms. Un événement parasite, plus faible et de polarité inverse (creux), apparaît plus bas sans interface correspondante en profondeur. À quel temps double attendez-vous le premier multiple de surface ?`,
+            q = { kind, chip:'Sismique', facts:[['Interface',`${x.A.name} sur ${x.B.name}`],['Coefficient de réflexion',`R ≈ ${qzFr(Math.round(x.R*100)/100)}`],['Réflecteur très fort à',`${t0} ms`]], ask:'À quel temps double attendez-vous le premier multiple de surface ?', note:'Un événement plus faible, de polarité inverse, apparaît plus bas sans interface correspondante.', meta:{t0,R:x.R}, q:`Sur une sismique, l'interface ${x.A.name} sur ${x.B.name} (R ≈ ${qzFr(Math.round(x.R*100)/100)}) donne un réflecteur très fort à ${t0} ms. Un événement parasite, plus faible et de polarité inverse (creux), apparaît plus bas sans interface correspondante en profondeur. À quel temps double attendez-vous le premier multiple de surface ?`,
               choices:[`${t0*2} ms`,`${Math.round(t0*1.5)} ms`,`${t0*4} ms`], correct:0,
               explain:`Le premier multiple est l'onde qui a fait un aller-retour de plus entre le réflecteur et la surface : il arrive au double du temps du primaire, soit 2 × ${t0} = ${t0*2} ms, et, pour un primaire positif, avec une polarité inversée (la surface libre réfléchit avec un coefficient de −1). Un événement qui ne correspond à aucune interface réelle et tombe à un multiple exact du temps d'un fort réflecteur est un multiple, pas un horizon.` };
           } else if(kind==='resol'){
             const l = L[Math.floor(Math.random()*L.length)]; const f = [20,25,28,30][Math.floor(Math.random()*4)], V = Math.round(l.v/50)*50; if(V<2000) continue; const e = Math.round(V/(4*f));
-            q = { kind, meta:{f,V,e}, q:`La fréquence dominante de la sismique est de ${f} Hz. Dans la couche « ${l.name} », la vitesse est de ${V} m/s. Quelle épaisseur minimale de couche peut-on encore distinguer (critère du quart de longueur d'onde) ?`,
+            q = { kind, chip:'Sismique', facts:[['Fréquence dominante',`${f} Hz`],['Vitesse dans la couche',`${V} m/s`],['Couche',l.name]], ask:'Quelle épaisseur minimale de couche peut-on encore distinguer (critère du quart de longueur d\'onde) ?', meta:{f,V,e}, q:`La fréquence dominante de la sismique est de ${f} Hz. Dans la couche « ${l.name} », la vitesse est de ${V} m/s. Quelle épaisseur minimale de couche peut-on encore distinguer (critère du quart de longueur d'onde) ?`,
               choices:[`environ ${e} m`,`environ ${e*2} m`,`environ ${e*4} m`], correct:0,
               explain:`La longueur d'onde est λ = V / f = ${V} / ${f} ≈ ${Math.round(V/f)} m. La limite de résolution verticale est λ / 4 ≈ ${e} m : en dessous, les réflexions du toit et du mur se mélangent. ${e*4} m serait la longueur d'onde entière.` };
           }
@@ -7786,7 +7808,7 @@ function _doStartGame(){
           const d = opts.map(c=>qzLithDist(mm, qzLithProto(c, z))), dt = d[opts.indexOf(tg)], second = Math.min(...d.filter((_,i)=>opts[i]!==tg));
           if(!(dt*1.5 <= second)) continue;
           const f = v => String(v).replace('.',',');
-          out.push({ gen:true, kind:'litho', meta:{z, m:mm, opts, good:tg}, q:`Mesures d'un log de puits dans une couche d'une dizaine de mètres au moins : GR = ${rd.gr} API, ρb = ${f(rd.rho)} g/cc, NPHI = ${f(rd.nphi)} %, DT = ${rd.dt} µs/ft, Rt = ${f(rd.rt)} Ω·m. Quelle lithologie ?`,
+          out.push({ gen:true, kind:'litho', chip:'Lecture de log', facts:[['GR',`${rd.gr} API`],['Densité ρb',`${f(rd.rho)} g/cc`],['Neutron NPHI',`${f(rd.nphi)} %`],['Sonique DT',`${rd.dt} µs/ft`],['Résistivité Rt',`${f(rd.rt)} Ω·m`]], ask:'Quelle lithologie ?', note:'Mesures prises dans une couche d\'au moins une dizaine de mètres.', meta:{z, m:mm, opts, good:tg}, q:`Mesures d'un log de puits dans une couche d'une dizaine de mètres au moins : GR = ${rd.gr} API, ρb = ${f(rd.rho)} g/cc, NPHI = ${f(rd.nphi)} %, DT = ${rd.dt} µs/ft, Rt = ${f(rd.rt)} Ω·m. Quelle lithologie ?`,
             choices:opts.map(c=>QZ_LITH[c]), correct:opts.indexOf(tg),
             explain:`C'était : ${QZ_LITH[tg].toLowerCase()}. Indices : ${QZ_LITH_CUE[tg]}` });
           break;
@@ -7837,6 +7859,7 @@ function _doStartGame(){
             const tbl = rows.map(r=>{ const pw = p*r.rel; return r.ok ? `<tr${r.id===good?' class="best"':''}><td>${r.e.label.replace('Matériel ','')}</td><td>${Math.round(pw*100)} %</td><td>${qzM(gain-r.cost)}</td><td>${qzM(-r.cost)}</td><td><b>${qzM(r.ev)}</b></td></tr>` : `<tr class="off"><td>${r.e.label.replace('Matériel ','')}</td><td colspan="4">exclu : limite ${r.e.maxDepth} m &lt; ${depth} m</td></tr>`; }).join('')
               + `<tr${none?' class="best"':''}><td>Ne pas forer</td><td>-</td><td>0</td><td>0</td><td><b>0</b></td></tr>`;
             out.push({ gen:true, kind:'ev', meta:{depth,p,gain,price,prod0,cf:CF,none, rows:rows.map(r=>({id:r.id,ok:r.ok,rel:r.rel,cost:r.cost,ev:r.ev}))},
+              chip:'Gain net espéré', facts:[['Réservoir à',`${depth} m`],['Probabilité de succès',`${Math.round(p*100)} %`],['Production initiale',`${prod0} bbl/mois`],['Prix du brut',`${price} $/bbl`],['Gain si succès (10 ans)',qzM(gain)],['Coût au mètre',`600 / 900 / 1 350 $ × ${String(CF).replace('.',',')}`]], ask:'Quel choix maximise le gain net espéré, p × fiabilité × gain − coût ?', note:'Fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)). Bases : 78 % (léger), 90 % (standard), 97 % (renforcé).',
               q:`Bloc à terre dont le réservoir est à ${depth} m, probabilité de succès géologique estimée à ${Math.round(p*100)} %. Production initiale attendue : ${prod0} barils par mois. Au brut à ${price} $, un succès rapporterait ${qzM(gain)} net sur 10 ans (règles de production du jeu). Coût = coût au mètre × profondeur × ${String(CF).replace('.',',')} (niveau de coût du jeu). Fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)), bases 78 % (léger), 90 % (standard), 97 % (renforcé). Quel choix maximise le gain net espéré (p × fiabilité × gain − coût) ?`,
               choices:opts.map(o=>o.t), correct:opts.findIndex(o=>o.k===good),
               explainHtml: `<div>${none ? 'Aucun matériel n\'a un gain net espéré positif : il vaut mieux ne pas forer.' : (top.id===valid[0].id ? 'Ici le matériel le moins cher l\'emporte : la fiabilité qu\'il perd coûte moins que le surcoût des autres.' : 'Le matériel le moins cher n\'est pas toujours le meilleur : un surcoût peut être payé par une fiabilité plus haute.')} Voici les issues, calculées exactement pour chaque choix :</div>
@@ -7855,7 +7878,7 @@ function _doStartGame(){
           if(new Set(trio.map(t=>t.id+t.depth)).size<3) continue;
           const rs = trio.map(t=>t.rel), mn = Math.min(...rs), sorted=[...rs].sort((a,c)=>a-c); if(sorted[1]-sorted[0] < 0.025) continue;
           const names = ['A','B','C'];
-          out.push({ gen:true, kind:'fiab', meta:{trio:trio.map(t=>({id:t.id,depth:t.depth,rel:t.rel}))}, q:`Trois puits. A : ${trio[0].e.label.toLowerCase()} (limite ${trio[0].e.maxDepth} m, base ${Math.round(trio[0].e.reliability*100)} %) à ${trio[0].depth} m. B : ${trio[1].e.label.toLowerCase()} (limite ${trio[1].e.maxDepth} m, base ${Math.round(trio[1].e.reliability*100)} %) à ${trio[1].depth} m. C : ${trio[2].e.label.toLowerCase()} (limite ${trio[2].e.maxDepth} m, base ${Math.round(trio[2].e.reliability*100)} %) à ${trio[2].depth} m. Lequel risque le plus un échec technique ? (fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)))`,
+          out.push({ gen:true, kind:'fiab', chip:'Fiabilité du matériel', facts:trio.map((t,i)=>['Puits '+names[i], `${t.e.label.replace('Matériel ','').replace(/^./,c=>c.toUpperCase())} à ${t.depth} m (limite ${t.e.maxDepth} m, base ${Math.round(t.e.reliability*100)} %)`]), ask:'Lequel risque le plus un échec technique ?', note:'Fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)).', meta:{trio:trio.map(t=>({id:t.id,depth:t.depth,rel:t.rel}))}, q:`Trois puits. A : ${trio[0].e.label.toLowerCase()} (limite ${trio[0].e.maxDepth} m, base ${Math.round(trio[0].e.reliability*100)} %) à ${trio[0].depth} m. B : ${trio[1].e.label.toLowerCase()} (limite ${trio[1].e.maxDepth} m, base ${Math.round(trio[1].e.reliability*100)} %) à ${trio[1].depth} m. C : ${trio[2].e.label.toLowerCase()} (limite ${trio[2].e.maxDepth} m, base ${Math.round(trio[2].e.reliability*100)} %) à ${trio[2].depth} m. Lequel risque le plus un échec technique ? (fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)))`,
             choices:['Puits A','Puits B','Puits C'], correct: rs.indexOf(mn),
             explain: trio.map((t,i)=>`${names[i]} : ${t.depth} / ${t.e.maxDepth} = ${Math.round(t.depth/t.e.maxDepth*100)} % de la limite, fiabilité ${Math.round(t.rel*100)} %`).join(' ; ')+'. Ce qui compte est la part de la limite utilisée, pas la profondeur absolue : un puits profond avec un matériel renforcé peut être plus sûr qu\'un puits moyen avec un matériel léger.' });
           break;
@@ -7875,7 +7898,7 @@ function _doStartGame(){
           const pick = qzSourceBlocks().find(o=>o.b.maturityClass===tg && !(o.re.tmax>430&&o.re.tmax<435) && !(o.re.tmax>455&&o.re.tmax<460));
           if(!pick) continue; const re=pick.re;
           const good = re.tmax<435 ? 0 : re.tmax<=455 ? 1 : 2;
-          out.push({ gen:true, q:`Échantillon de roche-mère d'un bloc du jeu : TOC = ${String(re.toc).replace('.',',')} %, HI = ${re.hi} mg HC/g TOC, Tmax = ${re.tmax} °C. Quelle maturité thermique ?`,
+          out.push({ gen:true, chip:'Rock-Eval', facts:[['TOC',`${String(re.toc).replace('.',',')} %`],['Indice d\'hydrogène HI',`${re.hi} mg HC/g TOC`],['Tmax',`${re.tmax} °C`]], ask:'Quelle maturité thermique ?', q:`Échantillon de roche-mère d'un bloc du jeu : TOC = ${String(re.toc).replace('.',',')} %, HI = ${re.hi} mg HC/g TOC, Tmax = ${re.tmax} °C. Quelle maturité thermique ?`,
             choices:['Immature (avant la fenêtre à huile)','Fenêtre à huile','Surmature (fenêtre à gaz)'], correct:good,
             explain:`La maturité se lit sur le Tmax : ${re.tmax} °C ${good===0?'est sous 435 °C, la roche n\'a pas encore généré':good===1?'est entre 435 et 455 °C, la roche est en train de générer de l\'huile':'dépasse 455 °C, la roche a franchi la fenêtre à huile et ne donne plus que du gaz'}. Le TOC (richesse) et le HI (type et potentiel restant) ne disent rien de la maturité à eux seuls.` });
           break;
@@ -7891,7 +7914,7 @@ function _doStartGame(){
         const cls = t<0.3?'Non générateur': t<0.7?'Pauvre': t<1.5 ? (h>300?'Bon':'Moyen') : (h>400?'Excellent':'Bon');
         if(cls!==re.genPotential) continue;
         const all5 = ['Non générateur','Pauvre','Moyen','Bon','Excellent'], opts = qzShuffled([cls, ...qzShuffled(all5.filter(c=>c!==cls)).slice(0,3)]);
-        out.push({ gen:true, kind:'potentiel', meta:{toc:t, hi:h, cls}, q:`Échantillon de roche-mère : TOC = ${String(re.toc).replace('.',',')} %, HI = ${h} mg HC/g TOC. Quel potentiel générateur ?`,
+        out.push({ gen:true, kind:'potentiel', chip:'Rock-Eval', facts:[['TOC',`${String(re.toc).replace('.',',')} %`],['Indice d\'hydrogène HI',`${h} mg HC/g TOC`]], ask:'Quel potentiel générateur ?', meta:{toc:t, hi:h, cls}, q:`Échantillon de roche-mère : TOC = ${String(re.toc).replace('.',',')} %, HI = ${h} mg HC/g TOC. Quel potentiel générateur ?`,
           choices:opts, correct:opts.indexOf(cls),
           explain:`Repères du jeu : TOC sous 0,3 % : non générateur ; de 0,3 à 0,7 % : pauvre ; de 0,7 à 1,5 % : moyen (bon si HI dépasse 300) ; au-delà de 1,5 % : bon (excellent si HI dépasse 400). Ici TOC = ${String(re.toc).replace('.',',')} % et HI = ${h} : ${cls.toLowerCase()}.` });
         break;
@@ -7908,7 +7931,7 @@ function _doStartGame(){
           if(!found) continue;
           const [A,B,sa,sb]=found; const swap = Math.random()<.5, X = swap?B:A, Y = swap?A:B, sx = swap?sb:sa, sy = swap?sa:sb;
           const fx = String(X.toc).replace('.',','), fy = String(Y.toc).replace('.',',');
-          out.push({ gen:true, q:`Deux échantillons de roche-mère. A : TOC = ${fx} %, HI = ${X.hi} mg HC/g TOC. B : TOC = ${fy} %, HI = ${Y.hi} mg HC/g TOC. Lequel contient le plus d'hydrocarbures encore générables (S2) ?`,
+          out.push({ gen:true, chip:'Rock-Eval', facts:[['Échantillon A',`TOC ${fx} %, HI ${X.hi}`],['Échantillon B',`TOC ${fy} %, HI ${Y.hi}`]], ask:'Lequel contient le plus d\'hydrocarbures encore générables (S2) ?', note:'S2 ≈ TOC × HI / 100.', q:`Deux échantillons de roche-mère. A : TOC = ${fx} %, HI = ${X.hi} mg HC/g TOC. B : TOC = ${fy} %, HI = ${Y.hi} mg HC/g TOC. Lequel contient le plus d'hydrocarbures encore générables (S2) ?`,
             choices:['A','B','Autant l\'un que l\'autre'], correct: sx>sy ? 0 : 1,
             explain:`Le potentiel restant se calcule en croisant richesse et qualité : S2 ≈ TOC × HI / 100. A : ${fx} × ${X.hi} / 100 ≈ ${qzF1(sx)} mg HC/g roche. B : ${fy} × ${Y.hi} / 100 ≈ ${qzF1(sy)}. Un TOC élevé ne suffit pas si le HI est bas, et inversement.` });
           break;
@@ -7925,22 +7948,28 @@ function _doStartGame(){
     return qzShuffled([...list, ...fixed]);
   }
 
+  const qzEsc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   function qzRenderQuestion(){
     if(qzIdx >= qzOrder.length){ qzFinish(); return; }
     const q = qzOrder[qzIdx];
-    document.getElementById('qzQuestion').textContent = q.q;
-    document.getElementById('qzFeedback').classList.remove('show');
+    const qe = document.getElementById('qzQuestion');
+    qe.innerHTML = (q.chip ? `<span class="qz-kind">${qzEsc(q.chip)}</span>` : '')
+      + (q.facts ? `<div class="qz-facts">${q.facts.map(([l,v])=>`<div class="qz-fact"><span>${qzEsc(l)}</span><b>${qzEsc(v)}</b></div>`).join('')}</div><div class="qz-ask">${qzEsc(q.ask || q.q)}</div>${q.note ? `<div class="qz-note">${qzEsc(q.note)}</div>` : ''}`
+                  : `<div class="qz-ask">${qzEsc(q.q)}</div>`);
+    const fb0 = document.getElementById('qzFeedback'); fb0.classList.remove('show','ok','ko'); fb0.innerHTML = '';
     const nb = document.getElementById('qzNextBtn');
     nb.style.display = 'none';
     nb.textContent = qzIdx===qzOrder.length-1 ? 'Voir le résultat →' : 'Question suivante →';
     document.getElementById('qzScore').textContent = `Question ${qzIdx+1}/${qzOrder.length} · score ${qzScore}/${qzAsked}`;
+    document.getElementById('qzBar').style.width = Math.round(qzIdx/qzOrder.length*100)+'%';
 
     // Mélanger les choix tout en gardant la trace du bon indice
     const order = q.choices.map((c,i)=>i);
     const shuffledOrder = qzShuffled(order);
     const choicesEl = document.getElementById('qzChoices');
-    choicesEl.innerHTML = shuffledOrder.map(origIdx=>
-      `<button class="qz-choice" data-orig="${origIdx}">${q.choices[origIdx]}</button>`
+    choicesEl.classList.toggle('two', q.choices.length>=4 && q.choices.every(c=>String(c).length<=38));
+    choicesEl.innerHTML = shuffledOrder.map((origIdx,pos)=>
+      `<button class="qz-choice" data-orig="${origIdx}"><span class="qz-letter">${'ABCDEF'[pos]}</span><span class="qz-ct">${q.choices[origIdx]}</span></button>`
     ).join('');
     choicesEl.querySelectorAll('.qz-choice').forEach(btn=>{
       btn.addEventListener('click', ()=>{
@@ -7953,10 +7982,12 @@ function _doStartGame(){
         if(chosen===q.correct){ qzScore++; }
         else { btn.classList.add('wrong'); }
         document.getElementById('qzScore').textContent = `Question ${qzIdx+1}/${qzOrder.length} · score ${qzScore}/${qzAsked}`;
-        const fb = document.getElementById('qzFeedback');
-        if(q.explainHtml) fb.innerHTML = (chosen===q.correct ? '✓ Correct. ' : '✗ Pas tout à fait. ') + q.explainHtml; else fb.textContent = (chosen===q.correct ? '✓ Correct. ' : '✗ Pas tout à fait. ') + q.explain;
-        fb.classList.add('show');
+        document.getElementById('qzBar').style.width = Math.round((qzIdx+1)/qzOrder.length*100)+'%';
+        const fb = document.getElementById('qzFeedback'), okk = chosen===q.correct;
+        fb.innerHTML = `<span class="qz-verdict">${okk ? '✓ Correct' : '✗ Pas tout à fait'}</span>` + (q.explainHtml ? q.explainHtml : qzEsc(q.explain));
+        fb.classList.add('show', okk ? 'ok' : 'ko');
         document.getElementById('qzNextBtn').style.display = '';
+        { const m = document.getElementById('quizModal'); m.scrollTo({top: Math.max(0, fb.offsetTop - 96), behavior:'smooth'}); }
       });
     });
   }
@@ -7971,12 +8002,13 @@ function _doStartGame(){
     const verdict = ratio>=0.85 ? 'Solide. Les bassins avancés sont à votre portée.'
                   : ratio>=0.6  ? 'Correct. Relisez les explications des questions ratées.'
                   : 'À retravailler. Le glossaire (menu pause) et le tutoriel couvrent ces notions.';
-    document.getElementById('qzQuestion').innerHTML = `<b style="font-size:16px;">Manche terminée : ${qzScore}/${n}</b><br><br>${verdict}<br><br>Meilleur score : <b>${best ? best.s+'/'+best.n : 'aucun pour l\'instant'}</b>${record?' (nouveau record)':''}`;
+    document.getElementById('qzQuestion').innerHTML = `<span class="qz-kind">Manche terminée</span><div class="qz-big"><b>${qzScore}</b><span>/ ${n}</span></div><div class="qz-ask">${verdict}</div><div class="qz-note">Meilleur score : <b>${best ? best.s+'/'+best.n : 'aucun pour l\'instant'}</b>${record?' (nouveau record)':''}</div>`;
+    document.getElementById('qzChoices').classList.remove('two');
     document.getElementById('qzChoices').innerHTML = `<button class="qz-choice" id="qzAgainBtn">↻ Rejouer une manche (questions mélangées)</button>`;
     document.getElementById('qzAgainBtn').addEventListener('click', ()=>qzOpen(qzKey));
     document.getElementById('qzFeedback').classList.remove('show');
     document.getElementById('qzNextBtn').style.display = 'none';
-    document.getElementById('qzScore').textContent = `Score final ${qzScore}/${n}`;
+    document.getElementById('qzScore').textContent = `Score final ${qzScore}/${n}`; document.getElementById('qzBar').style.width = '100%';
     if(typeof quickRefresh==='function') quickRefresh();
   }
 
