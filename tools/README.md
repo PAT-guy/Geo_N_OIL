@@ -16,6 +16,19 @@ Les tests utilisent Playwright (Chromium) sur `index.html` et écrivent leurs ca
 cd /tmp && node /chemin/vers/Geo_N_OIL/tools/tests/chk_lab.js
 ```
 
+
+## Lancer toute la suite
+
+```bash
+node tools/run_tests.js            # les 47 tests, un par un, avec un verdict par test (environ 6 minutes)
+node tools/run_tests.js --only sondage
+node tools/run_tests.js --liste
+```
+
+Les tests de navigateur ne tournent jamais en parallèle : la charge CPU les rend instables. Un test « à verdict » finit par TOUT OK ; un test « d'observation » imprime du JSON et échoue sur un code de sortie non nul, un mot ECHEC ou une liste d'erreurs non vide ; les mesures (`mesure_gisements`, `sim_lab`, `rendement_puits`, `diag_guide`) tournent sans compter dans le verdict.
+
+`sauvegardes_anciennes.js` charge dans la version actuelle de vraies parties sauvegardées par les versions V4.45, V4.56, V4.63 et V4.71 (tirées de l'historique git). Quand un champ de partie est ajouté, ce test dit si les anciennes sauvegardes tiennent encore.
+
 - `chk_lab.js` : chargement sans erreur JS.
 - `lab431.js` : désignation de la cible (phase 2).
 - `lab432.js` : calage puits-sismique (phase 3).
