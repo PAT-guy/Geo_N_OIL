@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.70</title>
+<title>GeoExplorer V4.71</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -94,9 +94,11 @@ header{
 .hud-goal-txt{font-size:11px; color:var(--muted);}
 .sep{width:1px; height:30px; background:var(--line);}
 #priceSparkline{height:28px; width:80px;}
-#btnPriceAlert{padding:2px 7px; min-width:0; font-size:13px; line-height:1.2;}
+#btnPriceAlert, #btnInformant{padding:2px 7px; min-width:0; font-size:13px; line-height:1.2;}
 #priceAlertModal{position:fixed;inset:0;z-index:1370;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:14px;}
 #priceAlertModal.open{display:flex;}
+#informantModal{position:fixed;inset:0;z-index:1370;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:14px;}
+#informantModal.open{display:flex;}
 .pa-form{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
 .pa-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12.5px;}
 .pa-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;}
@@ -573,7 +575,7 @@ body.mobile-layout header .sep{display:none;}
 body.mobile-layout #priceSparkline{display:none;}
 #mobilePanelToggle, #mobilePanelClose{display:none !important;} /* remplacés par la barre d'écrans */
 /* V4.43 : cibles tactiles d'au moins 40 px sur téléphone, en-tête sans chevauchement, guide replié */
-body.mobile-layout #btnPriceAlert{min-height:40px; min-width:40px; padding:6px 10px; justify-content:center; order:6;}
+body.mobile-layout #btnPriceAlert, body.mobile-layout #btnInformant{min-height:40px; min-width:40px; padding:6px 10px; justify-content:center; order:6;}
 body.mobile-layout #btnSpeedCycle{min-height:40px; min-width:48px;}
 body.mobile-layout #btnMenu{min-height:40px; min-width:44px; justify-content:center;}
 body.mobile-layout .lab-secchk{min-height:40px; padding:0 8px; gap:8px;}
@@ -1084,6 +1086,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
       <span class="hud-val"><span id="hudPrice">80,0</span><span class="hud-unit">$/bbl</span></span>
     </div>
     <canvas id="priceSparkline" width="80" height="28" title="Cours du brut : 60 derniers mois (traits pointillés : vos alertes de prix)"></canvas>
+    <button class="btn" id="btnInformant" onclick="informantOpen()" aria-label="Informateur de marché" title="Informateur : avis de prévision et alertes d'événements du marché (payant, pas toujours juste)">📡</button>
     <button class="btn" id="btnPriceAlert" onclick="priceAlertOpen()" aria-label="Alertes de prix" title="Alertes de prix : être prévenu quand le brut franchit un seuil">🔔<span id="priceAlertCount"></span></button>
     <div class="hud-item">
       <span class="hud-lbl">Puits</span>
@@ -2996,6 +2999,7 @@ function monthTick(){
   // Grève : tant que le compteur est > 0, aucune vente ni mise en stock,
   // mais les coûts fixes de chaque puits continuent d'être payés.
   const strikeActive = (G.strikeMonthsLeft||0) > 0;
+  const stormActive = (G.stormMonthsLeft||0) > 0, taxMult = (G.taxMonthsLeft||0) > 0 ? 1 - TAX_RATE : 1;
 
   G.wells.forEach(w=>{
     // Blowout : puits à l'arrêt pendant blowoutMonthsLeft mois (pas de
@@ -3021,13 +3025,13 @@ function monthTick(){
     }
 
     const econ = wellEconomics(w);
-    if(strikeActive){
-      opex += econ.fixedOp; // production arrêtée : seuls les coûts fixes courent
+    if(strikeActive || (stormActive && w.offshore)){
+      opex += econ.fixedOp; // production arrêtée (grève, ou tempête pour les puits en mer) : seuls les coûts fixes courent
     } else {
       if(G.financeMode && G.sellMode==='stock'){
         G.stock = Math.min(G.stockMax, G.stock + econ.prodEffective);
       } else {
-        revenue += econ.revenue;
+        revenue += econ.revenue * taxMult;
       }
       opex += econ.opex;
     }
@@ -3049,6 +3053,9 @@ function monthTick(){
     G.strikeMonthsLeft--;
     if(G.strikeMonthsLeft<=0) addLog('🪧 Fin de la grève : la production reprend.','ev');
   }
+
+  if(G.stormMonthsLeft>0){ G.stormMonthsLeft--; if(G.stormMonthsLeft===0) addLog('🌀 Fin de la tempête : les plateformes en mer reprennent.','ev'); }
+  if(G.taxMonthsLeft>0){ G.taxMonthsLeft--; if(G.taxMonthsLeft===0) addLog('🏛 Fin de la taxe exceptionnelle.','ev'); }
 
   if(G.financeMode && G.hedgeContract?.monthsLeft>0) G.hedgeContract.monthsLeft--;
 
@@ -3444,20 +3451,121 @@ function priceAlertRender(){
   </div>`;
 }
 const PRICE_REVERT = 0.003;
+const TAX_RATE = 0.15;
+
+// ---------- Informateur de marché ----------
+// Il connaît une partie des événements déjà planifiés (pas ceux qui seront planifiés plus tard) et se trompe. Deux services payants :
+// un briefing à 8 mois (chaque événement détecté avec 75 %, une fausse rumeur possible) et un abonnement d'alertes de 12 mois
+// (annonces 1 à 3 mois avant, détection 80 %, fausses alertes). Un bilan est affiché pour que le joueur juge sa confiance.
+const INFO_BRIEF_COST = 40e3, INFO_SUB_COST = 120e3, INFO_SUB_MONTHS = 12, INFO_BRIEF_H = 8, INFO_BRIEF_DETECT = 0.75, INFO_DETECT = 0.8, INFO_FAKE = 0.07;
+function infoState(){ G.informant = G.informant || { briefs:[], hits:0, total:0, subUntil:0, fakes:[], alertHits:0, alertTotal:0, notes:[] }; return G.informant; }
+const infoCost = c => G.mode==='sandbox' ? 0 : c;
+function infoIsBig(ev){ return ev.kind==='shock' ? Math.abs(ev.size)>=8 : ev.kind==='trend' ? Math.abs(ev.target)>=0.2 : true; }
+function infoDesc(ev, d){
+  const when = d!==undefined ? `dans ${d} mois` : '';
+  if(ev.kind==='shock'){ const m = Math.abs(ev.size); return `${ev.size>0?'hausse':'baisse'} ${m>14?'brutale':'sensible'} du brut ${when} (de l'ordre de ${Math.round(m*0.7)} à ${Math.round(m*1.3)} $)`; }
+  if(ev.kind==='trend') return `changement de tendance du marché ${when}, orienté ${ev.target>0?'à la hausse':'à la baisse'}`;
+  if(ev.kind==='embargo') return `embargo, forte hausse du brut ${when} (de l'ordre de ${Math.round(ev.size*0.7)} à ${Math.round(ev.size*1.3)} $)`;
+  if(ev.kind==='recession') return `récession, forte baisse du brut ${when} (de l'ordre de ${Math.round(ev.size*0.7)} à ${Math.round(ev.size*1.3)} $)`;
+  if(ev.kind==='storm') return `tempête : arrêt des plateformes en mer ${when} (2 à 4 mois)`;
+  return `taxe exceptionnelle sur la production ${when} (environ 12 mois)`;
+}
+function infoFakeEvent(){
+  const k = ['shock','shock','embargo','recession','storm','tax'][Math.floor(Math.random()*6)];
+  return k==='shock' ? {kind:'shock', size:(Math.random()<.5?-1:1)*(10+Math.random()*8)} : k==='embargo' ? {kind:'embargo', size:8+Math.random()*6} : k==='recession' ? {kind:'recession', size:7+Math.random()*5} : {kind:k};
+}
+function infoNote(t){ const st = infoState(); st.notes.unshift({ month:G.month, t }); if(st.notes.length>14) st.notes.pop(); addLog('📡 '+t, 'ev'); if(document.getElementById('informantModal')?.classList.contains('open')) informantRender(); }
+function infoBuyBrief(){
+  const st = infoState(), c = infoCost(INFO_BRIEF_COST);
+  if(G.budget < c){ toast('Budget insuffisant pour le briefing (' + formatM(c) + ').'); return; }
+  G.budget -= c; updateHud();
+  const items = [];
+  (G.marketEvents||[]).forEach(ev=>{ const d = ev.at - G.month; if(d>INFO_BRIEF_H || d<1 || !infoIsBig(ev)) return; if(Math.random() < INFO_BRIEF_DETECT) items.push({ desc:infoDesc(ev), at:ev.at, real:true, shownAt:ev.at + (Math.random()<.5?-1:1)*(Math.random()<.5?1:0) }); });
+  if(Math.random() < 0.35){ const f = infoFakeEvent(), at = G.month + 2 + Math.floor(Math.random()*6); items.push({ desc:infoDesc(f), at, real:false, shownAt:at }); }
+  items.sort((x,y)=>x.shownAt-y.shownAt);
+  st.briefs.push({ month:G.month, items, done:false });
+  if(!items.length) infoNote(`Briefing du mois ${G.month} : rien de notable en vue sur ${INFO_BRIEF_H} mois (détection ${Math.round(INFO_BRIEF_DETECT*100)} %, un événement peut m'échapper).`);
+  else infoNote(`Briefing du mois ${G.month} : ` + items.map(it=>`${it.desc}, vers le mois ${it.shownAt}`).join(' ; ') + `. Fiabilité annoncée ${Math.round(INFO_BRIEF_DETECT*100)} % par élément.`);
+}
+function infoSubscribe(){
+  const st = infoState(), c = infoCost(INFO_SUB_COST);
+  if(G.budget < c){ toast('Budget insuffisant pour l\'abonnement (' + formatM(c) + ').'); return; }
+  G.budget -= c; updateHud();
+  st.subUntil = Math.max(st.subUntil, G.month) + INFO_SUB_MONTHS;
+  infoNote(`Abonnement aux alertes actif jusqu'au mois ${st.subUntil} : événements annoncés 1 à 3 mois avant (détection ${Math.round(INFO_DETECT*100)} %, fausses alertes possibles).`);
+}
+function informantTick(){
+  const st = G.informant; if(!st) return;
+  // briefings : chaque élément est jugé un mois après sa date
+  st.briefs.forEach(br=>{
+    if(br.done || !br.items.length){ br.done = true; return; }
+    if(br.items.every(it=>G.month >= it.at + 1)){ br.done = true;
+      br.items.forEach(it=>{ st.total++; if(it.real) st.hits++; });
+      infoNote(`Briefing du mois ${br.month} : ${br.items.filter(i=>i.real).length} élément(s) réalisé(s) sur ${br.items.length} annoncé(s).`); }
+  });
+  if(G.month > st.subUntil) return;
+  (G.marketEvents||[]).forEach(ev=>{
+    const d = ev.at - G.month; if(ev.alerted || d > 3 || d < 1 || !infoIsBig(ev)) return;
+    ev.alerted = true; if(Math.random() > INFO_DETECT) return;
+    st.alertTotal++; st.alertHits++; infoNote(`${infoDesc(ev, d).replace(/^./, c=>c.toUpperCase())}. Fiabilité annoncée ${Math.round(INFO_DETECT*100)} %.`);
+  });
+  if(Math.random() < INFO_FAKE){ const f = infoFakeEvent(), d = 2 + Math.floor(Math.random()*2); st.fakes.push({ at:G.month+d }); st.alertTotal++;
+    infoNote(`${infoDesc(f, d).replace(/^./, c=>c.toUpperCase())}. Fiabilité annoncée ${Math.round(INFO_DETECT*100)} %.`); }
+}
+function informantOpen(){
+  let el = document.getElementById('informantModal'); if(!el){ el = document.createElement('div'); el.id = 'informantModal'; document.body.appendChild(el); }
+  el.classList.add('open'); informantRender();
+}
+function informantClose(){ document.getElementById('informantModal')?.classList.remove('open'); }
+function informantRender(){
+  const el = document.getElementById('informantModal'); if(!el) return; const st = infoState();
+  const active = G.month <= st.subUntil, fmt = c => G.mode==='sandbox' ? 'gratuit' : formatM(c);
+  const pending = st.briefs.filter(b=>!b.done && b.items.length).length;
+  el.innerHTML = `<div class="lab-cal-box"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;"><b style="font-size:15px;">📡 Informateur de marché</b><button class="lab-pick" onclick="informantClose()">Fermer</button></div>
+    <div class="lab-note">Cours actuel : <b>${G.price.toFixed(1)} $/bbl</b>. Chocs de prix, embargo, récession, tempête sur les plateformes, taxe exceptionnelle : l'informateur connaît une partie de ce qui se prépare, pas tout, et se trompe parfois. À vous de juger s'il vaut son prix.</div>
+    <div class="study-card"><div class="sc-name">Briefing à ${INFO_BRIEF_H} mois</div><div class="sc-desc">Liste des événements à venir sur ${INFO_BRIEF_H} mois, datés à un mois près. Chaque événement est repéré dans ${Math.round(INFO_BRIEF_DETECT*100)} % des cas, et une fausse rumeur peut s'y glisser.</div>
+      <button class="study-btn study-btn-compact" onclick="infoBuyBrief()" ${(G.budget>=infoCost(INFO_BRIEF_COST))?'':'disabled'}>Demander un briefing · ${fmt(INFO_BRIEF_COST)}</button>
+      ${pending ? `<div class="lab-note" style="margin-top:6px;">${pending} briefing(s) en cours de vérification.</div>` : ''}</div>
+    <div class="study-card"><div class="sc-name">Alertes d'événements${active?'<span class="done-badge">actif</span>':''}</div><div class="sc-desc">Événements annoncés 1 à 3 mois avant, pendant ${INFO_SUB_MONTHS} mois. Détection ${Math.round(INFO_DETECT*100)} %, avec de fausses alertes.</div>
+      <button class="study-btn study-btn-compact" onclick="infoSubscribe()" ${(G.budget>=infoCost(INFO_SUB_COST))?'':'disabled'}>${active?'Prolonger':'S\'abonner'} · ${fmt(INFO_SUB_COST)}</button>
+      ${active ? `<div class="lab-note" style="margin-top:6px;">Abonnement jusqu'au mois ${st.subUntil}.</div>` : ''}</div>
+    <div class="lab-note"><b>Bilan de l'informateur</b> : briefings, ${st.total ? st.hits+' élément'+(st.hits>1?'s':'')+' réalisé'+(st.hits>1?'s':'')+' sur '+st.total+' annoncé'+(st.total>1?'s':'') : 'aucun élément encore jugé'} · alertes, ${st.alertTotal ? st.alertTotal+' annoncée'+(st.alertTotal>1?'s':'')+', dont '+st.fakes.length+' rumeur'+(st.fakes.length>1?'s':'')+' sans suite' : 'aucune encore'}.</div>
+    ${st.notes.length ? `<div class="lab-note" style="margin-top:8px;"><b>Derniers messages</b></div>${st.notes.slice(0,8).map(n=>`<div class="pa-item"><span>mois ${n.month} : ${n.t}</span></div>`).join('')}` : ''}
+  </div>`;
+}
+
 function stepPrice(){
   if(!G.priceTrendTarget) G.priceTrendTarget=0;
-  if(Math.random()<.05) G.priceTrendTarget=(Math.random()-.5)*.7;
+  // Les événements de marché sont planifiés 2 à 8 mois à l'avance (c'est ce que l'informateur peut deviner) et s'appliquent à leur date.
+  // Changements de tendance (5 % par mois) et chocs de prix (1,2 %) gardent leurs fréquences d'avant. Chocs externes ajoutés :
+  // embargo et récession (prix, tendance qui dure), tempête (plateformes en mer arrêtées) et taxe exceptionnelle (revenus rognés), ces deux
+  // derniers seulement avec le mode Finance, qui porte déjà les accidents.
+  G.marketEvents = G.marketEvents || [];
+  const plan = ev => { ev.at = G.month + 2 + Math.floor(Math.random()*7); G.marketEvents.push(ev); };
+  if(Math.random()<.05) plan({ kind:'trend', target:(Math.random()-.5)*.7 });
+  if(Math.random()<.012) plan({ kind:'shock', size:(Math.random()-.5)*30 });
+  if(Math.random()<.004) plan({ kind:'embargo', size:8 + Math.random()*6 });
+  if(Math.random()<.004) plan({ kind:'recession', size:7 + Math.random()*5 });
+  if(G.financeMode && Math.random()<.005) plan({ kind:'storm', dur:2 + Math.floor(Math.random()*3) });
+  if(G.financeMode && Math.random()<.003) plan({ kind:'tax', dur:12 });
+  let shock=0;
+  G.marketEvents = G.marketEvents.filter(ev=>{
+    if(ev.at > G.month) return true;
+    if(ev.kind==='trend') G.priceTrendTarget = ev.target;
+    else if(ev.kind==='shock'){ shock += ev.size; if(Math.abs(ev.size)>10) addLog(`⚠ Choc de marché : cours ${ev.size>0?'en hausse':'en baisse'} brutale.`,'ev'); }
+    else if(ev.kind==='embargo'){ shock += ev.size; G.priceTrendTarget = 0.08; addLog('🛢 Embargo : le brut s\'envole, la tendance reste haussière plusieurs mois.','ev'); }
+    else if(ev.kind==='recession'){ shock -= ev.size; G.priceTrendTarget = -0.08; addLog('📉 Récession : la demande s\'effondre, le brut plonge et la tendance reste baissière plusieurs mois.','ev'); }
+    else if(ev.kind==='storm'){ G.stormMonthsLeft = ev.dur; addLog(`🌀 Tempête : les plateformes en mer s'arrêtent ${ev.dur} mois (charges fixes maintenues).`,'bad'); }
+    else if(ev.kind==='tax'){ G.taxMonthsLeft = ev.dur; addLog(`🏛 Taxe exceptionnelle sur la production : revenus réduits de ${Math.round(TAX_RATE*100)} % pendant ${ev.dur} mois.`,'bad'); }
+    return false;
+  });
   G.priceTrend = (G.priceTrend||0)*.9 + G.priceTrendTarget*.1;
   const noise = (Math.random()-.5)*2.5;
-  let shock=0;
-  if(Math.random()<.012){
-    shock=(Math.random()-.5)*30;
-    if(Math.abs(shock)>10) addLog(`⚠ Choc de marché : cours ${shock>0?'en hausse':'en baisse'} brutale.`,'ev');
-  }
   const prevPrice = G.price;
   // Rappel léger vers 80 $ (V4.45) : évite les longues périodes sous 40 $ (5,3 % des parties de 25 ans, 1,4 % avec ce rappel) sans supprimer la volatilité.
   G.price = clamp(G.price+G.priceTrend+noise+shock+PRICE_REVERT*(80-G.price), 20, 140);
   priceAlertCheck(prevPrice, G.price);
+  informantTick();
   G.priceHistory.push(G.price);
   if(G.priceHistory.length>60) G.priceHistory.shift();
   drawSparkline();
@@ -7292,7 +7400,7 @@ function _doStartGame(){
     budget:         m.budget,
     month:0, speed:1, paused:false, labPick:null, labCal:{}, labProc:{}, labSecPrev:null, labOpt:{ ...LABOPT },
     price:80, priceHistory:[80], priceAlerts:[], labPickBonusProv:{},
-    wells:[], drilling:[], sectionA:null, sectionB:null, sectionsHistory:[],
+    wells:[], drilling:[], sectionA:null, sectionB:null, sectionsHistory:[], marketEvents:[], informant:null, stormMonthsLeft:0, taxMonthsLeft:0,
     tool:'select', history:[], lastCF:0, lastRevenue:0, lastOpex:0, lastLoanPayment:0,
     priceTrend:0, priceTrendTarget:0, revealFieldsMode:false,
     // Finance
@@ -8356,7 +8464,9 @@ function _doStartGame(){
       body: `Le brut démarre à 80 $ et varie entre 20 et 140 $. Quand il monte, les appareils de forage coûtent plus cher ;
         quand il s'effondre, ils se louent moins cher. Les charges fixes d'un puits pèsent plus lourd quand le prix baisse.<br><br>
         La cloche 🔔 à côté du cours permet de poser des <b>alertes</b> : le jeu vous prévient, et peut se mettre en pause,
-        quand le brut passe au-dessus ou sous un seuil que vous choisissez.`,
+        quand le brut passe au-dessus ou sous un seuil que vous choisissez.<br><br>
+        Des événements de marché se préparent plusieurs mois à l'avance : chocs de prix, <b>embargo</b> et <b>récession</b> (le brut monte ou plonge et la tendance suit), <b>tempête</b> (les puits en mer s'arrêtent 2 à 4 mois) et <b>taxe exceptionnelle</b> (revenus rognés de 15 % pendant un an, avec le mode Finance).
+        L'<b>informateur</b> 📡 vend un briefing à 8 mois et un abonnement d'alertes : il connaît une partie de ce qui se prépare, pas tout, et se trompe (fausses rumeurs). Son bilan affiché vous dit si vous pouvez lui faire confiance.`,
     },
     {
       title: 'Argent et imprévus',
