@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.69</title>
+<title>GeoExplorer V4.70</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2030,7 +2030,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       // de 0,3 à 9,5 %. Avant, il était tiré une fois par couche (1,5 à 9,5 %) sans lien avec la charge : une roche-mère affichée
       // « pauvre » pouvait remplir un piège. N'intervient dans aucun calcul de probabilité : seuls l'affichage du TOC,
       // le log de la couche (GR, densité, sonique) et son impédance sismique changent.
-      if(sourceIdx>=0 && horizons[sourceIdx] && horizons[sourceIdx].role==='source') horizons[sourceIdx].toc = srcAbsent ? '0.2' : (0.3 + 9.2*clamp(srcFaciesVal,0,1)).toFixed(1);
+      if(sourceIdx>=0 && horizons[sourceIdx] && horizons[sourceIdx].role==='source') horizons[sourceIdx].toc = srcAbsent ? '0.2' : (0.2 + 8.5*Math.pow(clamp(srcFaciesVal,0,1), 2.2)).toFixed(1);
       const sealFaciesVal = sealFacies(x,y);
 
       const anticlineTop = anticlines.reduce((m,a)=>Math.max(m, a.str*Math.exp(-Math.hypot(x-a.x,y-a.y)/a.range)), 0);
@@ -2441,7 +2441,18 @@ const STUDIES = {
         'Fenêtre à huile': 435 + rng()*20,
         'Surmature (gaz)': 460 + rng()*20,
       }[b.maturityClass] ?? 430;
-      const hi = clamp((1-b.maturity*0.7)*550*(gs/0.5) + (rng()-.5)*40, 20, 650);
+      // Indice d'hydrogène : il part d'une valeur initiale fixée par le type de kérogène (I lacustre élevé, II marin, III charbon bas)
+      // et BAISSE avec la maturité (le kérogène a déjà généré). Une roche-mère immature riche a donc le HI le plus haut, une roche
+      // surmature le plus bas. Avant, il baissait avec la richesse de la source et tombait à zéro pour une source immature.
+      const nm = (srcL ? `${srcL.name||''} ${srcL.lith||''}` : '').toLowerCase();
+      const hi0 = /type iii|charbon|houille/.test(nm) ? 150 + rng()*100
+                : /type i\/ii/.test(nm) ? 480 + rng()*140
+                : /lacustre|type i\b/.test(nm) ? 600 + rng()*150
+                : 380 + rng()*170;
+      const conv = b.maturityClass==='Immature' ? 0.02 + rng()*0.06
+                 : b.maturityClass==='Surmature (gaz)' ? 0.88 + rng()*0.08
+                 : clamp(0.2 + 0.55*(b.maturity||0.5), 0.2, 0.8) + (rng()-.5)*0.08;
+      const hi = clamp(hi0*(1-conv), 15, 800);
       let genPotential;
       if(toc<0.3) genPotential = 'Non générateur';
       else if(toc<0.7) genPotential = 'Pauvre';
@@ -4031,7 +4042,9 @@ function renderGeoPanel(b){
     html+=infoRow('TOC',`${r.toc} %`);
     html+=infoRow('Indice d\'hydrogène (HI)',`${r.hi} mg HC/g TOC`);
     html+=infoRow('Tmax',`${r.tmax} °C`);
-    html+=`<div style="color:${r.genPotential==='Excellent'||r.genPotential==='Bon'?'var(--green)':r.genPotential==='Moyen'?'var(--amber)':'var(--red)'};font-size:11px;margin-top:4px;">Potentiel générateur : ${r.genPotential}</div>`;
+    html+=`<div style="color:${r.genPotential==='Excellent'||r.genPotential==='Bon'?'var(--green)':r.genPotential==='Moyen'?'var(--amber)':'var(--red)'};font-size:11px;margin-top:4px;">Potentiel générateur : ${r.genPotential}</div>`;    // Le potentiel dit ce que la roche pourrait donner, le Tmax dit où elle en est : les deux se lisent ensemble
+    const lecture = r.tmax<435 ? 'Tmax sous 435 °C : roche immature, elle n\'a pas encore généré ici, quel que soit son potentiel.' : r.tmax<=455 ? 'Tmax entre 435 et 455 °C : fenêtre à huile, la roche génère.' : 'Tmax au-dessus de 455 °C : surmature, elle ne donne plus que du gaz.';
+    html+=`<div style="color:var(--muted);font-size:11px;margin-top:4px;">${lecture}</div>`;
   }
 
   // Diagraphies (courbes) puis log stratigraphique complet
