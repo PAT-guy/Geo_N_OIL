@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.76</title>
+<title>GeoExplorer V4.77</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -685,6 +685,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
         <button type="button" data-quiz="seismic">📡 Quiz sismique<i data-best="seismic">8 questions</i></button>
         <button type="button" data-open="logs">📈 Lire un log<i data-best="logs">8 questions</i></button>
         <button type="button" data-quiz="forage">⛏ Dimensionner son forage<i data-best="forage">8 questions</i></button>
+        <button type="button" data-open="sei">📡 Interpréter une coupe sismique<i data-best="sei">6 questions</i></button>
         <button type="button" data-open="rig">🏗 Console de forage<i data-best="rig">~6 min</i></button>
       </div>
       <button type="button" class="est-clear" id="menuCustomBtn" style="margin-top:14px;">⚙ <span class="i18n" data-fr="Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)" data-en="Customize (map, seed, difficulty, display, mini-games)">Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)</span></button>
@@ -833,6 +834,11 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
         <div class="mode-name">📈 Lire un log</div>
         <div class="mode-desc">Un log de puits complet (GR, résistivité, densité-neutron, sonique) et des repères A et B : identifiez la lithologie à la profondeur A, puis le fluide du réservoir en B (gaz, huile ou eau).</div>
         <div class="mode-stats">Durée <span>~3 min</span> · Format <span>Quiz</span></div>
+      </div>
+      <div class="mode-card mg-card" id="seiOpenBtn" style="cursor:pointer;">
+        <div class="mode-name">📡 Interpréter une coupe sismique</div>
+        <div class="mode-desc">Une coupe sismique générée à partir d'une vraie géologie du jeu : suivez le toit du réservoir depuis un puits de calage jusqu'à une autre colonne, puis situez la faille. Les réflecteurs bleus marquent une hausse d'impédance, les rouges une baisse.</div>
+        <div class="mode-stats">Durée <span>~4 min</span> · Format <span>Pointé</span></div>
       </div>
       <div class="mode-card mg-card" id="cardGameOpenBtn" style="cursor:pointer;">
         <div class="mode-name">🃏 Assemble ton prospect</div>
@@ -6987,6 +6993,7 @@ const QUICK_BASINS = [['random','🎲 Aléatoire (libre)'],['paris','Parisien ·
   document.querySelectorAll('#quickTrain button').forEach(b=>b.addEventListener('click', ()=>{
     if(b.dataset.open==='cards') document.getElementById('cardGameOpenBtn')?.click();
     else if(b.dataset.open==='logs') document.getElementById('logGameOpenBtn')?.click();
+    else if(b.dataset.open==='sei') document.getElementById('seiOpenBtn')?.click();
     else if(b.dataset.open==='rig') document.getElementById('rigOpenBtn')?.click();
     else document.querySelector(`.mg-card[data-quiz="${b.dataset.quiz}"]`)?.click();
   }));
@@ -8546,7 +8553,7 @@ function _doStartGame(){
     {
       title: 'Prêt à jouer',
       body: `C'est tout pour la base. Le glossaire (menu pause) reste disponible à tout moment. Sur l'accueil,
-        la section <b>S'entraîner</b> propose un jeu de cartes, quatre quiz (lithofaciès, maturation, Rock-Eval, sismique), un jeu de lecture de logs, le dimensionnement d'un forage et une <b>console de forage</b> (pilotage, incidents, puis drain horizontal)
+        la section <b>S'entraîner</b> propose un jeu de cartes, quatre quiz (lithofaciès, maturation, Rock-Eval, sismique), un jeu de lecture de logs, l'<b>interprétation d'une coupe sismique</b> (suivre un réflecteur depuis un puits, situer une faille), le dimensionnement d'un forage et une <b>console de forage</b> (pilotage, incidents, puis drain horizontal)
         pour travailler un point précis sans lancer une partie. Les questions ratées reviennent en priorité (« À revoir »).<br><br>
         Le bouton <b>Défi du jour</b> propose la même carte à tout le monde pour la date. La <b>seed</b> de chaque partie s'affiche au récap de fin : saisie dans les options, elle redonne la même carte.<br><br>
         Conseil pour une première partie : bassin Parisien, niveau Junior. Bonne exploration.`,
@@ -8943,6 +8950,170 @@ function _doStartGame(){
     render();
   });
   window.__lgm = { makeLog, open };   // pour les tests
+})();
+</script>
+<style>
+#seiGameModal{position:fixed;inset:0;z-index:1200;background:var(--bg);display:none;flex-direction:column;align-items:center;overflow-y:auto;padding:14px 12px max(14px, env(safe-area-inset-bottom));}
+#seiGameModal.open{display:flex;}
+.sei-body{width:100%;max-width:560px;display:flex;flex-direction:column;gap:8px;margin-top:6px;}
+.sei-wrap{border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:4px;touch-action:manipulation;}
+.sei-wrap svg{width:100%;height:auto;display:block;cursor:crosshair;}
+.sei-q{font-size:13px;line-height:1.5;padding:8px 11px;border:1px solid var(--line);border-radius:10px;background:var(--panel);}
+.sei-fb{font-size:12.5px;line-height:1.5;padding:8px 11px;border-radius:10px;display:none;}
+.sei-fb.show{display:block;} .sei-fb.ok{background:color-mix(in srgb,var(--green) 14%,var(--panel));} .sei-fb.ko{background:color-mix(in srgb,var(--red) 12%,var(--panel));}
+.sei-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.sei-foot button{min-height:44px;padding:8px 16px;border-radius:8px;border:1px solid var(--text);background:var(--text);color:var(--bg);font-size:13px;cursor:pointer;}
+.sei-hint{font-size:11.5px;color:var(--muted);line-height:1.5;}
+</style>
+<div id="seiGameModal" role="dialog" aria-modal="true" aria-label="Interpréter une coupe sismique">
+  <div class="qz-header" style="max-width:560px;width:100%;">
+    <div class="qz-title">📡 Interpréter une coupe sismique</div>
+    <button class="cg-close" id="seiClose">✕ Fermer</button>
+  </div>
+  <div class="sei-body">
+    <div class="sei-q" id="seiQ"></div>
+    <div class="sei-wrap" id="seiWrap"></div>
+    <div class="sei-fb" id="seiFb"></div>
+    <div class="sei-foot"><span style="font-size:11px;color:var(--muted);" id="seiScore"></span><button id="seiNext" style="display:none;">Suite →</button></div>
+    <details class="sei-hint"><summary>Aide</summary><div>Chaque coupe est tirée d'une vraie géologie du jeu (bassin et seed différents). Bleu : l'impédance augmente sous le réflecteur, rouge : elle diminue. Plus le trait est épais, plus le contraste est fort. Une faille décale d'un coup tous les réflecteurs entre deux colonnes ; un pli les incline progressivement. La distance n'est pas à l'échelle : seule la profondeur est chiffrée.</div></details>
+  </div>
+</div>
+<script>
+// =====================================================================
+// MINI-JEU : INTERPRÉTER UNE COUPE SISMIQUE
+// Chaque manche : une coupe de 8 colonnes tirée d'une géologie du jeu (réflecteurs = interfaces entre couches, contraste d'impédance de labAcoustic).
+// Deux pointés par coupe : suivre le toit du réservoir depuis un puits de calage jusqu'à une autre colonne (profondeur à 45 m près),
+// puis situer la faille (l'intervalle entre deux colonnes où le toit saute). Génération par rejet : la réponse est toujours lisible sur l'image.
+// La géologie du jeu est sauvegardée avant et rétablie après : une partie en cours n'est jamais touchée.
+// =====================================================================
+(function(){
+  const VBW = 360, VBH = 300, XL = 40, XR = 346, NCOL = 8, YT = 26, YB = 276, TOL_Z = 45, SEI_ROUNDS = 3;
+  const BT = ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast'];
+  const xOf = i => XL + (XR-XL)*i/(NCOL-1);
+  const shuf = a => [...a].sort(()=>Math.random()-.5), f0 = v => Math.round(v);
+  let rounds = [], ri = 0, qi = 0, score = 0, asked = 0, cur = null, answered = false;
+
+  function isolated(fn){
+    const keep = { blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
+    try { return fn(); } finally { blocks = keep.blocks; STRAT = keep.STRAT; STRAT_PROVINCES = keep.STRAT_PROVINCES; GS = keep.GS; buildStratigraphy.lastVariant = keep.lv; wlZoom = keep.wlz; }
+  }
+  // Une coupe : 8 colonnes consécutives d'une rangée, avec une faille nette et un réflecteur cible lisible
+  function makeRound(){
+    return isolated(()=>{
+      for(let tries=0; tries<220; tries++){
+        generateGeology(12, BT[Math.floor(Math.random()*BT.length)], true, (Math.random()*1e9)|0);
+        const y = Math.floor(Math.random()*12), x0 = Math.floor(Math.random()*5), bl = [];
+        for(let k=0;k<NCOL;k++) bl.push(blocks[y*12 + x0 + k]);
+        if(bl.some(b=>b.inSalt)) continue;
+        const rIdx = bl[0].horizons.findIndex(h=>h.role==='reservoir'); if(rIdx<1) continue;
+        if(bl.some(b=>!b.horizons[rIdx] || (b.horizons[rIdx].thicknessLocal ?? b.horizons[rIdx].thickness) < 20)) continue;
+        const tops = bl.map(b=>b.horizons[rIdx].top), d = []; for(let k=0;k<NCOL-1;k++) d.push(tops[k+1]-tops[k]);
+        const ad = d.map(Math.abs), gap = ad.indexOf(Math.max(...ad)), dmax = ad[gap], others = ad.filter((v,k)=>k!==gap);
+        if(dmax < 50 || Math.max(...others) > Math.min(0.55*dmax, 38)) continue;       // une seule rupture franche, les autres pendages restent modérés
+        // réflecteurs tracés : toutes les interfaces dont la couche a au moins 20 m d'épaisseur dans toutes les colonnes
+        const nH = bl[0].horizons.length, ifs = [];
+        for(let h=1; h<nH; h++){
+          if(bl.some(b=>(b.horizons[h].thicknessLocal ?? b.horizons[h].thickness) < 20 || !b.horizons[h-1])) continue;
+          const Rs = bl.map(b=>{ const z1 = labAcoustic(b.horizons[h-1], b.horizons[h].top), z2 = labAcoustic(b.horizons[h], b.horizons[h].top); return (z2.z - z1.z)/(z2.z + z1.z); });
+          ifs.push({ h, tops: bl.map(b=>b.horizons[h].top), R: Rs, res: h===rIdx });
+        }
+        const tgt = ifs.find(f=>f.res); if(!tgt || Math.abs(tgt.R[0]) < 0.035 || Math.abs(tgt.R[NCOL-1]) < 0.035) continue;
+        // colonnes : puits de calage et colonne cible, de part et d'autre de la faille de préférence ; réflecteur voisin à plus de 70 m aux deux colonnes
+        const sep = (col) => Math.min(...ifs.filter(f=>!f.res).map(f=>Math.abs(f.tops[col]-tgt.tops[col])), 1e9);
+        const cands = []; for(let a=0;a<NCOL;a++) for(let t=0;t<NCOL;t++){ if(Math.abs(a-t) < 3) continue; if(sep(a) < 70 || sep(t) < 70) continue; cands.push([a,t, (a<=gap) !== (t<=gap)]); }
+        const cross = cands.filter(c=>c[2]); const pool = cross.length ? cross : cands; if(!pool.length) continue;
+        const [tieCol, tgtCol] = pool[Math.floor(Math.random()*pool.length)];
+        const allZ = ifs.flatMap(f=>f.tops), zMax = Math.min(Math.max(...tgt.tops) + 520, Math.max(...allZ) + 60), zMin = Math.max(0, Math.min(...allZ) - 60);
+        return { cols: bl.map(b=>({ x:b.x, y:b.y })), ifs: ifs.filter(f=>f.tops.every(v=>v < zMax)), tgt, rIdx, gap, throwM: tops[gap+1]-tops[gap], tieCol, tgtCol, tieZ: tgt.tops[tieCol], tgtZ: tgt.tops[tgtCol], zMin, zMax, basin: buildStratigraphy.lastVariant?.label || '' };
+      }
+      return null;
+    });
+  }
+  const yOf = (R, z) => YT + (z - R.zMin)/(R.zMax - R.zMin)*(YB - YT);
+  const zOfY = (R, y) => R.zMin + (y - YT)/(YB - YT)*(R.zMax - R.zMin);
+  function draw(R, reveal, tap){
+    let g = '';
+    const rng = (a)=>{ let s = a>>>0; return ()=>{ s = (s*1664525 + 1013904223)>>>0; return s/4294967296; }; }, rd = rng(R.cols[0].x*131 + R.cols[0].y*17 + Math.round(R.zMax));
+    // axe de profondeur
+    for(let z = Math.ceil(R.zMin/200)*200; z <= R.zMax; z += 200) g += `<line x1="${XL}" y1="${yOf(R,z).toFixed(1)}" x2="${XR}" y2="${yOf(R,z).toFixed(1)}" stroke="var(--line)" stroke-width=".4"/><text x="${XL-4}" y="${(yOf(R,z)+3).toFixed(1)}" font-size="8" text-anchor="end" fill="var(--muted)">${z}</text>`;
+    // bruit de fond : petits traits aléatoires
+    for(let k=0;k<70;k++){ const x = XL + rd()*(XR-XL), y = YT + rd()*(YB-YT), w = 4 + rd()*10; g += `<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(x+w).toFixed(1)}" y2="${(y+(rd()-.5)*2).toFixed(1)}" stroke="var(--muted)" stroke-width=".5" opacity=".28"/>`; }
+    // réflecteurs
+    R.ifs.forEach(f=>{
+      for(let k=0;k<NCOL-1;k++){ const r = (Math.abs(f.R[k]) + Math.abs(f.R[k+1]))/2, col = (f.R[k]+f.R[k+1]) >= 0 ? '#2b6cb0' : '#c53030';
+        g += `<line x1="${xOf(k).toFixed(1)}" y1="${yOf(R,f.tops[k]).toFixed(1)}" x2="${xOf(k+1).toFixed(1)}" y2="${yOf(R,f.tops[k+1]).toFixed(1)}" stroke="${col}" stroke-width="${(0.8 + Math.min(r,0.2)/0.2*3.6).toFixed(2)}" stroke-linecap="round" opacity="${(0.45 + Math.min(r,0.2)/0.2*0.5).toFixed(2)}"/>`; }
+    });
+    // colonnes
+    for(let k=0;k<NCOL;k++) g += `<line x1="${xOf(k).toFixed(1)}" y1="${YT-6}" x2="${xOf(k).toFixed(1)}" y2="${YB}" stroke="var(--muted)" stroke-width=".4" stroke-dasharray="2 3"/><text x="${xOf(k).toFixed(1)}" y="${YB+14}" font-size="9" text-anchor="middle" fill="var(--muted)">${k+1}</text>`;
+    // puits de calage (question horizon)
+    if(cur && cur.kind==='h'){
+      g += `<line x1="${xOf(R.tieCol)}" y1="${YT-6}" x2="${xOf(R.tieCol)}" y2="${YB}" stroke="var(--amber)" stroke-width="1.6"/><text x="${xOf(R.tieCol)}" y="${YT-10}" font-size="9" font-weight="700" text-anchor="middle" fill="var(--amber)">Puits</text>`;
+      g += `<circle cx="${xOf(R.tieCol)}" cy="${yOf(R,R.tieZ).toFixed(1)}" r="4.4" fill="var(--amber)" stroke="var(--bg)" stroke-width="1.2"/>`;
+      g += `<text x="${xOf(R.tgtCol)}" y="${YT-10}" font-size="9" font-weight="700" text-anchor="middle" fill="var(--text)">Cible</text><line x1="${xOf(R.tgtCol)}" y1="${YT-6}" x2="${xOf(R.tgtCol)}" y2="${YB}" stroke="var(--text)" stroke-width="1" opacity=".5"/>`;
+    }
+    if(reveal && cur){
+      if(cur.kind==='h'){ g += `<circle cx="${xOf(R.tgtCol)}" cy="${yOf(R,R.tgtZ).toFixed(1)}" r="6" fill="none" stroke="var(--green)" stroke-width="2.2"/><text x="${(xOf(R.tgtCol)+9).toFixed(1)}" y="${(yOf(R,R.tgtZ)-6).toFixed(1)}" font-size="9" font-weight="700" fill="var(--green)">${f0(R.tgtZ)} m</text>`; }
+      else { g += `<rect x="${xOf(R.gap).toFixed(1)}" y="${YT}" width="${(xOf(R.gap+1)-xOf(R.gap)).toFixed(1)}" height="${YB-YT}" fill="var(--green)" opacity=".16"/>`; }
+    }
+    if(tap) g += `<circle cx="${tap.x.toFixed(1)}" cy="${tap.y.toFixed(1)}" r="4.5" fill="none" stroke="${tap.ok?'var(--green)':'var(--red)'}" stroke-width="2"/>`;
+    return `<svg id="seiSvg" viewBox="0 0 ${VBW} ${VBH}" role="img" aria-label="Coupe sismique à interpréter">${g}</svg>`;
+  }
+  function question(){
+    const R = rounds[ri], kind = qi===0 ? 'h' : 'f'; cur = { kind }; answered = false;
+    document.getElementById('seiQ').innerHTML = kind==='h'
+      ? `Le puits (colonne ${R.tieCol+1}) recoupe le <b>toit du réservoir à ${f0(R.tieZ/10)*10} m</b>. Suivez ce même réflecteur jusqu'à la colonne <b>${R.tgtCol+1}</b> (marquée « Cible ») et touchez sa profondeur. ${(R.tieCol<=R.gap)!==(R.tgtCol<=R.gap) ? 'Une faille les sépare.' : 'Aucune faille entre les deux.'}`
+      : `Coupe ${ri+1} : où passe la <b>faille</b> ? Touchez l'intervalle entre deux colonnes où tous les réflecteurs sautent d'un coup.`;
+    document.getElementById('seiWrap').innerHTML = draw(R, false, null);
+    const fb = document.getElementById('seiFb'); fb.className = 'sei-fb'; fb.innerHTML = '';
+    document.getElementById('seiNext').style.display = 'none';
+    document.getElementById('seiScore').textContent = `Question ${ri*2+qi+1}/${rounds.length*2} · score ${score}/${asked}`;
+    document.getElementById('seiSvg').addEventListener('click', onTap);
+  }
+  function judge(R, kind, x, y){
+    if(kind==='h'){ const z = zOfY(R, y), dx = Math.abs(x - xOf(R.tgtCol)), tol = (XR-XL)/(NCOL-1)*0.45; const dz = Math.abs(z - R.tgtZ);
+      return { ok: dx <= tol && dz <= TOL_Z, dz, dx, z }; }
+    const xa = xOf(R.gap) - 5, xb = xOf(R.gap+1) + 5; return { ok: x >= xa && x <= xb && y >= YT-6 && y <= YB+4, x };
+  }
+  function onTap(ev){
+    if(answered) return; const svg = document.getElementById('seiSvg'), r = svg.getBoundingClientRect();
+    const x = (ev.clientX - r.left)/r.width*VBW, y = (ev.clientY - r.top)/r.height*VBH; answer(x, y);
+  }
+  function answer(x, y){
+    if(answered || !cur) return; answered = true; const R = rounds[ri], j = judge(R, cur.kind, x, y); asked++; if(j.ok) score++;
+    document.getElementById('seiWrap').innerHTML = draw(R, true, {x, y, ok:j.ok});
+    const fb = document.getElementById('seiFb'); fb.className = 'sei-fb show ' + (j.ok ? 'ok' : 'ko');
+    if(cur.kind==='h'){
+      const cross = (R.tieCol<=R.gap)!==(R.tgtCol<=R.gap), th = Math.abs(f0(R.throwM));
+      fb.innerHTML = `<b>${j.ok ? '✓ Bien pointé' : '✗ À côté'}</b> : le toit du réservoir est à <b>${f0(R.tgtZ)} m</b> sur la colonne ${R.tgtCol+1}${j.ok ? '' : ' (vous avez touché ' + f0(j.z) + ' m' + (j.dx > (XR-XL)/(NCOL-1)*0.45 ? ', sur une autre colonne' : '') + ')'}. Au puits il était à ${f0(R.tieZ)} m : ${cross ? `la faille entre les colonnes ${R.gap+1} et ${R.gap+2} le ${R.throwM>0?'descend':'remonte'} d'environ ${th} m, c'est la lecture à corriger, et la pente régionale fait le reste` : 'la différence vient du pendage seul'}. Tolérance : ${TOL_Z} m.`;
+    } else {
+      fb.innerHTML = `<b>${j.ok ? '✓ Bien vu' : '✗ Pas là'}</b> : la faille passe entre les colonnes <b>${R.gap+1} et ${R.gap+2}</b> (zone verte) : le toit du réservoir y saute de <b>${f0(Math.abs(R.throwM))} m</b> d'un bloc à l'autre, alors que partout ailleurs la pente reste douce.`;
+    }
+    document.getElementById('seiScore').textContent = `Question ${ri*2+qi+1}/${rounds.length*2} · score ${score}/${asked}`;
+    const nx = document.getElementById('seiNext'); nx.style.display = ''; nx.textContent = (ri===rounds.length-1 && qi===1) ? 'Voir le résultat →' : 'Suite →';
+  }
+  function next(){
+    if(qi===0){ qi = 1; question(); return; }
+    if(ri < rounds.length-1){ ri++; qi = 0; question(); return; }
+    finish();
+  }
+  function finish(){
+    const n = rounds.length*2, key = 'geoexplorer_quiz_best_sei'; let prev = null; try { prev = JSON.parse(localStorage.getItem(key)||'null'); } catch(e){}
+    const record = !prev || score > prev.s; if(record){ try { localStorage.setItem(key, JSON.stringify({s:score, n})); } catch(e){} }
+    document.getElementById('seiQ').innerHTML = `<b style="font-size:16px;">Manche terminée : ${score}/${n}</b><br>${score>=n-1 ? 'Vous lisez une coupe comme un interprète.' : score>=n/2 ? 'Correct. Reprenez la faille : le décalage commun à tous les réflecteurs est le signe qui ne trompe pas.' : 'À retravailler : suivez toujours un seul réflecteur, de proche en proche, et repérez d\'abord le saut franc avant de lire les profondeurs.'}<br>Meilleur score : <b>${record ? score : prev.s}/${record ? n : prev.n}</b>${record?' (nouveau record)':''}`;
+    document.getElementById('seiWrap').innerHTML = ''; const fb = document.getElementById('seiFb'); fb.className = 'sei-fb';
+    const nx = document.getElementById('seiNext'); nx.style.display = ''; nx.textContent = '↻ Rejouer (nouvelles coupes)'; nx.onclick = open;
+    document.getElementById('seiScore').textContent = `Score final ${score}/${n}`; if(typeof quickRefresh==='function') quickRefresh();
+  }
+  function open(){
+    rounds = []; for(let i=0; rounds.length<SEI_ROUNDS && i<12; i++){ const r = makeRound(); if(r) rounds.push(r); }
+    if(!rounds.length) return;
+    ri = 0; qi = 0; score = 0; asked = 0; document.getElementById('seiNext').onclick = next;
+    document.getElementById('seiGameModal').classList.add('open'); question();
+  }
+  document.getElementById('seiOpenBtn').addEventListener('click', open);
+  document.getElementById('seiClose').addEventListener('click', ()=>document.getElementById('seiGameModal').classList.remove('open'));
+  document.getElementById('seiNext').onclick = next;
+  window.__sei = { makeRound, open, answer, judge, xOf, yOf, zOfY, get rounds(){ return rounds; }, get cur(){ return cur; }, state:()=>({ ri, qi, score, asked, answered }), VBW, VBH, TOL_Z, NCOL };
 })();
 </script>
 
