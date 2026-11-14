@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.67</title>
+<title>GeoExplorer V4.68</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3576,7 +3576,7 @@ function playNextDrillReveal(){
   setTimeout(()=>{
     clearInterval(suspenseInterval);
     icon.classList.remove('pulse');
-    if(limitingFactor==='strati'){ icon.textContent='🧪'; title.textContent='SONDAGE TERMINÉ'; title.style.color='var(--text)'; sub.textContent='Carottes et log récupérés'; detail.innerHTML = calibHtml; closeBtn.style.display=''; return; }
+    if(limitingFactor==='strati'){ icon.textContent='🧪'; title.textContent='SONDAGE TERMINÉ'; title.style.color='var(--text)'; sub.textContent='Carottes récupérées : diagraphie à lancer séparément'; detail.innerHTML = calibHtml; closeBtn.style.display=''; return; }
     const success = geoOk && techOk;
     icon.textContent = success ? '⛽' : '✗';
     title.textContent = success ? 'PUITS PRODUCTIF !' : 'PUITS SEC';
@@ -4419,12 +4419,15 @@ function renderStudiesPanel(b){
       :`<button class="study-btn study-btn-compact" ${canRockeval?'':'disabled'} onclick="performStudy(${b.id},'rockeval')">🧪 Rock-Eval : ${G.mode==='sandbox'?'Gratuit':formatM(rockevalCost)}</button>`}
   </div>`;
 
+  // SONDAGE STRATIGRAPHIQUE (carte à part, toujours proposée)
+  if(b.studyLevel>=1&&!b.well&&!b.dryHole&&!G.drilling.some(d=>d.blockId===b.id)) html+=stratiCardHtml(b);
+
   // FORAGE
   if(b.studyLevel>=1&&!b.well&&!b.dryHole&&!G.drilling.some(d=>d.blockId===b.id)){
     html+=`<div class="ps-section" style="margin-top:12px;">Forage</div>
     <div class="drill-card">
       <select class="drill-select" id="drillMethod" onchange="updateDrillSummary(${b.id})">
-        ${Object.entries(METHODS).filter(([k])=>k!=='strati'||LABOPT.strati).map(([k,m])=>`<option value="${k}" ${k==='vertical'?'selected':''}>${m.label}</option>`).join('')}
+        ${Object.entries(METHODS).filter(([k])=>k!=='strati').map(([k,m])=>`<option value="${k}" ${k==='vertical'?'selected':''}>${m.label}</option>`).join('')}
       </select>
       <select class="drill-select" id="drillEquip" onchange="updateDrillSummary(${b.id})">
         ${Object.entries(EQUIPMENT).map(([k,e])=>`<option value="${k}" ${k==='standard'?'selected':''}>${e.label} (max ${e.maxDepth} m, fiab. ${(e.reliability*100).toFixed(0)} % à mi-limite)</option>`).join('')}
@@ -4878,7 +4881,6 @@ function labOptRender(){
     ${row('mute', 'Sismique muette', 'La sismique ne montre que des contrastes (bleu : l\'impédance augmente, rouge : elle diminue), jamais les roches. La lithologie n\'apparaît sur la coupe qu\'après un forage et un log. Désactivée : la coupe affiche les lithologies comme dans les règles d\'origine.')}
     ${row('pick', 'Désigner la cible soi-même', 'Le jeu ne dit pas quel horizon est le réservoir. Il faut le viser sur la coupe avant de forer : un mauvais choix donne un puits sec, un bon choix rapporte un bonus (une fois par province).')}
     ${row('cal', 'Calage puits-sismique obligatoire', 'Un puits ne propage sa lithologie le long du profil qu\'une fois calé (mini-jeu vitesse moyenne). Sans calage, il ne dévoile que sa propre colonne. Demande la sismique muette.', !o.mute)}
-    ${row('strati', 'Sondage stratigraphique disponible', 'Forage carotté moins cher (environ 30 % d\'un forage classique), qui donne le log et la lithologie mais ne peut jamais produire.')}
     ${row('dhi', 'Indices de fluides à interpréter', 'La sismique 3D ne donne plus un pourcentage précis mais une classe d\'anomalie d\'amplitude (nulle, faible, modérée, forte), visible sur la coupe comme une tache brillante. Les faux positifs existent : gaz, charbon, calcaire serré.')}
     ${row('real', 'Imagerie sismique réaliste', 'Bruit croissant avec la profondeur, multiples (faux réflecteurs), qualité de traitement variable selon la ligne (retraitement payant), axe de temps double en ms.')}
     ${row('thick', 'Épaisseurs variables des couches', 'Une couche n\'a plus la même épaisseur partout : plus épaisse dans les bas structuraux, plus mince sur les hauts, avec une dérive latérale propre à chaque couche. Désactivée : épaisseur constante dans une province, comme dans les règles d\'origine. Attention : la carte générée pour une même graine n\'est pas la même selon ce réglage.', labOptMode!=='start')}
@@ -4905,7 +4907,47 @@ function labShownDepth(b){
   if(LABOPT.pick && LABOPT.mute) return null;
   return b.estimate?.depth ?? null;
 }
-// Sondage stratigraphique : log et carottes, aucune production possible, la probabilité de succès n'est pas révélée
+// Sondage stratigraphique : carottes, aucune production possible, la probabilité de succès n'est pas révélée. Le log est une étude payante à part.
+const STRATI_LOG_COST = 90e3, STRATI_LOG_OFF = 1.6;
+const stratiLogCost = b => G.mode==='sandbox' ? 0 : STRATI_LOG_COST*(b.isOffshore ? STRATI_LOG_OFF : 1);
+const stratiHasLog = b => b.studies.some(s=>s.type==='welllog');
+// matériel le moins cher qui atteint la profondeur estimée
+function stratiPlan(b){
+  const depth = drillDepthEstimate(b); if(depth==null) return null;
+  const off = siteCost(b, drillCostFactor());
+  const opts = Object.entries(EQUIPMENT).filter(([k,e])=>depth<=e.maxDepth).map(([k,e])=>({equip:k, cost:depth*e.costM*METHODS.strati.costMult*off})).sort((a,z)=>a.cost-z.cost);
+  return opts.length ? { depth, equip:opts[0].equip, cost:opts[0].cost } : { depth, equip:null, cost:null };
+}
+function launchStrati(id){
+  const b = blocks[id], p = stratiPlan(b);
+  if(!p || !p.equip){ toast('Aucun matériel n\'atteint la profondeur estimée de ce bloc.'); return; }
+  drillBlock(id, 'strati', p.equip, null);
+  renderStudiesPanel(b);
+}
+function stratiLog(id){
+  const b = blocks[id]; if(!b || !b.strati || stratiHasLog(b)) return;
+  const c = stratiLogCost(b);
+  if(G.budget < c && G.mode!=='sandbox'){ toast('Budget insuffisant pour la diagraphie du sondage (' + formatM(c) + ').'); return; }
+  G.budget -= c; labInjectStratiLog(b); updateBlockEstimate(b);
+  addLog(`📈 Diagraphie du sondage (${b.x},${b.y}) réalisée${c>0?' (-'+formatM(c)+')':''} : log et lithologie de la colonne dévoilés.`, 'good');
+  renderBlock(b); updateHud();
+  if(selectedBlock===id){ renderGeoPanel(b); renderStudiesPanel(b); }
+  if(typeof renderSection==='function') renderSection(); if(typeof renderGuide==='function') renderGuide();
+}
+function stratiCardHtml(b){
+  const done = stratiHasLog(b), p = b.strati ? null : stratiPlan(b);
+  let h = `<div class="ps-section" style="margin-top:12px;">Sondage stratigraphique</div><div class="study-card" id="stratiCard">
+    <div class="sc-name">🧪 Sondage${b.strati?'<span class="done-badge">✓ Foré</span>':''}</div>
+    <div class="sc-desc">Forage carotté à environ 30 % du prix d'un puits : il ne peut jamais produire et ne dit rien sur les hydrocarbures, mais il donne des carottes (analyse de carotte, Rock-Eval) et, avec la diagraphie, le log et la lithologie qui calent la sismique.</div>`;
+  if(!b.strati){
+    if(!p || p.equip===null) h += `<div style="font-size:11px;color:var(--red);">${p ? 'Aucun matériel n\'atteint la profondeur estimée ('+Math.round(p.depth)+' m).' : 'Profondeur du réservoir inconnue : réalisez une étude de plus.'}</div>`;
+    else h += `<button class="study-btn study-btn-compact" id="stratiBtn" ${(G.budget>=p.cost||G.mode==='sandbox')?'':'disabled'} onclick="launchStrati(${b.id})">🧪 Lancer le sondage : ${G.mode==='sandbox'?'Gratuit':formatM(p.cost)}</button>`;
+  } else if(!done){
+    h += `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Carottes disponibles. La lithologie n'apparaît sur la coupe qu'après la diagraphie.</div>
+      <button class="study-btn study-btn-compact" id="stratiLogBtn" ${(G.budget>=stratiLogCost(b)||G.mode==='sandbox')?'':'disabled'} onclick="stratiLog(${b.id})">📈 Diagraphie du sondage : ${G.mode==='sandbox'?'Gratuit':formatM(stratiLogCost(b))}</button>`;
+  } else h += `<div style="font-size:11px;color:var(--muted);">✓ Diagraphie réalisée : log et lithologie disponibles.</div>`;
+  return h + `</div>`;
+}
 function labInjectStratiLog(b){
   if(b.studies.some(s=>s.type==='welllog')) return;
   const e = b.estimate || {};
@@ -4919,9 +4961,9 @@ function labInjectStratiLog(b){
 }
 function labResolveStrati(d){
   const b = blocks[d.blockId]; b.el?.classList.remove('drilling');
-  b.strati = true; labInjectStratiLog(b); updateBlockEstimate(b);
-  addLog(`🧪 Sondage stratigraphique terminé : bloc (${b.x},${b.y}). Log et carottes récupérés, lithologie de la colonne dévoilée.`, 'good');
-  const html = `Le sondage a traversé la colonne et ramené la lithologie. Il ne peut pas produire et ne dit rien sur la présence d'hydrocarbures.` + (LABOPT.cal && LABOPT.mute && !labCalOk(b) ? ` Calez-le sur la sismique pour étendre la lithologie le long du profil.` : '') + ` Le bloc reste forable. Onglet Études : carotte (cale le puits et double la portée de sa lithologie sur la coupe) et Rock-Eval (géochimie de la roche-mère).`;
+  b.strati = true; updateBlockEstimate(b);
+  addLog(`🧪 Sondage stratigraphique terminé : bloc (${b.x},${b.y}). Carottes récupérées : lancez la diagraphie (${G.mode==='sandbox'?'gratuite':formatM(stratiLogCost(b))}) pour lire la lithologie.`, 'good');
+  const html = `Le sondage a traversé la colonne et ramené des carottes. Il ne peut pas produire et ne dit rien sur la présence d'hydrocarbures. La diagraphie du sondage (étude payante) donne le log et la lithologie ; la carotte et le Rock-Eval restent possibles tout de suite.` + (LABOPT.cal && LABOPT.mute && !labCalOk(b) ? ` Calez-le sur la sismique pour étendre la lithologie le long du profil.` : '') + ` Le bloc reste forable. Onglet Études : carotte (cale le puits et double la portée de sa lithologie sur la coupe) et Rock-Eval (géochimie de la roche-mère).`;
   renderBlock(b); updateHud();
   if(selectedBlock===d.blockId){ renderGeoPanel(b); renderStudiesPanel(b); }
   showDrillReveal(b, false, true, 'strati', html);
@@ -4974,7 +5016,7 @@ function labTwtFn(dispData){
 }
 
 const LAB = { truth:false, freq:28 };
-const labDrilled = b => !!(b && (b.well || b.dryHole || b.strati));
+const labDrilled = b => !!(b && (b.well || b.dryHole || (b.strati && b.studies.some(s=>s.type==='welllog'))));
 const labCored = b => !!(b && b.studies && b.studies.some(s=>s.type==='core'));
 // Niveau de dévoilement de chaque bloc du profil : 0 = puits, 1 à 3 = extrapolé (voisin proche à lointain), -1 = inconnu
 function labLevels(dispData){
@@ -6012,6 +6054,11 @@ function guideCompute(){
   }
   const hasProf = G.sectionA!==null && G.sectionB!==null;
   const free = b => !b.well && !b.dryHole && !G.drilling.some(d=>d.blockId===b.id);
+  // Sondage foré mais pas encore diagraphié : la diagraphie est l'étape qui livre la lithologie
+  { const sb = blocks.find(b=>b.strati && !b.well && !b.dryHole && !stratiHasLog(b));
+    if(sb){ const c = stratiLogCost(sb);
+      return {cur:4, text:`Le sondage du bloc (${sb.x}, ${sb.y}) est foré. Sa diagraphie livre le log et la lithologie, qui servent à caler la sismique avant de forer cher.`,
+              act:{label:`Diagraphie du sondage (${sb.x}, ${sb.y}) · ${G.mode==='sandbox'?'gratuite':formatM(c)}`, call:`guideDo('stratilog',${sb.id})`, ok:G.mode==='sandbox'||money(c), why:`Budget insuffisant (${formatM(c)} requis).`}}; } }
   // Meilleur bloc à forer : estimation 3D (ou log) la plus haute
   const drillable = blocks.filter(b=>free(b) && b.estimate?.prob!==undefined && b.studies.some(st=>st.type==='seismic3d'))
                           .sort((a,z)=>z.estimate.prob-a.estimate.prob);
@@ -6076,6 +6123,12 @@ function guideCompute(){
   { const unc = prof.map(o=>o.b).find(b=>labDrilled(b) && !labCalOk(b));
     if(unc) return {cur:4, text:`Le puits (${unc.x}, ${unc.y}) n'est pas calé sur la sismique. Calez-le : sa lithologie se propagera alors sur le profil et vous gagnerez ${formatM(LAB_CAL_BONUS)}.`,
             act:{label:`Caler le puits (${unc.x}, ${unc.y})`, call:`labOpenCal(${unc.id})`, ok:true}}; }
+  // Sismique muette : sans puits ni sondage diagraphié sur le profil, la coupe ne montre aucune lithologie. Un sondage, bien moins cher
+  // qu'un forage, la révèle. Proposé une seule fois par profil, sur son bloc libre le moins profond.
+  if(LABOPT.mute && ranked.length && prof.length && !prof.some(o=>labDrilled(o.b)) && !prof.some(o=>o.b.strati)){
+    const sc = prof.map(o=>o.b).filter(b=>free(b) && b.studyLevel>=1 && !b.strati).map(b=>({b, p:stratiPlan(b)})).filter(x=>x.p && x.p.equip).sort((a,z)=>a.p.cost-z.p.cost)[0];
+    if(sc) return {cur:4, text:`La sismique est muette et aucun puits du profil n'a de log : la coupe ne montre pas les roches. Un sondage stratigraphique en (${sc.b.x}, ${sc.b.y}) coûte environ 30 % d'un forage et révèle la lithologie (puis diagraphie).`,
+              act:{label:`Sondage en (${sc.b.x}, ${sc.b.y}) · ${formatM(sc.p.cost)}`, call:`guideDo('strati',${sc.b.id})`, ok:G.mode==='sandbox'||money(sc.p.cost), why:`Budget insuffisant (${formatM(sc.p.cost)} requis).`}}; }
   if(G.labPick==null && LABOPT.pick && ranked.length){
     return {cur:4, text:'Avant de forer, désignez sur la coupe l\'horizon que vous pensez être le réservoir : clic sur la sismique, ou bouton « viser » du tableau. Un mauvais choix donne un puits sec.',
             act:{label:'Aller à la coupe', call:'labGoSection()', ok:true}};
@@ -6153,6 +6206,13 @@ function guideDo(kind, id){
     const a = G.sectionA, bb = G.sectionB;
     G.sectionA = G.sectionB = id; performStudy(id,'seismic2d'); G.sectionA = a; G.sectionB = bb;
     performStudy(id,'seismic3d'); guideSelect(id); return;
+  }
+  if(kind==='stratilog'){ stratiLog(id); guideSelect(id); return; }
+  if(kind==='strati'){
+    guideSelect(id);
+    if(isMobileLayout()) showMobileScreen('studies'); else switchTab('studies');
+    setTimeout(()=>{ document.getElementById('stratiBtn')?.scrollIntoView({block:'center', behavior:'smooth'}); }, 60);
+    return;
   }
   if(kind==='drill'){
     guideSelect(id);
@@ -8175,7 +8235,7 @@ function _doStartGame(){
         <b>3. Sismique 2D</b> : précise la profondeur des couches et les failles le long de la coupe.<br>
         <b>4. Sismique 3D</b> : la meilleure information sans forer, avec une probabilité de succès estimée.<br>
         <b>5. Forer</b> : le seul moyen de savoir.<br><br>
-        Le log et la carotte ne s'obtiennent qu'en forant.`,
+        Le log et la carotte ne s'obtiennent qu'en forant, ou, moins cher, avec un <b>sondage stratigraphique</b> (carte Sondage de l'onglet Études).`,
     },
     {
       title: 'Lire la carte et la coupe',
@@ -8203,7 +8263,7 @@ function _doStartGame(){
         supporte des charges fixes plus lourdes.<br><br>
         Un puits productif rend ses voisins (à moins de trois cases) plus prometteurs. Un puits sec dont la
         géologie a vraiment été testée les rend un peu moins prometteurs.<br><br>
-        Fermez les puits marginaux depuis l'onglet <b>Gisements</b> quand ils coûtent plus qu'ils ne rapportent.
+        Fermez les puits marginaux depuis l'onglet <b>Gisements</b> quand ils coûtent plus qu'ils ne rapportent. Fermer un puits, ou le laisser s'épuiser, coûte son <b>abandon</b> (12 % du coût de forage à terre, 18 % en mer) ; le récap de fin chiffre celui des puits encore actifs.
         Si un second réservoir existe plus profond, un side-track l'exploite sans forer un nouveau trou.`,
     },
     {
@@ -8222,10 +8282,10 @@ function _doStartGame(){
     },
     {
       title: 'Sondage, carotte et Rock-Eval',
-      body: `Un <b>sondage stratigraphique</b> coûte environ 30 % d'un forage classique. Il donne le log et la lithologie,
-        jamais de production. Il est foré hors du sommet du piège : il ne dit rien sur les fluides.<br><br>
-        Après un forage ou un sondage, l'onglet <b>Études</b> propose la <b>carotte</b> (porosité, perméabilité, pétrographie)
-        et la géochimie <b>Rock-Eval</b> (TOC, Tmax, potentiel de la roche-mère).<br><br>
+      body: `Un <b>sondage stratigraphique</b> se lance depuis la carte <b>Sondage</b> de l'onglet Études (dès qu'un bloc a une première étude). Il coûte environ 30 % d'un forage classique et ne produit jamais ;
+        il est foré hors du sommet du piège et ne dit rien sur les fluides. Il ramène des carottes. Le <b>log</b> et la lithologie, eux, demandent la <b>diagraphie du sondage</b>, une étude payante à lancer ensuite : sans elle, la coupe ne montre pas les roches.<br><br>
+        Après un forage ou un sondage, l'onglet <b>Études</b> propose aussi la <b>carotte</b> (porosité, perméabilité, pétrographie)
+        et la géochimie <b>Rock-Eval</b> (TOC, Tmax, potentiel de la roche-mère). Le guide vous propose un sondage quand la sismique est muette et qu'aucun puits du profil n'a de log.<br><br>
         Une carotte cale le puits d'office et double la portée de sa lithologie le long de la coupe.`,
     },
     {
@@ -8246,8 +8306,9 @@ function _doStartGame(){
     {
       title: 'Prêt à jouer',
       body: `C'est tout pour la base. Le glossaire (menu pause) reste disponible à tout moment. Sur l'accueil,
-        la section <b>S'entraîner</b> propose un jeu de cartes, quatre quiz (lithofaciès, maturation, Rock-Eval, sismique) et un jeu de lecture de logs
-        pour travailler un point précis sans lancer une partie.<br><br>
+        la section <b>S'entraîner</b> propose un jeu de cartes, quatre quiz (lithofaciès, maturation, Rock-Eval, sismique), un jeu de lecture de logs, le dimensionnement d'un forage et une <b>console de forage</b> (pilotage, incidents, puis drain horizontal)
+        pour travailler un point précis sans lancer une partie. Les questions ratées reviennent en priorité (« À revoir »).<br><br>
+        Le bouton <b>Défi du jour</b> propose la même carte à tout le monde pour la date. La <b>seed</b> de chaque partie s'affiche au récap de fin : saisie dans les options, elle redonne la même carte.<br><br>
         Conseil pour une première partie : bassin Parisien, niveau Junior. Bonne exploration.`,
     },
   ];
