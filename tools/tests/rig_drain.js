@@ -4,7 +4,7 @@ const { chromium, devices } = require('playwright'); const path = require('path'
 (async()=>{ const br=await chromium.launch(); let ko=0; const ok=(c,m)=>{ if(!c){ko++; console.log('ECHEC',m);} else console.log('ok',m); }; const errs=[];
   const pg=await br.newPage(); pg.on('pageerror',e=>errs.push(e.message)); await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}});
   await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(500);
-  const T = await pg.evaluate(()=>{ const R=window.__rig, o={n:0,col:0,exit:0,heel:0,grc:0,rtc:0,meas:0,measN:0,lagN:0,lagOk:0,steer:0,steerN:0,geom:0,geomN:0,score:0,scoreN:0,naive:[],bot:[]};
+  const T = await pg.evaluate(()=>{ const R=window.__rig, o={n:0,col:0,exit:0,heel:0,grc:0,rtc:0,meas:0,measN:0,lagN:0,lagOk:0,steer:0,steerN:0,geom:0,geomN:0,score:0,scoreN:0,naive:[],bot:[],botClean:[],incN:[],pend:0,pen:[],types:[],failed:0};
     for(let i=0;i<60;i++){ const sc=R.rigScenario(); if(!sc) continue; o.n++; const d=sc.drain;
       // géométrie : colonne d'hydrocarbures d'au moins 18 m partout, talon dans la zone, contraste GR et Rt, trajectoire horizontale qui sort entre 120 et 340 m
       let minCol=1e9; for(let x=0;x<=d.L+200;x+=10) minCol=Math.min(minCol, d.zc-(d.top+d.off(x))); if(minCol>=18) o.col++;
@@ -14,11 +14,11 @@ const { chromium, devices } = require('playwright'); const path = require('path'
       for(let k=0;k<40;k++){ const x=Math.random()*d.L, z=d.top-20+Math.random()*(d.thr+60); const m=R.drMeasure(d,x,z), zn=R.drZone(d,x,z); o.measN++;
         const grOk = zn==='above' ? Math.abs(m.gr-d.grAbove)<=9 : zn==='below' ? Math.abs(m.gr-d.grBelow)<=9 : Math.abs(m.gr-d.grPay)<=9;
         const rtOk = zn==='pay' ? m.rt>=d.rtPay*0.8 : zn==='water' ? m.rt<=d.rtWater*1.25 : m.rt<=5; if(m.zone===zn && grOk && rtOk) o.meas++; }
-      const mk=()=>{ const S=R.rigNew(sc); S.status='td'; S.dr=R.drNew(S); return S; };
+      const mk=(inc)=>{ const S=R.rigNew(sc); S.status='td'; S.dr=R.drNew(S); S.dr.incOff = !inc; return S; };   // sans incident par défaut : les tests de pilotage doivent être déterministes
       // pilotage : 2° au plus par pas, intégration de la trajectoire, score cohérent avec la zone du trou
       const S=mk(), dr=S.dr; let prev=0, okS=true, okG=true, x0=dr.x, z0=dr.z; for(let k=0;k<40;k++){ dr.target = k<20 ? 9 : -9; R.drStep(S); if(Math.abs(dr.pitch-prev)>2.0001) okS=false; const r=dr.pitch*Math.PI/180, tr=dr.trail, a=tr[tr.length-2], b=tr[tr.length-1]; if(Math.abs((b.x-a.x)-10*Math.cos(r))>1e-9 || Math.abs((b.z-a.z)-10*Math.sin(r))>1e-9) okG=false; prev=dr.pitch; }
       o.steerN++; if(okS && Math.abs(dr.md-400)<1e-9) o.steer++; o.geomN++; if(okG) o.geom++;
-      const B=mk(); R.drainBot(B,'bot'); const N=mk(); R.drainBot(N,'naive'); o.bot.push(R.drScore(B).score); o.naive.push(R.drScore(N).score);
+      const B0=mk(false); R.drainBot(B0,'bot'); o.botClean.push(R.drScore(B0).score); const B=mk(true); R.drainBot(B,'bot'); const N=mk(true); R.drainBot(N,'naive'); o.bot.push(R.drScore(B).score); o.naive.push(R.drScore(N).score); o.incN.push(B.dr.incidents); o.pend += B.dr.inc ? 1 : 0; o.pen.push(B.dr.pen); o.types.push(...B.dr.log.filter(l=>['stuck','loss','bit'].includes(l.type)).map(l=>l.type)); if(B.dr.failed) o.failed++;
       let pay=0; B.dr.trail.slice(3).forEach(p=>{ if(R.drZone(d,p.x,p.z)==='pay') pay++; }); o.scoreN++; if(pay===B.dr.inPay && Math.abs(R.drScore(B).pct - pay/B.dr.steps)<1e-9) o.score++;
       // capteurs en retard : toute limite détectée l'est au moins 5 m derrière l'outil
       B.dr.marks.concat(N.dr.marks).forEach(m=>{ o.lagN++; if(m.at - m.x >= 5.5) o.lagOk++; }); }
@@ -31,7 +31,23 @@ const { chromium, devices } = require('playwright'); const path = require('path'
   ok(T.score===T.scoreN, 'score = part des pas dont la position réelle est dans la zone ('+T.score+'/'+T.scoreN+')');
   ok(T.lagN>20 && T.lagOk===T.lagN, 'capteurs derrière l\'outil : '+T.lagN+' limites détectées, toutes à au moins 5,5 m derrière l\'outil');
   const avg=a=>a.reduce((x,y)=>x+y,0)/a.length, bm=avg(T.bot), nm=avg(T.naive);
-  ok(bm>=72 && nm<=68 && bm-nm>=8, 'joueurs automatiques : suiveur des diagraphies '+Math.round(bm)+'/100, trajectoire horizontale '+Math.round(nm)+'/100 (écart d\'au moins 8 points)');
+  const bc=avg(T.botClean);
+  ok(bc>=72, 'sans incident, le suiveur des diagraphies garde '+Math.round(bc)+'/100');
+  const inc=avg(T.incN), withInc=T.incN.filter(x=>x>0).length/T.incN.length, ty={}; T.types.forEach(k=>ty[k]=(ty[k]||0)+1);
+  ok(withInc>=0.4 && withInc<=0.97 && inc>=0.5 && inc<=2.2, 'incidents : '+Math.round(withInc*100)+' % des drains en ont au moins un, '+inc.toFixed(2)+' par drain '+JSON.stringify(ty));
+  ok(T.pend===0, 'le joueur automatique règle toujours l\'incident en cours ('+T.pend+' en suspens)');
+  ok(bm>=58 && nm<=60 && bm-nm>=8, 'avec incidents : suiveur des diagraphies '+Math.round(bm)+'/100, trajectoire horizontale '+Math.round(nm)+'/100 (écart d\'au moins 8 points)');
+  // mécanique des incidents : taux de réussite des réponses, pénalités, blocage, perte du drain
+  const M = await pg.evaluate(()=>{ const R=window.__rig, sc=R.rigScenario(); const mk=()=>{ const S=R.rigNew(sc); S.status='td'; S.dr=R.drNew(S); S.dr.incOff=true; return S; };
+    const rate=(type,act,N)=>{ let ok=0; for(let i=0;i<N;i++){ const S=mk(); R.drRaise(S,type,'t'); R.drAct(S,act); if(!S.dr.inc) ok++; } return ok/N; };
+    const o={ jar:rate('stuck','jar',1500), spot:rate('stuck','spot',1500), lcm:rate('loss','lcm',50), ign:rate('loss','ignore',50), chg:rate('bit','change',50), keep:rate('bit','keep',50) };
+    let S=mk(); R.drRaise(S,'stuck','t'); const md0=S.dr.md; R.drStep(S); o.blocked = S.dr.md===md0 && S.dr.inc!==null; o.pen = S.dr.pen===3 && S.dr.incidents===1;
+    S=mk(); let guard=0; while(S.dr.status==='run' && guard++<400){ if(!S.dr.inc) R.drRaise(S,'stuck','t'); R.drAct(S,'jar'); } o.failedEnd = S.dr.status==='done' && S.dr.failed==='coincement' && S.dr.pen>=15;
+    S=mk(); R.drRaise(S,'loss','t'); R.drAct(S,'ignore'); o.risk = S.dr.risk===12; S=mk(); R.drRaise(S,'bit','t'); R.drAct(S,'change'); o.hours = S.dr.hours===16 && S.dr.wear===0;
+    S=mk(); S.dr.hours=0; R.drRaise(S,'loss','t'); R.drAct(S,'lcm'); o.lcmHours=S.dr.hours; return o; });
+  ok(Math.abs(M.jar-0.55)<0.05 && Math.abs(M.spot-0.85)<0.05, 'coincement : coulisser réussit '+Math.round(M.jar*100)+' % (55), pilule '+Math.round(M.spot*100)+' % (85)');
+  ok(M.lcm===1 && M.ign===1 && M.chg===1 && M.keep===1 && M.lcmHours===8 && M.hours && M.risk, 'perte de circulation, outil usé : les réponses résolvent l\'incident avec leur coût en heures et leurs conséquences');
+  ok(M.blocked && M.pen && M.failedEnd, 'un incident bloque le forage, coûte des points, et trois coincements non libérés mettent fin au drain');
   // parcours au doigt
   await pg.close();
   const ctx=await br.newContext({...devices['iPhone 13'],viewport:{width:390,height:780}}); const ph=await ctx.newPage(); ph.on('pageerror',e=>errs.push(e.message));
@@ -47,6 +63,14 @@ const { chromium, devices } = require('playwright'); const path = require('path'
   const ui = await ph.evaluate(()=>{ const bt=[...document.querySelectorAll('#rgBody button')].filter(e=>e.offsetParent).map(e=>Math.round(e.getBoundingClientRect().height)); return { minBtn:Math.min(...bt), slider:!!document.getElementById('rgDrT'), termineOff: document.getElementById('rgDrEnd').disabled, debord: document.documentElement.scrollWidth>innerWidth, chart: !!document.querySelector('#rgChart svg') }; });
   ok(ui.minBtn>=40 && ui.slider && ui.termineOff && !ui.debord && ui.chart, 'téléphone : commandes du drain (boutons >= 40 px, curseur d\'inclinaison), « Terminer » inactif avant 200 m, pas de débordement');
   await ph.evaluate(()=>{ const el=document.getElementById('rgDrT'); el.value='4'; el.dispatchEvent(new Event('input')); });
+  await ph.evaluate(()=>{ window.__rig.S.dr.incOff = true; });
+  await ph.evaluate(()=>{ const R=window.__rig; R.drRaise(R.S,'loss','test'); R.render(); });
+  const ib = await ph.evaluate(()=>{ const bt=[...document.querySelectorAll('[data-dract]')]; return { n:bt.length, h:Math.min(...bt.map(b=>b.getBoundingClientRect().height)), carte:!!document.querySelector('.rg-inc'), forerOff:document.getElementById('rgDrOne').disabled, debord:document.documentElement.scrollWidth>window.innerWidth+1 }; });
+  ok(ib.n===2 && ib.h>=40 && ib.carte && ib.forerOff && !ib.debord, 'téléphone : un incident affiche sa carte et deux décisions (boutons de 40 px au moins), le forage est bloqué');
+  await ph.screenshot({path:'/tmp/drain_incident.png'});
+  await ph.locator('[data-dract="lcm"]').tap(); await ph.waitForTimeout(100);
+  ok(await ph.evaluate(()=>!document.querySelector('.rg-inc') && !document.getElementById('rgDrOne').disabled && window.__rig.S.dr.hours===8), 'téléphone : la pilule colmatante règle la perte (8 h) et libère le forage');
+  await ph.evaluate(()=>{ window.__rig.S.dr.hours = 0; window.__rig.S.dr.pen = 0; window.__rig.S.dr.incidents = 0; window.__rig.render(); });
   await ph.locator('#rgDrOne').tap(); await ph.locator('#rgDrOne').tap(); await ph.waitForTimeout(100);
   const st = await ph.evaluate(()=>{ const dr=window.__rig.S.dr; return { target:dr.target, pitch:dr.pitch, md:dr.md, logs:dr.logs.length, gr:/GR\s*\n?\s*\d+ API/.test(document.getElementById('rgStats').innerText), courbes: document.querySelectorAll('#rgChart polyline').length>=3 }; });
   ok(st.target===4 && Math.abs(st.pitch-4)<1e-9 && st.md===20 && st.logs===2 && st.gr && st.courbes, 'téléphone : le curseur vise +4° (atteint en 2 pas), deux pas forés, GR et Rt mesurés et tracés');
