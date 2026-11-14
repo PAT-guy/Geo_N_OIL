@@ -94,6 +94,8 @@ def collect(src, whole_keys=frozenset()):
     build_vocab(src)
     units=[]
     toks=[t for a,b in scan.scripts(src) for t in scan.scan(src[a:b], a)]
+    _a = src.find('/*HTML_EN_BEGIN*/'); _b = src.find('/*HTML_EN_END*/')
+    if _a>=0: toks=[t for t in toks if not (_a <= t['s'] <= _b)]
     for k,it in enumerate(toks):
         pre = src[max(0,it['s']-6):it['s']]
         if re.search(r"\bTR?\(\s*$", pre): continue
@@ -113,3 +115,16 @@ def collect(src, whole_keys=frozenset()):
         else:
             template_parts(it['t'], it['s']+1, units)
     return units
+
+# Mode large (I18N_LOOSE=1) : détection plus généreuse du français (mots outils, mots du vocabulaire, « mot : »), pour la seconde passe sur les textes courts sans accent.
+if os.environ.get('I18N_LOOSE'):
+    _STOPX = set(scan.STOP) - {'un','de','a','l','s','d','c','n','j','plus','sur','sous','par','pas','ne','ce','est','et','ou','sa','ses','le','la','les','au'} | {'sur','sous','dans','pour','avec','des','du','une','vous','votre','vos','nous'}
+    def _loose(t):
+        t = re.sub(r"\s+"," ",t).strip()
+        if not re.search(r"[A-Za-zÀ-ÿ]{3,}", t): return False
+        if scan.ACC.search(t): return True
+        if re.search(r"\w :( |$)", t): return True
+        ws = [w.lower() for w in re.findall(r"[A-Za-zÀ-ÿ']+", t)]
+        return any(w in _STOPX for w in ws) or any(w in D for w in ws if len(w)>=4)
+    frenchrun = _loose
+    frenchish_str = lambda t: _loose(decode(t))

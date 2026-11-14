@@ -7,6 +7,11 @@
 (function(){ let L = 'fr'; try { if(localStorage.getItem('geoexplorer_lang')==='en') L = 'en'; } catch(e){}
   document.documentElement.lang = L; window.LANG0 = L;
   window.TR = function(fr, en){ return document.documentElement.lang==='en' ? en : fr; };
+  // Noms de roches et de formations : en anglais, on retient le nom français d'origine pour que le classement (regex sur les mots-clés) donne exactement le même résultat dans les deux langues.
+  const FRMAP = Object.create(null);
+  window.TRN = function(fr, en){ if(document.documentElement.lang==='en'){ FRMAP[en] = fr; return en; } return fr; };
+  window.matLbl = function(c){ if(document.documentElement.lang!=='en') return c; return c==='Fenêtre à huile' ? 'Oil window' : c==='Surmature (gaz)' ? 'Overmature (gas)' : c; };
+  window.FRN = function(s){ return (s!=null && document.documentElement.lang==='en' && FRMAP[s]!==undefined) ? FRMAP[s] : s; };
   window.DEC = L==='en' ? '.' : ','; })();
 </script>
 <meta charset="UTF-8">
@@ -1315,16 +1320,16 @@ const LITHO = {
   // [id, nom, lithologie, rôle pétrolier, couleur_SVG, couleur_carte, pattern]
   // rôle: 'overburden' | 'seal' | 'reservoir' | 'source' | 'neutral' | 'basement'
   types: {
-    quaternary:    {name:'Quaternaire',     lith:TR('Argile/sable meuble','Loose clay/sand'),   role:'overburden', col:'#8B7355', light:'#b09070'},
-    chalk:         {name:'Craie',           lith:TR('Calcaire micritique','Micritic limestone'),   role:'neutral',    col:'#E8E8D0', light:'#f0f0e0'},
-    shale_seal:    {name:TR('Argile compacte','Compacted clay'), lith:TR('Schiste argileux','Clay shale'),      role:'seal',       col:'#4a5568', light:'#6a7590'},
-    sandstone_res: {name:TR('Grès poreux','Porous sandstone'),     lith:TR('Grès à ciment calcitique','Calcite-cemented sandstone'), role:'reservoir', col:'#C4863A', light:'#e0a04a'},
-    carbonate_res: {name:TR('Calcaire fracturé','Fractured limestone'),lith:TR('Calcaire oolitique','Oolitic limestone'),   role:'reservoir', col:'#D4A853', light:'#e8c070'},
-    shale_source:  {name:TR('Schiste organique','Organic shale'),lith:'Black shale (TOC>2%)', role:'source',     col:'#1a1a2e', light:'#2a2a4e'},
-    evaporite:     {name:TR('Évaporites','Evaporites'),       lith:'Anhydrite/Halite',     role:'seal',       col:'#E8C0E0', light:'#f0d0f0'},
-    salt:          {name:'Sel (diapir)',      lith:TR('Halite massive','Massive halite'),       role:'neutral',    col:'#F0E8F0', light:'#f8f0f8'},
-    sandstone_tight:{name:TR('Grès compact','Tight sandstone'),   lith:TR('Grès à ciment siliceux','Silica-cemented sandstone'),role:'neutral',    col:'#A0784A', light:'#c09060'},
-    basement:      {name:TR('Socle cristallin','Crystalline basement'), lith:'Granite/Gneiss',       role:'basement',   col:'#2D1B00', light:'#4a3010'},
+    quaternary:    {name:'Quaternaire',     lith:TRN('Argile/sable meuble','Loose clay/sand'),   role:'overburden', col:'#8B7355', light:'#b09070'},
+    chalk:         {name:'Craie',           lith:TRN('Calcaire micritique','Micritic limestone'),   role:'neutral',    col:'#E8E8D0', light:'#f0f0e0'},
+    shale_seal:    {name:TRN('Argile compacte','Compacted clay'), lith:TRN('Schiste argileux','Clay shale'),      role:'seal',       col:'#4a5568', light:'#6a7590'},
+    sandstone_res: {name:TRN('Grès poreux','Porous sandstone'),     lith:TRN('Grès à ciment calcitique','Calcite-cemented sandstone'), role:'reservoir', col:'#C4863A', light:'#e0a04a'},
+    carbonate_res: {name:TRN('Calcaire fracturé','Fractured limestone'),lith:TRN('Calcaire oolitique','Oolitic limestone'),   role:'reservoir', col:'#D4A853', light:'#e8c070'},
+    shale_source:  {name:TRN('Schiste organique','Organic shale'),lith:'Black shale (TOC>2%)', role:'source',     col:'#1a1a2e', light:'#2a2a4e'},
+    evaporite:     {name:TRN('Évaporites','Evaporites'),       lith:'Anhydrite/Halite',     role:'seal',       col:'#E8C0E0', light:'#f0d0f0'},
+    salt:          {name:'Sel (diapir)',      lith:TRN('Halite massive','Massive halite'),       role:'neutral',    col:'#F0E8F0', light:'#f8f0f8'},
+    sandstone_tight:{name:TRN('Grès compact','Tight sandstone'),   lith:TRN('Grès à ciment siliceux','Silica-cemented sandstone'),role:'neutral',    col:'#A0784A', light:'#c09060'},
+    basement:      {name:TRN('Socle cristallin','Crystalline basement'), lith:'Granite/Gneiss',       role:'basement',   col:'#2D1B00', light:'#4a3010'},
   }
 };
 
@@ -1350,37 +1355,37 @@ const BASIN_COLUMNS = {
              neutral_mid:[40,150], source:[30,70], 'reservoir#deep':[20,90] },
     pools: {
       overburden: [
-        {id:'par_quat', name:TR('Limons et alluvions quaternaires','Quaternary silts and alluvium'), lith:TR('Limons, sables et graviers de terrasse','Loams, sands and terrace gravels'), col:'#8B7355', light:'#b09070'},
-        {id:'par_tert', name:TR('Calcaires et sables tertiaires','Tertiary limestones and sands'),   lith:TR('Calcaire lutétien, sables de Fontainebleau','Lutetian limestone, Fontainebleau sands'), col:'#a89870', light:'#c8b890'},
+        {id:'par_quat', name:TRN('Limons et alluvions quaternaires','Quaternary silts and alluvium'), lith:TRN('Limons, sables et graviers de terrasse','Loams, sands and terrace gravels'), col:'#8B7355', light:'#b09070'},
+        {id:'par_tert', name:TRN('Calcaires et sables tertiaires','Tertiary limestones and sands'),   lith:TRN('Calcaire lutétien, sables de Fontainebleau','Lutetian limestone, Fontainebleau sands'), col:'#a89870', light:'#c8b890'},
       ],
       neutral_top: [
-        {id:'par_craie',  name:TR('Craie du Crétacé supérieur','Upper Cretaceous chalk'), lith:TR('Craie blanche à silex','White chalk with flint'), col:'#E0DCC8', light:'#f0eedd'},
-        {id:'par_albien', name:TR('Argiles et sables du Crétacé inférieur','Lower Cretaceous clays and sands'), lith:TR('Argiles du Gault, sables verts albiens','Gault clays, Albian greensands'), col:'#5a6a4a', light:'#7a8a68'},
+        {id:'par_craie',  name:TRN('Craie du Crétacé supérieur','Upper Cretaceous chalk'), lith:TRN('Craie blanche à silex','White chalk with flint'), col:'#E0DCC8', light:'#f0eedd'},
+        {id:'par_albien', name:TRN('Argiles et sables du Crétacé inférieur','Lower Cretaceous clays and sands'), lith:TRN('Argiles du Gault, sables verts albiens','Gault clays, Albian greensands'), col:'#5a6a4a', light:'#7a8a68'},
       ],
       seal: [
-        {id:'par_calloxf', name:TR('Argiles du Callovo-Oxfordien','Callovo-Oxfordian clays'), lith:TR('Argilite compacte, très faible perméabilité','Tight claystone, very low permeability'), col:'#3a4a5a', light:'#5a6a7a'},
-        {id:'par_oxf',     name:TR('Marnes de l\'Oxfordien','Oxfordian marls'),       lith:TR('Marnes grises à ammonites','Grey marls with ammonites'), col:'#6a7a60', light:'#8a9a80'},
+        {id:'par_calloxf', name:TRN('Argiles du Callovo-Oxfordien','Callovo-Oxfordian clays'), lith:TRN('Argilite compacte, très faible perméabilité','Tight claystone, very low permeability'), col:'#3a4a5a', light:'#5a6a7a'},
+        {id:'par_oxf',     name:TRN('Marnes de l\'Oxfordien','Oxfordian marls'),       lith:TRN('Marnes grises à ammonites','Grey marls with ammonites'), col:'#6a7a60', light:'#8a9a80'},
       ],
       reservoir: [
-        {id:'par_oolithe', name:TR('Oolithe blanche (Bathonien)','White Oolite (Bathonian)'), lith:TR('Grainstone oolitique, porosité interparticulaire','Oolitic grainstone, interparticle porosity'), col:'#D4A853', light:'#e8c070'},
-        {id:'par_dolomie', name:TR('Dolomie du Dogger','Dogger dolomite'),           lith:TR('Dolomie cristalline, porosité intercristalline','Crystalline dolomite, intercrystalline porosity'), col:'#B8904A', light:'#d0aa60'},
-        {id:'par_calc_frac', name:TR('Calcaire fracturé du Dogger','Fractured Dogger limestone'), lith:TR('Calcaire micritique à fractures ouvertes','Micritic limestone with open fractures'), col:'#C0A060', light:'#daba70'},
+        {id:'par_oolithe', name:TRN('Oolithe blanche (Bathonien)','White Oolite (Bathonian)'), lith:TRN('Grainstone oolitique, porosité interparticulaire','Oolitic grainstone, interparticle porosity'), col:'#D4A853', light:'#e8c070'},
+        {id:'par_dolomie', name:TRN('Dolomie du Dogger','Dogger dolomite'),           lith:TRN('Dolomie cristalline, porosité intercristalline','Crystalline dolomite, intercrystalline porosity'), col:'#B8904A', light:'#d0aa60'},
+        {id:'par_calc_frac', name:TRN('Calcaire fracturé du Dogger','Fractured Dogger limestone'), lith:TRN('Calcaire micritique à fractures ouvertes','Micritic limestone with open fractures'), col:'#C0A060', light:'#daba70'},
       ],
       neutral_mid: [
-        {id:'par_bajocien', name:TR('Calcaires argileux du Bajocien','Bajocian clayey limestones'), lith:TR('Wackestone à bioclastes, non réservoir','Bioclastic wackestone, non-reservoir'), col:'#909060', light:'#b0b070'},
-        {id:'par_lias_marne', name:TR('Marnes du Lias','Lias marls'), lith:TR('Marnes grises à faible porosité','Grey marls with low porosity'), col:'#787868', light:'#989880'},
+        {id:'par_bajocien', name:TRN('Calcaires argileux du Bajocien','Bajocian clayey limestones'), lith:TRN('Wackestone à bioclastes, non réservoir','Bioclastic wackestone, non-reservoir'), col:'#909060', light:'#b0b070'},
+        {id:'par_lias_marne', name:TRN('Marnes du Lias','Lias marls'), lith:TRN('Marnes grises à faible porosité','Grey marls with low porosity'), col:'#787868', light:'#989880'},
       ],
       source: [
-        {id:'par_toarcien', name:TR('Schistes carton du Toarcien','Toarcian paper shales'), lith:TR('Black shale marin, kérogène de type II','Marine black shale, type II kerogen'), col:'#1a1a2e', light:'#2a2a4e'},
-        {id:'par_lias_org', name:TR('Marnes organiques du Lias','Lias organic marls'),   lith:TR('Marne argileuse à kérogène de type II','Clayey marl with type II kerogen'), col:'#2a3a20', light:'#3a4a30'},
+        {id:'par_toarcien', name:TRN('Schistes carton du Toarcien','Toarcian paper shales'), lith:TRN('Black shale marin, kérogène de type II','Marine black shale, type II kerogen'), col:'#1a1a2e', light:'#2a2a4e'},
+        {id:'par_lias_org', name:TRN('Marnes organiques du Lias','Lias organic marls'),   lith:TRN('Marne argileuse à kérogène de type II','Clayey marl with type II kerogen'), col:'#2a3a20', light:'#3a4a30'},
       ],
       'reservoir#deep': [
-        {id:'par_trias_ss',  name:TR('Grès du Trias','Triassic sandstone'), lith:TR('Grès fluviatile du Trias supérieur','Upper Triassic fluvial sandstone'), col:'#D0A868', light:'#e8c488'},
-        {id:'par_trias_ark', name:TR('Arkose du Trias','Triassic arkose'), lith:TR('Grès feldspathique du Trias inférieur','Lower Triassic feldspathic sandstone'), col:'#B89058', light:'#d0a878'},
+        {id:'par_trias_ss',  name:TRN('Grès du Trias','Triassic sandstone'), lith:TRN('Grès fluviatile du Trias supérieur','Upper Triassic fluvial sandstone'), col:'#D0A868', light:'#e8c488'},
+        {id:'par_trias_ark', name:TRN('Arkose du Trias','Triassic arkose'), lith:TRN('Grès feldspathique du Trias inférieur','Lower Triassic feldspathic sandstone'), col:'#B89058', light:'#d0a878'},
       ],
       basement: [
-        {id:'par_socle',  name:TR('Socle hercynien','Variscan basement'), lith:TR('Gneiss et schistes métamorphiques','Gneiss and metamorphic schists'), col:'#332218', light:'#503828'},
-        {id:'par_granit', name:TR('Socle granitique hercynien','Variscan granitic basement'), lith:TR('Granite, imperméable','Granite, impermeable'), col:'#2D1B00', light:'#4a3010'},
+        {id:'par_socle',  name:TRN('Socle hercynien','Variscan basement'), lith:TRN('Gneiss et schistes métamorphiques','Gneiss and metamorphic schists'), col:'#332218', light:'#503828'},
+        {id:'par_granit', name:TRN('Socle granitique hercynien','Variscan granitic basement'), lith:TRN('Granite, imperméable','Granite, impermeable'), col:'#2D1B00', light:'#4a3010'},
       ],
     },
   },
@@ -1405,28 +1410,28 @@ const BASIN_COLUMNS = {
         pools: {
           // roche-mère profonde, sous le réservoir : le système classique est toujours présent dans toutes les provinces
           'source#deep': [
-            {id:'ns_lias_sh', name:TR('Argilites organiques du Lias','Lias organic claystones'), lith:TR('Mudstone organique du Jurassique inférieur, kérogène de type II','Lower Jurassic organic mudstone, type II kerogen'), col:'#2a3a20', light:'#3a4a30'},
-            {id:'ns_westph_coal', name:TR('Charbons du Westphalien','Westphalian coals'), lith:TR('Houille et argilites charbonneuses, kérogène de type III (gaz)','Bituminous coal and carbonaceous claystones, type III kerogen (gas)'), col:'#0d0d0d', light:'#2a2a2a'},
+            {id:'ns_lias_sh', name:TRN('Argilites organiques du Lias','Lias organic claystones'), lith:TRN('Mudstone organique du Jurassique inférieur, kérogène de type II','Lower Jurassic organic mudstone, type II kerogen'), col:'#2a3a20', light:'#3a4a30'},
+            {id:'ns_westph_coal', name:TRN('Charbons du Westphalien','Westphalian coals'), lith:TRN('Houille et argilites charbonneuses, kérogène de type III (gaz)','Bituminous coal and carbonaceous claystones, type III kerogen (gas)'), col:'#0d0d0d', light:'#2a2a2a'},
           ],
           'neutral_top#2': [
-            {id:'ns_cret_inf',  name:TR('Marnes du Crétacé moyen','Middle Cretaceous marls'), lith:TR('Marnes et argilites, couverture régionale','Marls and claystones, regional seal'), col:'#6a7a60', light:'#8a9a80'},
-            {id:'ns_cret_inf2', name:TR('Argilites du Crétacé moyen','Middle Cretaceous claystones'), lith:TR('Argilite grise compacte','Tight grey claystone'), col:'#4a5568', light:'#6a7590'},
+            {id:'ns_cret_inf',  name:TRN('Marnes du Crétacé moyen','Middle Cretaceous marls'), lith:TRN('Marnes et argilites, couverture régionale','Marls and claystones, regional seal'), col:'#6a7a60', light:'#8a9a80'},
+            {id:'ns_cret_inf2', name:TRN('Argilites du Crétacé moyen','Middle Cretaceous claystones'), lith:TRN('Argilite grise compacte','Tight grey claystone'), col:'#4a5568', light:'#6a7590'},
           ],
           source: [
-            {id:'ns_kimm',    name:TR('Argile de Kimmeridge','Kimmeridge Clay'), lith:TR('Argilite noire marine riche en matière organique, kérogène de type II','Organic-rich marine black claystone, type II kerogen'), col:'#1a1a2e', light:'#2a2a4e'},
-            {id:'ns_draupne', name:TR('Argilite de Draupne','Draupne claystone'),  lith:TR('Argilite organique du Jurassique supérieur, kérogène de type II','Upper Jurassic organic claystone, type II kerogen'), col:'#241a2a', light:'#3a2a44'},
+            {id:'ns_kimm',    name:TRN('Argile de Kimmeridge','Kimmeridge Clay'), lith:TRN('Argilite noire marine riche en matière organique, kérogène de type II','Organic-rich marine black claystone, type II kerogen'), col:'#1a1a2e', light:'#2a2a4e'},
+            {id:'ns_draupne', name:TRN('Argilite de Draupne','Draupne claystone'),  lith:TRN('Argilite organique du Jurassique supérieur, kérogène de type II','Upper Jurassic organic claystone, type II kerogen'), col:'#241a2a', light:'#3a2a44'},
           ],
           reservoir: [
-            {id:'ns_brent',  name:TR('Grès du Brent','Brent sandstone'),  lith:TR('Grès deltaïque du Jurassique moyen','Middle Jurassic deltaic sandstone'), col:'#C4863A', light:'#e0a04a'},
-            {id:'ns_fulmar', name:TR('Grès du Fulmar','Fulmar sandstone'), lith:TR('Grès marin du Jurassique supérieur','Upper Jurassic marine sandstone'), col:'#D0A868', light:'#e8c488'},
+            {id:'ns_brent',  name:TRN('Grès du Brent','Brent sandstone'),  lith:TRN('Grès deltaïque du Jurassique moyen','Middle Jurassic deltaic sandstone'), col:'#C4863A', light:'#e0a04a'},
+            {id:'ns_fulmar', name:TRN('Grès du Fulmar','Fulmar sandstone'), lith:TRN('Grès marin du Jurassique supérieur','Upper Jurassic marine sandstone'), col:'#D0A868', light:'#e8c488'},
           ],
           neutral_mid: [
-            {id:'ns_dunlin', name:TR('Argilites du Dunlin','Dunlin claystones'), lith:TR('Argilites et siltites du Jurassique inférieur','Lower Jurassic claystones and siltstones'), col:'#5a5040', light:'#7a7058'},
-            {id:'ns_drake',  name:TR('Siltites du Drake','Drake siltstones'),   lith:TR('Siltites argileuses compactes','Tight clayey siltstones'), col:'#887050', light:'#a89060'},
+            {id:'ns_dunlin', name:TRN('Argilites du Dunlin','Dunlin claystones'), lith:TRN('Argilites et siltites du Jurassique inférieur','Lower Jurassic claystones and siltstones'), col:'#5a5040', light:'#7a7058'},
+            {id:'ns_drake',  name:TRN('Siltites du Drake','Drake siltstones'),   lith:TRN('Siltites argileuses compactes','Tight clayey siltstones'), col:'#887050', light:'#a89060'},
           ],
           'reservoir#deep': [
-            {id:'ns_statfjord', name:TR('Grès du Statfjord','Statfjord sandstone'), lith:TR('Grès fluviatile du Trias supérieur','Upper Triassic fluvial sandstone'), col:'#B89058', light:'#d0a878'},
-            {id:'ns_skagerrak', name:TR('Grès du Skagerrak','Skagerrak sandstone'), lith:TR('Grès continental du Trias','Triassic continental sandstone'), col:'#A05030', light:'#c07040'},
+            {id:'ns_statfjord', name:TRN('Grès du Statfjord','Statfjord sandstone'), lith:TRN('Grès fluviatile du Trias supérieur','Upper Triassic fluvial sandstone'), col:'#B89058', light:'#d0a878'},
+            {id:'ns_skagerrak', name:TRN('Grès du Skagerrak','Skagerrak sandstone'), lith:TRN('Grès continental du Trias','Triassic continental sandstone'), col:'#A05030', light:'#c07040'},
           ],
         },
       },
@@ -1435,39 +1440,39 @@ const BASIN_COLUMNS = {
              reservoir:[30,150], neutral_mid:[60,200], source:[40,150] },
     pools: {
       overburden: [
-        {id:'ns_cenozoic', name:TR('Sables et argiles cénozoïques','Cenozoic sands and clays'), lith:TR('Séries deltaïques non consolidées','Unconsolidated deltaic series'), col:'#8B7355', light:'#b09070'},
-        {id:'ns_glacio',   name:TR('Argiles glacio-marines','Glacio-marine clays'),        lith:TR('Argiles et sables glacio-marins','Glacio-marine clays and sands'), col:'#7a8290', light:'#9aa2b0'},
+        {id:'ns_cenozoic', name:TRN('Sables et argiles cénozoïques','Cenozoic sands and clays'), lith:TRN('Séries deltaïques non consolidées','Unconsolidated deltaic series'), col:'#8B7355', light:'#b09070'},
+        {id:'ns_glacio',   name:TRN('Argiles glacio-marines','Glacio-marine clays'),        lith:TRN('Argiles et sables glacio-marins','Glacio-marine clays and sands'), col:'#7a8290', light:'#9aa2b0'},
       ],
       neutral_top: [
-        {id:'ns_chalk',    name:TR('Craie du Crétacé supérieur','Upper Cretaceous chalk'), lith:TR('Craie blanche à silex','White chalk with flint'), col:'#E0DCC8', light:'#f0eedd'},
-        {id:'ns_cret_marl',name:TR('Marnes du Crétacé inférieur','Lower Cretaceous marls'), lith:TR('Marnes et calcaires argileux','Marls and clayey limestones'), col:'#C8C4A0', light:'#e0dcc0'},
+        {id:'ns_chalk',    name:TRN('Craie du Crétacé supérieur','Upper Cretaceous chalk'), lith:TRN('Craie blanche à silex','White chalk with flint'), col:'#E0DCC8', light:'#f0eedd'},
+        {id:'ns_cret_marl',name:TRN('Marnes du Crétacé inférieur','Lower Cretaceous marls'), lith:TRN('Marnes et calcaires argileux','Marls and clayey limestones'), col:'#C8C4A0', light:'#e0dcc0'},
       ],
       'neutral_top#2': [
-        {id:'ns_bunter',  name:TR('Grès rouges du Trias','Triassic red sandstones'), lith:TR('Grès à ciment ferrugineux, litage oblique','Iron-cemented sandstone, cross-bedding'), col:'#A05030', light:'#c07040'},
-        {id:'ns_jur_mud', name:TR('Argilites du Jurassique','Jurassic claystones'), lith:TR('Argilites grises, faible perméabilité','Grey claystones, low permeability'), col:'#4a5568', light:'#6a7590'},
+        {id:'ns_bunter',  name:TRN('Grès rouges du Trias','Triassic red sandstones'), lith:TRN('Grès à ciment ferrugineux, litage oblique','Iron-cemented sandstone, cross-bedding'), col:'#A05030', light:'#c07040'},
+        {id:'ns_jur_mud', name:TRN('Argilites du Jurassique','Jurassic claystones'), lith:TRN('Argilites grises, faible perméabilité','Grey claystones, low permeability'), col:'#4a5568', light:'#6a7590'},
       ],
       evaporite: [
-        {id:'ns_zech_halite', name:TR('Sel du Zechstein','Zechstein salt'), lith:TR('Halite massive, intercalations d\'anhydrite','Massive halite with anhydrite interbeds'), col:'#F0E8F8', light:'#f8f0ff', mobileSalt:true},
-        {id:'ns_zech_mix',    name:TR('Évaporites du Zechstein','Zechstein evaporites'), lith:TR('Anhydrite, halite et dolomie alternées','Alternating anhydrite, halite and dolomite'), col:'#E0C8E8', light:'#f0d8f8', mobileSalt:true},
-        {id:'ns_zech_potash', name:TR('Sels potassiques du Zechstein','Zechstein potassium salts'), lith:'Sylvite et carnallite', col:'#D8A8C8', light:'#f0c8e0', mobileSalt:true},
+        {id:'ns_zech_halite', name:TRN('Sel du Zechstein','Zechstein salt'), lith:TRN('Halite massive, intercalations d\'anhydrite','Massive halite with anhydrite interbeds'), col:'#F0E8F8', light:'#f8f0ff', mobileSalt:true},
+        {id:'ns_zech_mix',    name:TRN('Évaporites du Zechstein','Zechstein evaporites'), lith:TRN('Anhydrite, halite et dolomie alternées','Alternating anhydrite, halite and dolomite'), col:'#E0C8E8', light:'#f0d8f8', mobileSalt:true},
+        {id:'ns_zech_potash', name:TRN('Sels potassiques du Zechstein','Zechstein potassium salts'), lith:'Sylvite et carnallite', col:'#D8A8C8', light:'#f0c8e0', mobileSalt:true},
       ],
       reservoir: [
-        {id:'ns_rot_eol',  name:TR('Grès éoliens du Rotliegend','Rotliegend aeolian sandstones'), lith:TR('Grès éolien bien classé, dunes du Permien','Well-sorted aeolian sandstone, Permian dunes'), col:'#C4863A', light:'#e0a04a'},
-        {id:'ns_rot_fluv', name:TR('Grès fluviatiles du Rotliegend','Rotliegend fluvial sandstones'), lith:TR('Grès fluvio-éolien à intercalations argileuses','Fluvio-aeolian sandstone with clay interbeds'), col:'#B89058', light:'#d0a878'},
+        {id:'ns_rot_eol',  name:TRN('Grès éoliens du Rotliegend','Rotliegend aeolian sandstones'), lith:TRN('Grès éolien bien classé, dunes du Permien','Well-sorted aeolian sandstone, Permian dunes'), col:'#C4863A', light:'#e0a04a'},
+        {id:'ns_rot_fluv', name:TRN('Grès fluviatiles du Rotliegend','Rotliegend fluvial sandstones'), lith:TRN('Grès fluvio-éolien à intercalations argileuses','Fluvio-aeolian sandstone with clay interbeds'), col:'#B89058', light:'#d0a878'},
       ],
       neutral_mid: [
-        {id:'ns_carb_sup', name:TR('Grès et siltites du Carbonifère supérieur','Upper Carboniferous sandstones and siltstones'), lith:TR('Grès compact et siltites de plaine alluviale','Tight sandstone and alluvial-plain siltstones'), col:'#A0784A', light:'#c09060'},
-        {id:'ns_stephanien', name:TR('Argilites rouges du Stéphanien','Stephanian red claystones'), lith:TR('Argilites et siltites rouges','Red claystones and siltstones'), col:'#887050', light:'#a89060'},
+        {id:'ns_carb_sup', name:TRN('Grès et siltites du Carbonifère supérieur','Upper Carboniferous sandstones and siltstones'), lith:TRN('Grès compact et siltites de plaine alluviale','Tight sandstone and alluvial-plain siltstones'), col:'#A0784A', light:'#c09060'},
+        {id:'ns_stephanien', name:TRN('Argilites rouges du Stéphanien','Stephanian red claystones'), lith:TRN('Argilites et siltites rouges','Red claystones and siltstones'), col:'#887050', light:'#a89060'},
       ],
       source: [
-        {id:'ns_coal',     name:TR('Charbons du Westphalien','Westphalian coals'), lith:TR('Houille, kérogène de type III (gaz)','Bituminous coal, type III kerogen (gas)'), col:'#0d0d0d', light:'#2a2a2a'},
-        {id:'ns_namurien', name:TR('Schistes organiques du Namurien','Namurian organic shales'), lith:TR('Black shale marin, kérogène de type II/III','Marine black shale, type II/III kerogen'), col:'#1a1a2e', light:'#2a2a4e'},
+        {id:'ns_coal',     name:TRN('Charbons du Westphalien','Westphalian coals'), lith:TRN('Houille, kérogène de type III (gaz)','Bituminous coal, type III kerogen (gas)'), col:'#0d0d0d', light:'#2a2a2a'},
+        {id:'ns_namurien', name:TRN('Schistes organiques du Namurien','Namurian organic shales'), lith:TRN('Black shale marin, kérogène de type II/III','Marine black shale, type II/III kerogen'), col:'#1a1a2e', light:'#2a2a4e'},
       ],
       'reservoir#deep': [
-        {id:'ns_westph_ss', name:TR('Grès du Westphalien','Westphalian sandstone'), lith:TR('Grès de chenal du Carbonifère supérieur','Upper Carboniferous channel sandstones'), col:'#B89058', light:'#d0a878'},
+        {id:'ns_westph_ss', name:TRN('Grès du Westphalien','Westphalian sandstone'), lith:TRN('Grès de chenal du Carbonifère supérieur','Upper Carboniferous channel sandstones'), col:'#B89058', light:'#d0a878'},
       ],
       basement: [
-        {id:'ns_socle', name:TR('Socle calédonien','Caledonian basement'), lith:TR('Gneiss et granites consolidés','Consolidated gneisses and granites'), col:'#2D1B00', light:'#4a3010'},
+        {id:'ns_socle', name:TRN('Socle calédonien','Caledonian basement'), lith:TRN('Gneiss et granites consolidés','Consolidated gneisses and granites'), col:'#2D1B00', light:'#4a3010'},
       ],
     },
   },
@@ -1479,40 +1484,40 @@ const BASIN_COLUMNS = {
              neutral_mid:[60,200], source:[60,180], evaporite:[100,300] },
     pools: {
       overburden: [
-        {id:'aq_landes', name:TR('Sables des Landes','Landes sands'), lith:TR('Sables éoliens plio-quaternaires','Plio-Quaternary aeolian sands'), col:'#c0a878', light:'#dcc498'},
-        {id:'aq_alluv',  name:TR('Alluvions quaternaires','Quaternary alluvium'), lith:TR('Sables, graviers et argiles','Sands, gravels and clays'), col:'#8B7355', light:'#b09070'},
+        {id:'aq_landes', name:TRN('Sables des Landes','Landes sands'), lith:TRN('Sables éoliens plio-quaternaires','Plio-Quaternary aeolian sands'), col:'#c0a878', light:'#dcc498'},
+        {id:'aq_alluv',  name:TRN('Alluvions quaternaires','Quaternary alluvium'), lith:TRN('Sables, graviers et argiles','Sands, gravels and clays'), col:'#8B7355', light:'#b09070'},
       ],
       neutral_top: [
-        {id:'aq_molasse', name:'Molasses tertiaires', lith:TR('Grès et argiles continentaux de l\'Éocène au Miocène','Continental sandstones and clays, Eocene to Miocene'), col:'#A05030', light:'#c07040'},
-        {id:'aq_calc_tert', name:TR('Calcaires tertiaires','Tertiary limestones'), lith:TR('Calcaire lacustre et marin de l\'Éocène','Eocene lacustrine and marine limestone'), col:'#D0C8A8', light:'#e8e0c0'},
+        {id:'aq_molasse', name:'Molasses tertiaires', lith:TRN('Grès et argiles continentaux de l\'Éocène au Miocène','Continental sandstones and clays, Eocene to Miocene'), col:'#A05030', light:'#c07040'},
+        {id:'aq_calc_tert', name:TRN('Calcaires tertiaires','Tertiary limestones'), lith:TRN('Calcaire lacustre et marin de l\'Éocène','Eocene lacustrine and marine limestone'), col:'#D0C8A8', light:'#e8e0c0'},
       ],
       seal: [
-        {id:'aq_marne_cret',  name:TR('Marnes du Crétacé supérieur','Upper Cretaceous marls'), lith:TR('Marnes et flysch argileux','Marls and clayey flysch'), col:'#6a7a60', light:'#8a9a80'},
-        {id:'aq_argile_cret', name:TR('Argilites du Crétacé supérieur','Upper Cretaceous claystones'), lith:TR('Argilite compacte','Tight claystone'), col:'#3a4a5a', light:'#5a6a7a'},
+        {id:'aq_marne_cret',  name:TRN('Marnes du Crétacé supérieur','Upper Cretaceous marls'), lith:TRN('Marnes et flysch argileux','Marls and clayey flysch'), col:'#6a7a60', light:'#8a9a80'},
+        {id:'aq_argile_cret', name:TRN('Argilites du Crétacé supérieur','Upper Cretaceous claystones'), lith:TRN('Argilite compacte','Tight claystone'), col:'#3a4a5a', light:'#5a6a7a'},
       ],
       reservoir: [
-        {id:'aq_dolomie',   name:TR('Dolomie du Crétacé inférieur','Lower Cretaceous dolomite'), lith:TR('Dolomie à porosité vacuolaire et karstique','Dolomite with vuggy and karstic porosity'), col:'#B8904A', light:'#d0aa60'},
-        {id:'aq_calc_frac', name:TR('Calcaire fracturé du Jurassique supérieur','Upper Jurassic fractured limestone'), lith:TR('Calcaire micritique à fractures ouvertes','Micritic limestone with open fractures'), col:'#C0A060', light:'#daba70'},
-        {id:'aq_gres_cret', name:TR('Grès du Crétacé inférieur','Lower Cretaceous sandstone'), lith:TR('Grès marin côtier','Coastal marine sandstone'), col:'#C4863A', light:'#e0a04a'},
+        {id:'aq_dolomie',   name:TRN('Dolomie du Crétacé inférieur','Lower Cretaceous dolomite'), lith:TRN('Dolomie à porosité vacuolaire et karstique','Dolomite with vuggy and karstic porosity'), col:'#B8904A', light:'#d0aa60'},
+        {id:'aq_calc_frac', name:TRN('Calcaire fracturé du Jurassique supérieur','Upper Jurassic fractured limestone'), lith:TRN('Calcaire micritique à fractures ouvertes','Micritic limestone with open fractures'), col:'#C0A060', light:'#daba70'},
+        {id:'aq_gres_cret', name:TRN('Grès du Crétacé inférieur','Lower Cretaceous sandstone'), lith:TRN('Grès marin côtier','Coastal marine sandstone'), col:'#C4863A', light:'#e0a04a'},
       ],
       neutral_mid: [
-        {id:'aq_marne_neo', name:TR('Marnes du Crétacé inférieur','Lower Cretaceous marls'), lith:TR('Marnes et calcaires argileux, non réservoir','Marls and clayey limestones, non-reservoir'), col:'#909060', light:'#b0b070'},
-        {id:'aq_mud_jur',   name:TR('Calcaires argileux du Jurassique','Jurassic clayey limestones'), lith:TR('Mudstone gris, très faible porosité','Grey mudstone, very low porosity'), col:'#787868', light:'#989880'},
+        {id:'aq_marne_neo', name:TRN('Marnes du Crétacé inférieur','Lower Cretaceous marls'), lith:TRN('Marnes et calcaires argileux, non réservoir','Marls and clayey limestones, non-reservoir'), col:'#909060', light:'#b0b070'},
+        {id:'aq_mud_jur',   name:TRN('Calcaires argileux du Jurassique','Jurassic clayey limestones'), lith:TRN('Mudstone gris, très faible porosité','Grey mudstone, very low porosity'), col:'#787868', light:'#989880'},
       ],
       source: [
-        {id:'aq_marne_org', name:TR('Marnes organiques du Crétacé inférieur','Lower Cretaceous organic marls'), lith:TR('Marne argileuse riche en matière organique','Organic-rich clayey marl'), col:'#2a3a20', light:'#3a4a30'},
-        {id:'aq_jur_src',   name:TR('Marnes noires du Jurassique','Jurassic black marls'), lith:TR('Marnes noires marines, kérogène de type II','Marine black marls, type II kerogen'), col:'#1a1a2e', light:'#2a2a4e'},
+        {id:'aq_marne_org', name:TRN('Marnes organiques du Crétacé inférieur','Lower Cretaceous organic marls'), lith:TRN('Marne argileuse riche en matière organique','Organic-rich clayey marl'), col:'#2a3a20', light:'#3a4a30'},
+        {id:'aq_jur_src',   name:TRN('Marnes noires du Jurassique','Jurassic black marls'), lith:TRN('Marnes noires marines, kérogène de type II','Marine black marls, type II kerogen'), col:'#1a1a2e', light:'#2a2a4e'},
       ],
       evaporite: [
-        {id:'aq_keuper',     name:TR('Sel du Keuper','Keuper salt'), lith:TR('Halite et anhydrite du Trias supérieur','Upper Triassic halite and anhydrite'), col:'#F0E8F8', light:'#f8f0ff', mobileSalt:true},
-        {id:'aq_keuper_mix', name:TR('Évaporites du Keuper','Keuper evaporites'), lith:TR('Anhydrite, halite et argiles bariolées','Anhydrite, halite and variegated clays'), col:'#E0C8E8', light:'#f0d8f8', mobileSalt:true},
+        {id:'aq_keuper',     name:TRN('Sel du Keuper','Keuper salt'), lith:TRN('Halite et anhydrite du Trias supérieur','Upper Triassic halite and anhydrite'), col:'#F0E8F8', light:'#f8f0ff', mobileSalt:true},
+        {id:'aq_keuper_mix', name:TRN('Évaporites du Keuper','Keuper evaporites'), lith:TRN('Anhydrite, halite et argiles bariolées','Anhydrite, halite and variegated clays'), col:'#E0C8E8', light:'#f0d8f8', mobileSalt:true},
       ],
       'reservoir#deep': [
-        {id:'aq_dolo_jur',   name:TR('Dolomie du Jurassique inférieur','Lower Jurassic dolomite'), lith:TR('Dolomie cristalline','Crystalline dolomite'), col:'#B8904A', light:'#d0aa60'},
-        {id:'aq_gres_trias', name:TR('Grès du Trias','Triassic sandstone'), lith:TR('Grès fluviatile du Trias','Triassic fluvial sandstone'), col:'#D0A868', light:'#e8c488'},
+        {id:'aq_dolo_jur',   name:TRN('Dolomie du Jurassique inférieur','Lower Jurassic dolomite'), lith:TRN('Dolomie cristalline','Crystalline dolomite'), col:'#B8904A', light:'#d0aa60'},
+        {id:'aq_gres_trias', name:TRN('Grès du Trias','Triassic sandstone'), lith:TRN('Grès fluviatile du Trias','Triassic fluvial sandstone'), col:'#D0A868', light:'#e8c488'},
       ],
       basement: [
-        {id:'aq_socle', name:TR('Socle hercynien','Variscan basement'), lith:TR('Granite et gneiss','Granite and gneiss'), col:'#2D1B00', light:'#4a3010'},
+        {id:'aq_socle', name:TRN('Socle hercynien','Variscan basement'), lith:TRN('Granite et gneiss','Granite and gneiss'), col:'#2D1B00', light:'#4a3010'},
       ],
     },
   },
@@ -1526,40 +1531,40 @@ const BASIN_COLUMNS = {
              neutral_mid:[80,250], source:[60,200], evaporite:[150,450] },
     pools: {
       overburden: [
-        {id:'gc_pleisto', name:TR('Sables et argiles pléistocènes','Pleistocene sands and clays'), lith:TR('Séries deltaïques non consolidées','Unconsolidated deltaic series'), col:'#8B7355', light:'#b09070'},
-        {id:'gc_holo',    name:TR('Argiles deltaïques récentes','Recent deltaic clays'), lith:TR('Argiles plastiques et silts du delta','Plastic clays and delta silts'), col:'#7a6a50', light:'#a08a60'},
+        {id:'gc_pleisto', name:TRN('Sables et argiles pléistocènes','Pleistocene sands and clays'), lith:TRN('Séries deltaïques non consolidées','Unconsolidated deltaic series'), col:'#8B7355', light:'#b09070'},
+        {id:'gc_holo',    name:TRN('Argiles deltaïques récentes','Recent deltaic clays'), lith:TRN('Argiles plastiques et silts du delta','Plastic clays and delta silts'), col:'#7a6a50', light:'#a08a60'},
       ],
       neutral_top: [
-        {id:'gc_plio', name:TR('Argiles et sables du Pliocène','Pliocene clays and sands'), lith:TR('Alternances sablo-argileuses deltaïques','Deltaic sand-clay alternations'), col:'#9e8a60', light:'#c0aa70'},
-        {id:'gc_plio2',name:TR('Argiles vertes du Pliocène','Pliocene green clays'), lith:TR('Argiles glauconieuses de plateforme','Glauconitic shelf clays'), col:'#5a6a4a', light:'#7a8a68'},
+        {id:'gc_plio', name:TRN('Argiles et sables du Pliocène','Pliocene clays and sands'), lith:TRN('Alternances sablo-argileuses deltaïques','Deltaic sand-clay alternations'), col:'#9e8a60', light:'#c0aa70'},
+        {id:'gc_plio2',name:TRN('Argiles vertes du Pliocène','Pliocene green clays'), lith:TRN('Argiles glauconieuses de plateforme','Glauconitic shelf clays'), col:'#5a6a4a', light:'#7a8a68'},
       ],
       seal: [
-        {id:'gc_mio_shale', name:TR('Argiles du Miocène','Miocene clays'), lith:TR('Argiles marines compactées, couverture régionale','Compacted marine clays, regional seal'), col:'#4a5568', light:'#6a7590'},
-        {id:'gc_olig_shale',name:TR('Argiles de l\'Oligocène','Oligocene clays'), lith:TR('Argilite marine compacte','Tight marine claystone'), col:'#3a4a5a', light:'#5a6a7a'},
+        {id:'gc_mio_shale', name:TRN('Argiles du Miocène','Miocene clays'), lith:TRN('Argiles marines compactées, couverture régionale','Compacted marine clays, regional seal'), col:'#4a5568', light:'#6a7590'},
+        {id:'gc_olig_shale',name:TRN('Argiles de l\'Oligocène','Oligocene clays'), lith:TRN('Argilite marine compacte','Tight marine claystone'), col:'#3a4a5a', light:'#5a6a7a'},
       ],
       reservoir: [
-        {id:'gc_mio_sand', name:TR('Sables deltaïques du Miocène','Miocene deltaic sands'), lith:TR('Sables de chenal et de front deltaïque','Channel and delta-front sands'), col:'#C4863A', light:'#e0a04a'},
-        {id:'gc_frio',     name:TR('Grès du Frio (Oligocène)','Frio sandstone (Oligocene)'), lith:TR('Grès de plaine deltaïque côtière','Coastal deltaic-plain sandstone'), col:'#D0A868', light:'#e8c488'},
-        {id:'gc_turb',     name:TR('Turbidites du Miocène','Miocene turbidites'), lith:TR('Grès fins à granoclassement, chenaux profonds','Fine-grained graded sandstones, deep channels'), col:'#B89058', light:'#d0a878'},
+        {id:'gc_mio_sand', name:TRN('Sables deltaïques du Miocène','Miocene deltaic sands'), lith:TRN('Sables de chenal et de front deltaïque','Channel and delta-front sands'), col:'#C4863A', light:'#e0a04a'},
+        {id:'gc_frio',     name:TRN('Grès du Frio (Oligocène)','Frio sandstone (Oligocene)'), lith:TRN('Grès de plaine deltaïque côtière','Coastal deltaic-plain sandstone'), col:'#D0A868', light:'#e8c488'},
+        {id:'gc_turb',     name:TRN('Turbidites du Miocène','Miocene turbidites'), lith:TRN('Grès fins à granoclassement, chenaux profonds','Fine-grained graded sandstones, deep channels'), col:'#B89058', light:'#d0a878'},
       ],
       neutral_mid: [
-        {id:'gc_austin',   name:TR('Craie d\'Austin (Crétacé)','Austin Chalk (Cretaceous)'), lith:TR('Craie argileuse, non réservoir conventionnel','Clayey chalk, not a conventional reservoir'), col:'#C8C4A0', light:'#e0dcc0'},
-        {id:'gc_cret_marl',name:TR('Marnes du Crétacé','Cretaceous marls'), lith:TR('Marnes grises à faible porosité','Grey marls with low porosity'), col:'#787868', light:'#989880'},
+        {id:'gc_austin',   name:TRN('Craie d\'Austin (Crétacé)','Austin Chalk (Cretaceous)'), lith:TRN('Craie argileuse, non réservoir conventionnel','Clayey chalk, not a conventional reservoir'), col:'#C8C4A0', light:'#e0dcc0'},
+        {id:'gc_cret_marl',name:TRN('Marnes du Crétacé','Cretaceous marls'), lith:TRN('Marnes grises à faible porosité','Grey marls with low porosity'), col:'#787868', light:'#989880'},
       ],
       source: [
-        {id:'gc_smackover',  name:TR('Calcaires organiques du Smackover','Smackover organic limestones'), lith:TR('Mudstone carbonaté laminé, riche en matière organique','Laminated carbonate mudstone, organic-rich'), col:'#2a3a20', light:'#3a4a30'},
-        {id:'gc_haynesville',name:TR('Schistes du Haynesville','Haynesville shales'), lith:TR('Black shale marin du Jurassique supérieur','Upper Jurassic marine black shale'), col:'#1a1a2e', light:'#2a2a4e'},
-        {id:'gc_eagleford',  name:TR('Schistes d\'Eagle Ford','Eagle Ford shales'), lith:TR('Black shale calcaire du Crétacé supérieur','Upper Cretaceous calcareous black shale'), col:'#241a2a', light:'#3a2a44'},
+        {id:'gc_smackover',  name:TRN('Calcaires organiques du Smackover','Smackover organic limestones'), lith:TRN('Mudstone carbonaté laminé, riche en matière organique','Laminated carbonate mudstone, organic-rich'), col:'#2a3a20', light:'#3a4a30'},
+        {id:'gc_haynesville',name:TRN('Schistes du Haynesville','Haynesville shales'), lith:TRN('Black shale marin du Jurassique supérieur','Upper Jurassic marine black shale'), col:'#1a1a2e', light:'#2a2a4e'},
+        {id:'gc_eagleford',  name:TRN('Schistes d\'Eagle Ford','Eagle Ford shales'), lith:TRN('Black shale calcaire du Crétacé supérieur','Upper Cretaceous calcareous black shale'), col:'#241a2a', light:'#3a2a44'},
       ],
       evaporite: [
-        {id:'gc_louann', name:TR('Sel Louann','Louann salt'), lith:TR('Halite massive du Jurassique moyen','Middle Jurassic massive halite'), col:'#F0E8F8', light:'#f8f0ff', mobileSalt:true},
+        {id:'gc_louann', name:TRN('Sel Louann','Louann salt'), lith:TRN('Halite massive du Jurassique moyen','Middle Jurassic massive halite'), col:'#F0E8F8', light:'#f8f0ff', mobileSalt:true},
       ],
       'reservoir#deep': [
-        {id:'gc_norphlet', name:TR('Grès éoliens du Norphlet','Norphlet aeolian sandstones'), lith:TR('Grès éolien profond du Jurassique supérieur','Deep Upper Jurassic aeolian sandstone'), col:'#C4863A', light:'#e0a04a'},
-        {id:'gc_smack_ls', name:TR('Calcaire oolitique du Smackover','Smackover oolitic limestone'), lith:TR('Grainstone oolitique profond','Deep oolitic grainstone'), col:'#D4A853', light:'#e8c070'},
+        {id:'gc_norphlet', name:TRN('Grès éoliens du Norphlet','Norphlet aeolian sandstones'), lith:TRN('Grès éolien profond du Jurassique supérieur','Deep Upper Jurassic aeolian sandstone'), col:'#C4863A', light:'#e0a04a'},
+        {id:'gc_smack_ls', name:TRN('Calcaire oolitique du Smackover','Smackover oolitic limestone'), lith:TRN('Grainstone oolitique profond','Deep oolitic grainstone'), col:'#D4A853', light:'#e8c070'},
       ],
       basement: [
-        {id:'gc_socle', name:TR('Socle de rift','Rift basement'), lith:TR('Granite et roches volcaniques','Granite and volcanic rocks'), col:'#2D1B00', light:'#4a3010'},
+        {id:'gc_socle', name:TRN('Socle de rift','Rift basement'), lith:TRN('Granite et roches volcaniques','Granite and volcanic rocks'), col:'#2D1B00', light:'#4a3010'},
       ],
     },
   },
@@ -1620,67 +1625,67 @@ function buildStratigraphy(basinType, rng, nVariants=1){
   // Pool de lithologies par RÔLE : tirage aléatoire, indépendant par variante
   const pools = {
     overburden: [
-      {id:'quat_alluvions', name:TR('Alluvions quaternaires','Quaternary alluvium'),  lith:TR('Argile sableuse, galets','Sandy clay, pebbles'),         col:'#8B7355', light:'#b09070'},
-      {id:'quat_argile',    name:TR('Argiles lacustres','Lacustrine clays'),       lith:TR('Argile grise plastique','Plastic grey clay'),           col:'#7a6a50', light:'#a08a60'},
-      {id:'quat_loess',     name:TR('Loess et limons','Loess and loams'),         lith:TR('Limo-sableux, non consolidé','Silty sand, unconsolidated'),      col:'#9e8a60', light:'#c0aa70'},
-      {id:'quat_tourbe',    name:TR('Tourbe et argile organique','Peat and organic clay'),lith:TR('Matériau organique peu consolidé','Poorly consolidated organic material'),col:'#4a3a28',light:'#6a5a40'},
-      {id:'quat_glaciaire', name:TR('Dépôts glaciaires','Glacial deposits'),       lith:TR('Till non trié, blocs et argile','Unsorted till, boulders and clay'),   col:'#7a8290', light:'#9aa2b0'},
-      {id:'quat_dunes',     name:TR('Sables éoliens récents','Recent aeolian sands'),  lith:TR('Sable fin bien trié, non consolidé','Well-sorted fine sand, unconsolidated'),col:'#c0a878',light:'#dcc498'},
+      {id:'quat_alluvions', name:TRN('Alluvions quaternaires','Quaternary alluvium'),  lith:TRN('Argile sableuse, galets','Sandy clay, pebbles'),         col:'#8B7355', light:'#b09070'},
+      {id:'quat_argile',    name:TRN('Argiles lacustres','Lacustrine clays'),       lith:TRN('Argile grise plastique','Plastic grey clay'),           col:'#7a6a50', light:'#a08a60'},
+      {id:'quat_loess',     name:TRN('Loess et limons','Loess and loams'),         lith:TRN('Limo-sableux, non consolidé','Silty sand, unconsolidated'),      col:'#9e8a60', light:'#c0aa70'},
+      {id:'quat_tourbe',    name:TRN('Tourbe et argile organique','Peat and organic clay'),lith:TRN('Matériau organique peu consolidé','Poorly consolidated organic material'),col:'#4a3a28',light:'#6a5a40'},
+      {id:'quat_glaciaire', name:TRN('Dépôts glaciaires','Glacial deposits'),       lith:TRN('Till non trié, blocs et argile','Unsorted till, boulders and clay'),   col:'#7a8290', light:'#9aa2b0'},
+      {id:'quat_dunes',     name:TRN('Sables éoliens récents','Recent aeolian sands'),  lith:TRN('Sable fin bien trié, non consolidé','Well-sorted fine sand, unconsolidated'),col:'#c0a878',light:'#dcc498'},
     ],
     neutral_top: [
-      {id:'chalk', age:80, name:TR('Craie blanche','White chalk'),          lith:TR('Calcaire micritique blanc, craie','White micritic limestone, chalk'),  col:'#E0DCC8', light:'#f0eedd'},
-      {id:'marly_ls',   name:TR('Calcaire marneux','Marly limestone'),       lith:TR('Calcaire à intercalations marneuses','Limestone with marl interbeds'),col:'#C8C4A0',light:'#e0dcc0'},
-      {id:'red_beds',   name:TR('Grès rouges continentaux','Continental red sandstones'),lith:TR('Grès à ciment ferrugineux, litage oblique','Iron-cemented sandstone, cross-bedding'),col:'#A05030',light:'#c07040'},
-      {id:'lignite_bed', age:30, name:TR('Niveau ligniteux','Lignitic level'),        lith:TR('Argile à passées de lignite','Clay with lignite interbeds'),       col:'#3a3020', light:'#5a4a30'},
-      {id:'bioclast_ls',name:TR('Calcaire bioclastique','Bioclastic limestone'),   lith:TR('Packstone à débris coquilliers','Packstone with shell debris'),    col:'#D0C8A8', light:'#e8e0c0'},
-      {id:'green_clay', name:TR('Argile verte glauconieuse','Green glauconitic clay'),lith:TR('Argile à glauconie, dépôt marin peu profond','Glauconitic clay, shallow marine deposit'),col:'#5a6a4a',light:'#7a8a68'},
+      {id:'chalk', age:80, name:TRN('Craie blanche','White chalk'),          lith:TRN('Calcaire micritique blanc, craie','White micritic limestone, chalk'),  col:'#E0DCC8', light:'#f0eedd'},
+      {id:'marly_ls',   name:TRN('Calcaire marneux','Marly limestone'),       lith:TRN('Calcaire à intercalations marneuses','Limestone with marl interbeds'),col:'#C8C4A0',light:'#e0dcc0'},
+      {id:'red_beds',   name:TRN('Grès rouges continentaux','Continental red sandstones'),lith:TRN('Grès à ciment ferrugineux, litage oblique','Iron-cemented sandstone, cross-bedding'),col:'#A05030',light:'#c07040'},
+      {id:'lignite_bed', age:30, name:TRN('Niveau ligniteux','Lignitic level'),        lith:TRN('Argile à passées de lignite','Clay with lignite interbeds'),       col:'#3a3020', light:'#5a4a30'},
+      {id:'bioclast_ls',name:TRN('Calcaire bioclastique','Bioclastic limestone'),   lith:TRN('Packstone à débris coquilliers','Packstone with shell debris'),    col:'#D0C8A8', light:'#e8e0c0'},
+      {id:'green_clay', name:TRN('Argile verte glauconieuse','Green glauconitic clay'),lith:TRN('Argile à glauconie, dépôt marin peu profond','Glauconitic clay, shallow marine deposit'),col:'#5a6a4a',light:'#7a8a68'},
     ],
     seal: [
-      {id:'shale_seal', name:TR('Argile compacte','Compacted clay'),        lith:'Schiste argileux gris, Il=55%',     col:'#4a5568', light:'#6a7590'},
-      {id:'anhydrite',  name:'Anhydrite',              lith:TR('Sulfate de calcium massif','Massive calcium sulphate'),          col:'#D8B8D8', light:'#ead0ea'},
-      {id:'marl',       name:TR('Marnes grises','Grey marls'),          lith:TR('Marne à foraminifères, Vsh>70%','Foraminiferal marl, Vsh>70%'),     col:'#6a7a60', light:'#8a9a80'},
-      {id:'claystone',  name:TR('Argilite compacte','Tight claystone'),      lith:TR('Argile compactée, faible perméabilité','Compacted clay, low permeability'),col:'#3a4a5a',light:'#5a6a7a'},
-      {id:'black_clay', name:TR('Argile noire feuilletée','Black laminated clay'),lith:TR('Shale non organique, litage millimétrique','Non-organic shale, millimetre lamination'),col:'#28303a',light:'#485058'},
-      {id:'siltstone_seal',name:TR('Siltite argileuse','Clayey siltstone'),   lith:TR('Siltite compacte à ciment argileux','Tight siltstone with clay cement'), col:'#5a5040', light:'#7a7058'},
-      {id:'gypsum_seal',name:'Gypse',                  lith:TR('Sulfate de calcium hydraté, massif','Hydrated calcium sulphate, massive'), col:'#E8D8E0', light:'#f8ecf2'},
+      {id:'shale_seal', name:TRN('Argile compacte','Compacted clay'),        lith:TRN('Schiste argileux gris, Il=55%','Grey clayey shale, Il=55%'),     col:'#4a5568', light:'#6a7590'},
+      {id:'anhydrite',  name:'Anhydrite',              lith:TRN('Sulfate de calcium massif','Massive calcium sulphate'),          col:'#D8B8D8', light:'#ead0ea'},
+      {id:'marl',       name:TRN('Marnes grises','Grey marls'),          lith:TRN('Marne à foraminifères, Vsh>70%','Foraminiferal marl, Vsh>70%'),     col:'#6a7a60', light:'#8a9a80'},
+      {id:'claystone',  name:TRN('Argilite compacte','Tight claystone'),      lith:TRN('Argile compactée, faible perméabilité','Compacted clay, low permeability'),col:'#3a4a5a',light:'#5a6a7a'},
+      {id:'black_clay', name:TRN('Argile noire feuilletée','Black laminated clay'),lith:TRN('Shale non organique, litage millimétrique','Non-organic shale, millimetre lamination'),col:'#28303a',light:'#485058'},
+      {id:'siltstone_seal',name:TRN('Siltite argileuse','Clayey siltstone'),   lith:TRN('Siltite compacte à ciment argileux','Tight siltstone with clay cement'), col:'#5a5040', light:'#7a7058'},
+      {id:'gypsum_seal',name:'Gypse',                  lith:TRN('Sulfate de calcium hydraté, massif','Hydrated calcium sulphate, massive'), col:'#E8D8E0', light:'#f8ecf2'},
     ],
     reservoir: [
-      {id:'sandstone',  name:TR('Grès poreux (clastique)','Porous sandstone (clastic)'), lith:TR('Grès moyen à grossier, φ 15-28%','Medium to coarse sandstone, φ 15-28%'),   col:'#C4863A', light:'#e0a04a'},
-      {id:'oolitic_ls', name:TR('Calcaire oolitique','Oolitic limestone'),      lith:TR('Grainstone oolitique, porosité interparticulaire','Oolitic grainstone, interparticle porosity'), col:'#D4A853', light:'#e8c070'},
-      {id:'dolomite',   name:TR('Dolomie cristalline','Crystalline dolomite'),     lith:TR('Dolomicrite à dolomicrosparite, porosité vugulaire','Dolomicrite to dolomicrosparite, vuggy porosity'), col:'#B8904A', light:'#d0aa60'},
-      {id:'frac_ls',    name:TR('Calcaire fracturé','Fractured limestone'),       lith:TR('Calcaire micritique à fractures ouvertes','Micritic limestone with open fractures'),col:'#C0A060',light:'#daba70'},
-      {id:'conglomerate',name:TR('Conglomérat poreux','Porous conglomerate'),     lith:TR('Rudite à matrice gréseux, φ 12-22%','Rudite with sandy matrix, φ 12-22%'),col:'#A07840', light:'#c09050'},
-      {id:'arkose',     name:TR('Arkose feldspathique','Feldspathic arkose'),    lith:TR('Grès à feldspaths, φ 10-20%','Feldspathic sandstone, φ 10-20%'),       col:'#D0A868', light:'#e8c488'},
-      {id:'reef_ls',    name:TR('Calcaire récifal','Reef limestone'),        lith:TR('Boundstone à coraux, porosité de charpente','Coral boundstone, framework porosity'),col:'#E0C080',light:'#f0d8a0'},
-      {id:'turbidite_ss',name:TR('Grès turbiditique','Turbidite sandstone'),      lith:TR('Grès fin à granoclassement, chenal profond','Fine-grained graded sandstone, deep channel'),col:'#B89058',light:'#d0a878'},
+      {id:'sandstone',  name:TRN('Grès poreux (clastique)','Porous sandstone (clastic)'), lith:TRN('Grès moyen à grossier, φ 15-28%','Medium to coarse sandstone, φ 15-28%'),   col:'#C4863A', light:'#e0a04a'},
+      {id:'oolitic_ls', name:TRN('Calcaire oolitique','Oolitic limestone'),      lith:TRN('Grainstone oolitique, porosité interparticulaire','Oolitic grainstone, interparticle porosity'), col:'#D4A853', light:'#e8c070'},
+      {id:'dolomite',   name:TRN('Dolomie cristalline','Crystalline dolomite'),     lith:TRN('Dolomicrite à dolomicrosparite, porosité vugulaire','Dolomicrite to dolomicrosparite, vuggy porosity'), col:'#B8904A', light:'#d0aa60'},
+      {id:'frac_ls',    name:TRN('Calcaire fracturé','Fractured limestone'),       lith:TRN('Calcaire micritique à fractures ouvertes','Micritic limestone with open fractures'),col:'#C0A060',light:'#daba70'},
+      {id:'conglomerate',name:TRN('Conglomérat poreux','Porous conglomerate'),     lith:TRN('Rudite à matrice gréseux, φ 12-22%','Rudite with sandy matrix, φ 12-22%'),col:'#A07840', light:'#c09050'},
+      {id:'arkose',     name:TRN('Arkose feldspathique','Feldspathic arkose'),    lith:TRN('Grès à feldspaths, φ 10-20%','Feldspathic sandstone, φ 10-20%'),       col:'#D0A868', light:'#e8c488'},
+      {id:'reef_ls',    name:TRN('Calcaire récifal','Reef limestone'),        lith:TRN('Boundstone à coraux, porosité de charpente','Coral boundstone, framework porosity'),col:'#E0C080',light:'#f0d8a0'},
+      {id:'turbidite_ss',name:TRN('Grès turbiditique','Turbidite sandstone'),      lith:TRN('Grès fin à granoclassement, chenal profond','Fine-grained graded sandstone, deep channel'),col:'#B89058',light:'#d0a878'},
     ],
     source: [
-      {id:'black_shale',name:TR('Schiste organique','Organic shale'),      lith:'Black shale, TOC 3-9%, Type II',    col:'#1a1a2e', light:'#2a2a4e'},
-      {id:'oil_shale',  name:TR('Schiste bitumineux','Oil shale'),     lith:TR('Mudstone organique, TOC 2-6%, Type I/II','Organic mudstone, TOC 2-6%, Type I/II'),col:'#2a1a20',light:'#3a2a30'},
-      {id:'marl_source',name:TR('Marne organique','Organic marl'),        lith:TR('Marne argileuse, TOC 1.5-4%, Type II','Clayey marl, TOC 1.5-4%, Type II'),col:'#2a3a20',light:'#3a4a30'},
-      {id:'coal_source', age:310, name:TR('Charbon houiller','Bituminous coal'),       lith:TR('Houille, TOC>50%, Type III (gaz)','Hard coal, TOC>50%, Type III (gas)'),  col:'#0d0d0d', light:'#2a2a2a'},
-      {id:'lacustrine_src',name:TR('Shale lacustre','Lacustrine shale'),      lith:TR('Mudstone lacustre, TOC 4-10%, Type I','Lacustrine mudstone, TOC 4-10%, Type I'),col:'#241a2a',light:'#3a2a44'},
-      {id:'phosphate_src',name:TR('Marne phosphatée','Phosphatic marl'),     lith:TR('Marne à phosphates, TOC 2-5%, Type II','Phosphatic marl, TOC 2-5%, Type II'),col:'#3a2a1a',light:'#5a4a30'},
+      {id:'black_shale',name:TRN('Schiste organique','Organic shale'),      lith:'Black shale, TOC 3-9%, Type II',    col:'#1a1a2e', light:'#2a2a4e'},
+      {id:'oil_shale',  name:TRN('Schiste bitumineux','Oil shale'),     lith:TRN('Mudstone organique, TOC 2-6%, Type I/II','Organic mudstone, TOC 2-6%, Type I/II'),col:'#2a1a20',light:'#3a2a30'},
+      {id:'marl_source',name:TRN('Marne organique','Organic marl'),        lith:TRN('Marne argileuse, TOC 1.5-4%, Type II','Clayey marl, TOC 1.5-4%, Type II'),col:'#2a3a20',light:'#3a4a30'},
+      {id:'coal_source', age:310, name:TRN('Charbon houiller','Bituminous coal'),       lith:TRN('Houille, TOC>50%, Type III (gaz)','Hard coal, TOC>50%, Type III (gas)'),  col:'#0d0d0d', light:'#2a2a2a'},
+      {id:'lacustrine_src',name:TRN('Shale lacustre','Lacustrine shale'),      lith:TRN('Mudstone lacustre, TOC 4-10%, Type I','Lacustrine mudstone, TOC 4-10%, Type I'),col:'#241a2a',light:'#3a2a44'},
+      {id:'phosphate_src',name:TRN('Marne phosphatée','Phosphatic marl'),     lith:TRN('Marne à phosphates, TOC 2-5%, Type II','Phosphatic marl, TOC 2-5%, Type II'),col:'#3a2a1a',light:'#5a4a30'},
     ],
     neutral_mid: [
-      {id:'tight_ss',   name:TR('Grès compact','Tight sandstone'),           lith:TR('Grès à ciment siliceux, φ<5%, k<0.01mD','Silica-cemented sandstone, φ<5%, k<0.01mD'),col:'#A0784A',light:'#c09060'},
-      {id:'wackestone', name:TR('Calcaire argileux','Clayey limestone'),      lith:TR('Wackestone à bioclastes, non réservoir','Bioclastic wackestone, non-reservoir'),col:'#909060',light:'#b0b070'},
-      {id:'siltstone',  name:'Siltite',                lith:TR('Arénite fine à ciment calcitique','Fine arenite with calcite cement'),   col:'#887050', light:'#a89060'},
-      {id:'mudstone_mid',name:TR('Mudstone gris','Grey mudstone'),         lith:TR('Boue carbonatée, très faible porosité','Carbonate mud, very low porosity'),col:'#787868',light:'#989880'},
-      {id:'volcaniclastic',name:'Tuf volcanoclastique',lith:TR('Cendres et débris volcaniques altérés','Altered volcanic ash and debris'),col:'#605850',light:'#807868'},
-      {id:'anhydritic_mid',name:TR('Dolomie anhydritique','Anhydritic dolomite'),lith:TR('Dolomie à nodules d\'anhydrite, non réservoir','Dolomite with anhydrite nodules, non-reservoir'),col:'#a89880',light:'#c8b8a0'},
+      {id:'tight_ss',   name:TRN('Grès compact','Tight sandstone'),           lith:TRN('Grès à ciment siliceux, φ<5%, k<0.01mD','Silica-cemented sandstone, φ<5%, k<0.01mD'),col:'#A0784A',light:'#c09060'},
+      {id:'wackestone', name:TRN('Calcaire argileux','Clayey limestone'),      lith:TRN('Wackestone à bioclastes, non réservoir','Bioclastic wackestone, non-reservoir'),col:'#909060',light:'#b0b070'},
+      {id:'siltstone',  name:'Siltite',                lith:TRN('Arénite fine à ciment calcitique','Fine arenite with calcite cement'),   col:'#887050', light:'#a89060'},
+      {id:'mudstone_mid',name:TRN('Mudstone gris','Grey mudstone'),         lith:TRN('Boue carbonatée, très faible porosité','Carbonate mud, very low porosity'),col:'#787868',light:'#989880'},
+      {id:'volcaniclastic',name:'Tuf volcanoclastique',lith:TRN('Cendres et débris volcaniques altérés','Altered volcanic ash and debris'),col:'#605850',light:'#807868'},
+      {id:'anhydritic_mid',name:TRN('Dolomie anhydritique','Anhydritic dolomite'),lith:TRN('Dolomie à nodules d\'anhydrite, non réservoir','Dolomite with anhydrite nodules, non-reservoir'),col:'#a89880',light:'#c8b8a0'},
     ],
     evaporite: [
-      {id:'halite',     name:TR('Sel gemme (Halite)','Rock salt (Halite)'),     lith:TR('Halite massive, intercalations anhydrite','Massive halite with anhydrite interbeds'),col:'#F0E8F8',light:'#f8f0ff', mobileSalt:true},
-      {id:'evap_mix',   name:TR('Évaporites mixtes','Mixed evaporites'),      lith:TR('Anhydrite + Halite alternées','Alternating anhydrite + halite'),       col:'#E0C8E8', light:'#f0d8f8', mobileSalt:true},
-      {id:'potash',     name:'Sel potassique',         lith:TR('Sylvite et carnallite, intercalations argileuses','Sylvite and carnallite, clay interbeds'),col:'#D8A8C8',light:'#f0c8e0', mobileSalt:true},
-      {id:'gypsum_evap',name:TR('Gypse laminé','Laminated gypsum'),           lith:TR('Gypse en bancs laminés, faciès de bordure','Gypsum in laminated beds, marginal facies'),col:'#E8D0E0',light:'#f8eaf4'},
+      {id:'halite',     name:TRN('Sel gemme (Halite)','Rock salt (Halite)'),     lith:TRN('Halite massive, intercalations anhydrite','Massive halite with anhydrite interbeds'),col:'#F0E8F8',light:'#f8f0ff', mobileSalt:true},
+      {id:'evap_mix',   name:TRN('Évaporites mixtes','Mixed evaporites'),      lith:TRN('Anhydrite + Halite alternées','Alternating anhydrite + halite'),       col:'#E0C8E8', light:'#f0d8f8', mobileSalt:true},
+      {id:'potash',     name:'Sel potassique',         lith:TRN('Sylvite et carnallite, intercalations argileuses','Sylvite and carnallite, clay interbeds'),col:'#D8A8C8',light:'#f0c8e0', mobileSalt:true},
+      {id:'gypsum_evap',name:TRN('Gypse laminé','Laminated gypsum'),           lith:TRN('Gypse en bancs laminés, faciès de bordure','Gypsum in laminated beds, marginal facies'),col:'#E8D0E0',light:'#f8eaf4'},
     ],
     basement: [
-      {id:'granite',    name:TR('Socle granitique','Granitic basement'),       lith:TR('Granite-gneiss, k≈0, imperméable','Granite-gneiss, k≈0, impermeable'),  col:'#2D1B00', light:'#4a3010'},
-      {id:'schist',     name:TR('Socle schisteux','Schistose basement'),        lith:TR('Schiste métamorphique, φ≈0','Metamorphic schist, φ≈0'),         col:'#241808', light:'#3a2808'},
-      {id:'basalt',     name:TR('Socle basaltique','Basaltic basement'),       lith:TR('Basalte fracturé, socle volcanique','Fractured basalt, volcanic basement'), col:'#1a1a1a', light:'#303030'},
-      {id:'gneiss',     name:TR('Socle gneissique','Gneissic basement'),       lith:TR('Gneiss rubané, métamorphisme élevé','Banded gneiss, high metamorphic grade'), col:'#332218', light:'#503828'},
+      {id:'granite',    name:TRN('Socle granitique','Granitic basement'),       lith:TRN('Granite-gneiss, k≈0, imperméable','Granite-gneiss, k≈0, impermeable'),  col:'#2D1B00', light:'#4a3010'},
+      {id:'schist',     name:TRN('Socle schisteux','Schistose basement'),        lith:TRN('Schiste métamorphique, φ≈0','Metamorphic schist, φ≈0'),         col:'#241808', light:'#3a2808'},
+      {id:'basalt',     name:TRN('Socle basaltique','Basaltic basement'),       lith:TRN('Basalte fracturé, socle volcanique','Fractured basalt, volcanic basement'), col:'#1a1a1a', light:'#303030'},
+      {id:'gneiss',     name:TRN('Socle gneissique','Gneissic basement'),       lith:TRN('Gneiss rubané, métamorphisme élevé','Banded gneiss, high metamorphic grade'), col:'#332218', light:'#503828'},
     ],
   };
 
@@ -2087,7 +2092,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       // une argile pure mieux qu'une siltite. Avant, le facteur ne dépendait que du faciès spatial.
       const sealH = reservoirIdx>0 ? horizons.slice(0, reservoirIdx).reverse().find(h=>h.role==='seal') : null;
       const sealLith = !sealH ? 1
-        : /anhydrit|gypse|halite|évaporit|\bsel\b/i.test(`${sealH.name} ${sealH.lith||''}`) ? 1.18
+        : /anhydrit|gypse|halite|évaporit|\bsel\b/i.test(`${FRN(sealH.name)} ${FRN(sealH.lith)||''}`) ? 1.18
         : clamp(1 + ((sealH.vshale ?? 77) - 77)/35*0.35, 0.78, 1.15);
       const sealFactor     = clamp((.15+sealFaciesVal*.8)*sealLith, .08, .95);
       // Force de génération locale : quantité d'HC que CE point produirait s'il
@@ -2330,7 +2335,7 @@ function gauss(rng){
 }
 const STUDIES = {
   gravity: {
-    name:TR('Levé gravimétrique régional','Regional gravity survey'),
+    name:TRN('Levé gravimétrique régional','Regional gravity survey'),
     desc:TR('Campagne aéroportée ou terrestre couvrant toute la concession. Mesure les anomalies de Bouguer révélatrices des variations de densité : hauts structuraux (anomalie positive), sel/roches légères (anomalie négative), épaisseur crustale.','Airborne or ground campaign covering the whole licence. Measures Bouguer anomalies that reveal density variations: structural highs (positive anomaly), salt and light rocks (negative anomaly), crustal thickness.'),
     reveals:TR('Carte structurale approximative de toute la concession : position relative de TOUS les blocs','Approximate structural map of the whole licence: relative position of ALL blocks'),
     cost: 84e3,      // coût de campagne régionale (une seule fois)
@@ -2369,7 +2374,7 @@ const STUDIES = {
   },
 
   seismic2d: {
-    name:TR('Sismique 2D (profil)','2D seismic (profile)'),
+    name:TRN('Sismique 2D (profil)','2D seismic (profile)'),
     desc:TR('Profil sismique réflexion le long d\'un transect entre deux blocs sélectionnés (A→B). Révèle la géométrie des réflecteurs (horizons stratiformes) et les discontinuités (failles). Résolution verticale ±150-250m.','Seismic reflection profile along a transect between two selected blocks (A→B). Reveals the geometry of the reflectors (stratiform horizons) and discontinuities (faults). Vertical resolution ±150-250 m.'),
     reveals:TR('Profondeur des horizons sur tout le profil A→B, failles majeures, géométrie du piège','Depth of the horizons along the whole A→B profile, major faults, trap geometry'),
     cost: 66e3,      // coût par bloc du profil
@@ -2418,7 +2423,7 @@ const STUDIES = {
   },
 
   seismic3d: {
-    name:TR('Sismique 3D (indicateurs directs d\'hydrocarbures)','3D seismic (direct hydrocarbon indicators)'),
+    name:TRN('Sismique 3D (indicateurs directs d\'hydrocarbures)','3D seismic (direct hydrocarbon indicators)'),
     desc:TR('Cube sismique 3D avec analyse AVO (Amplitude Versus Offset) : recherche d\'anomalies d\'amplitude (bright spots, flat spots) qui trahissent une possible présence de fluides. C\'est la meilleure information disponible SANS forer, mais une anomalie d\'amplitude n\'est pas une preuve : un sable aquifère, une lithologie particulière ou une très faible saturation en gaz peuvent donner un faux bright spot, et un vrai gisement peut rester discret. L\'incertitude affichée ne couvre pas ce risque de faux signal. Elle ne remplace pas un log de puits, qui nécessite un trou réel.','3D seismic cube with AVO (Amplitude Versus Offset) analysis: looks for amplitude anomalies (bright spots, flat spots) that betray a possible presence of fluids. It is the best information available WITHOUT drilling, but an amplitude anomaly is not proof: a water-bearing sand, a particular lithology or a very low gas saturation can give a false bright spot, and a real field can stay discreet. The displayed uncertainty does not cover this false-signal risk. It does not replace a well log, which requires a real hole.'),
     reveals:TR('Profondeur précise du réservoir, probabilité et qualité resserrées via indicateurs directs','Precise reservoir depth, probability and quality narrowed through direct indicators'),
     cost: 144e3,
@@ -2456,7 +2461,7 @@ const STUDIES = {
   },
 
   core: {
-    name:TR('Analyse de carotte','Core analysis'),
+    name:TRN('Analyse de carotte','Core analysis'),
     desc:TR('Carottage et analyses laboratoire : lames minces (pétrographie), porosimétrie au mercure (MICP), perméamètre, chromatographie des extraits. Fournit les vraies propriétés réservoir. Nécessite un échantillon physique de roche : uniquement possible sur un bloc déjà foré.','Coring and laboratory analyses: thin sections (petrography), mercury porosimetry (MICP), permeameter, extract chromatography. Provides the true reservoir properties. Requires a physical rock sample: only possible on a block already drilled.'),
     reveals:TR('Porosité/perméabilité précises, pétrographie détaillée, saturation en HC','Precise porosity/permeability, detailed petrography, HC saturation'),
     cost: 72e3,
@@ -2488,7 +2493,7 @@ const STUDIES = {
   },
 
   rockeval: {
-    name:TR('Géochimie Rock-Eval (pyrolyse)','Rock-Eval geochemistry (pyrolysis)'),
+    name:TRN('Géochimie Rock-Eval (pyrolyse)','Rock-Eval geochemistry (pyrolysis)'),
     desc:TR('Pyrolyse programmée en température sur des échantillons de roche-mère : quantifie la matière organique restante (S1/S2), le carbone organique total (TOC) et l\'indice d\'hydrogène (HI), et estime la température de craquage (Tmax) comme indicateur de maturité indépendant du calcul de paléo-enfouissement. Nécessite des cuttings ou une carotte : uniquement possible sur un bloc déjà foré.','Temperature-programmed pyrolysis on source rock samples: quantifies the remaining organic matter (S1/S2), total organic carbon (TOC) and hydrogen index (HI), and estimates the cracking temperature (Tmax) as a maturity indicator independent of the paleo-burial calculation. Requires cuttings or a core: only possible on a block already drilled.'),
     reveals:TR('TOC, indice d\'hydrogène (HI), Tmax, potentiel générateur de la roche-mère','TOC, hydrogen index (HI), Tmax, generative potential of the source rock'),
     cost: 57e3,
@@ -2515,7 +2520,7 @@ const STUDIES = {
       // Indice d'hydrogène : il part d'une valeur initiale fixée par le type de kérogène (I lacustre élevé, II marin, III charbon bas)
       // et BAISSE avec la maturité (le kérogène a déjà généré). Une roche-mère immature riche a donc le HI le plus haut, une roche
       // surmature le plus bas. Avant, il baissait avec la richesse de la source et tombait à zéro pour une source immature.
-      const nm = (srcL ? `${srcL.name||''} ${srcL.lith||''}` : '').toLowerCase();
+      const nm = (srcL ? `${FRN(srcL.name)||''} ${FRN(srcL.lith)||''}` : '').toLowerCase();
       const hi0 = /type iii|charbon|houille/.test(nm) ? 150 + rng()*100
                 : /type i\/ii/.test(nm) ? 480 + rng()*140
                 : /lacustre|type i\b/.test(nm) ? 600 + rng()*150
@@ -3311,7 +3316,7 @@ function renderGisementsPanel(){
     if(w.status==='producing'){
       const econ = econ0;
       const peak = (w.comps||[{q0:w.production}]).reduce((sum,c)=>sum+c.q0,0);
-      body = `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;"><span style="color:var(--muted);">Production</span><span>${Math.round(w.production)} ${w.isGas?'Mcf':'barils'}${TR(`${TR(`/mois (`,`/month (`)}`,`/month (`)}${Math.round(w.production/peak*100)}${TR(`${TR(` % du débit initial)`,`% of initial rate)`)}`,`${TR(`% of initial rate)`,`of initial rate)`)}`)}</span></div>
+      body = `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;"><span style="color:var(--muted);">Production</span><span>${Math.round(w.production)} ${w.isGas?'Mcf':TR('barils','barrels')}${TR(`${TR(`/mois (`,`/month (`)}`,`/month (`)}${Math.round(w.production/peak*100)}${TR(`${TR(` % du débit initial)`,`% of initial rate)`)}`,`${TR(`% of initial rate)`,`of initial rate)`)}`)}</span></div>
         <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">${TR(`${TR(`Net/mois`,`Net/month`)}`,`Net/month`)}</span><span style="color:${econ.net>=0?'var(--green)':'var(--red)'};">${formatM(econ.net)}</span></div>
         <div style="text-align:right;margin-top:6px;"><button class="cg-close" style="padding:2px 8px;" onclick="confirmCloseWell(${b.id})">${TR(`${TR(`🔧 Fermer`,`🔧 Close`)}`,`🔧 Close`)}</button></div>`;
     } else {
@@ -3375,14 +3380,14 @@ function renderFinancePanel(){
   html += `<div class="ps-section" style="margin-top:10px;">${TR(`${TR(`Emprunts`,`Loans`)}`,`Loans`)}</div>`;
   if(G.loans.length>0){
     G.loans.forEach((l,i)=>{
-      html += infoRow(`Emprunt ${i+1}`, `${formatM(l.monthlyPayment)}${TR(`${TR(`/mois × `,`/month × `)}`,`/month × `)}${l.monthsLeft}${TR(`${TR(` mois · reste `,` months · remaining `)}`,` months · remaining `)}${formatM(loanBalance(l))} <button class="study-btn study-btn-compact" style="margin-left:6px;" onclick="repayLoan(${i})" ${G.budget>=loanBalance(l)?'':'disabled'}>${TR(`${TR(`Solder`,`Pay off`)}`,`Pay off`)}</button>`);
+      html += infoRow(TR(`Emprunt ${i+1}`,`Loan ${i+1}`), `${formatM(l.monthlyPayment)}${TR(`${TR(`/mois × `,`/month × `)}`,`/month × `)}${l.monthsLeft}${TR(`${TR(` mois · reste `,` months · remaining `)}`,` months · remaining `)}${formatM(loanBalance(l))} <button class="study-btn study-btn-compact" style="margin-left:6px;" onclick="repayLoan(${i})" ${G.budget>=loanBalance(l)?'':'disabled'}>${TR(`${TR(`Solder`,`Pay off`)}`,`Pay off`)}</button>`);
     });
     html += infoRow(TR('Total remboursement/mois','Total repayment/month'), `<span style="color:var(--red);">${formatM(loansTotal)}</span>`);
     html += infoRow(TR('Dette restante','Remaining debt'), `<span style="color:var(--red);">${formatM(debtTotal())}</span>`);
   }
   const avail = loanAvailable();
   const loanAmounts = [2e6,5e6,10e6];
-  html += infoRow(TR('Capacité d\'emprunt','Borrowing capacity'), `<b>${formatM(avail)}</b> disponibles`);
+  html += infoRow(TR('Capacité d\'emprunt','Borrowing capacity'), `<b>${formatM(avail)}</b>${TR(` disponibles`,` available`)}`);
   html += `<div style="font-size:10px;color:var(--muted);margin:4px 0 6px;">${TR(`${TR(`7 %/an, remboursement sur 36 mois. La capacité dépend de vos puits en production (la banque prête surtout sur des revenus) et la dette restante compte contre votre valeur nette pour la victoire.`,`7%/year, repaid over 36 months. Capacity depends on your producing wells (the bank lends mainly against revenue) and the remaining debt counts against your net worth for the win.`)}`,`7%/year, repaid over 36 months. Capacity depends on your producing wells (the bank lends mainly against revenue) and the remaining debt counts against your net worth for the win.`)}</div>
   <div style="display:flex;gap:4px;flex-wrap:wrap;">
     ${loanAmounts.map(a=>`<button class="study-btn" style="flex:1;font-size:10px;padding:6px;" onclick="takeLoan(${a})" ${a<=avail+1?'':'disabled'}>${formatM(a)}</button>`).join('')}
@@ -3419,7 +3424,7 @@ function renderFinancePanel(){
           <button class="cg-close" style="padding:2px 8px;" onclick="confirmCloseWell(${b.id})">${TR(`${TR(`🔧 Fermer`,`🔧 Close`)}`,`🔧 Close`)}</button>
         </div>
         <div style="color:var(--muted);margin-top:3px;">
-          ${Math.round(w.production)} ${w.isGas?'Mcf':'barils'}${TR(`${TR(`/mois · `,`/month · `)}`,`/month · `)}${w.monthsActive}${TR(`${TR(` mois en production
+          ${Math.round(w.production)} ${w.isGas?'Mcf':TR('barils','barrels')}${TR(`${TR(`/mois · `,`/month · `)}`,`/month · `)}${w.monthsActive}${TR(`${TR(` mois en production
         `,` months in production
         `)}`,` months in production
         `)}</div>
@@ -3540,7 +3545,7 @@ function infoState(){ G.informant = G.informant || { briefs:[], hits:0, total:0,
 const infoCost = c => G.mode==='sandbox' ? 0 : c;
 function infoIsBig(ev){ return ev.kind==='shock' ? Math.abs(ev.size)>=8 : ev.kind==='trend' ? Math.abs(ev.target)>=0.2 : true; }
 function infoDesc(ev, d){
-  const when = d!==undefined ? `dans ${d} mois` : '';
+  const when = d!==undefined ? TR(`dans ${d} mois`,`in ${d} months`) : '';
   if(ev.kind==='shock'){ const m = Math.abs(ev.size); return TR(`${ev.size>0?'hausse':'baisse'} ${m>14?'brutale':'sensible'} du brut ${when} (de l'ordre de ${Math.round(m*0.7)} à ${Math.round(m*1.3)} $)`,`${m>14?'sharp':'noticeable'} ${ev.size>0?'rise':'drop'} in crude ${when} (roughly ${Math.round(m*0.7)} to ${Math.round(m*1.3)} $)`); }
   if(ev.kind==='trend') return TR(`changement de tendance du marché ${when}, orienté ${ev.target>0?'à la hausse':'à la baisse'}`,`market trend change ${when}, turning ${ev.target>0?'upward':'downward'}`);
   if(ev.kind==='embargo') return TR(`embargo, forte hausse du brut ${when} (de l'ordre de ${Math.round(ev.size*0.7)} à ${Math.round(ev.size*1.3)} $)`,`embargo, sharp rise in crude ${when} (roughly ${Math.round(ev.size*0.7)} to ${Math.round(ev.size*1.3)} $)`);
@@ -3563,7 +3568,7 @@ function infoBuyBrief(){
   items.sort((x,y)=>x.shownAt-y.shownAt);
   st.briefs.push({ month:G.month, items, done:false });
   if(!items.length) infoNote(TR(`Briefing du mois ${G.month} : rien de notable en vue sur ${INFO_BRIEF_H} mois (détection ${Math.round(INFO_BRIEF_DETECT*100)} %, un événement peut m'échapper).`,`Briefing for month ${G.month}: nothing notable in sight over ${INFO_BRIEF_H} months (detection ${Math.round(INFO_BRIEF_DETECT*100)} %, an event may slip past me).`));
-  else infoNote(`Briefing du mois ${G.month} : ` + items.map(it=>TR(`${it.desc}, vers le mois ${it.shownAt}`,`${it.desc}, around month ${it.shownAt}`)).join(' ; ') + TR(`. Fiabilité annoncée ${Math.round(INFO_BRIEF_DETECT*100)} % par élément.`,`. Stated reliability ${Math.round(INFO_BRIEF_DETECT*100)} % per item.`));
+  else infoNote(TR(`Briefing du mois ${G.month} : `,`Briefing for month ${G.month}: `) + items.map(it=>TR(`${it.desc}, vers le mois ${it.shownAt}`,`${it.desc}, around month ${it.shownAt}`)).join(' ; ') + TR(`. Fiabilité annoncée ${Math.round(INFO_BRIEF_DETECT*100)} % par élément.`,`. Stated reliability ${Math.round(INFO_BRIEF_DETECT*100)} % per item.`));
 }
 function infoSubscribe(){
   const st = infoState(), c = infoCost(INFO_SUB_COST);
@@ -3608,7 +3613,7 @@ function informantRender(){
       <button class="study-btn study-btn-compact" onclick="infoSubscribe()" ${(G.budget>=infoCost(INFO_SUB_COST))?'':'disabled'}>${active?'Prolonger':'S\'abonner'} · ${fmt(INFO_SUB_COST)}</button>
       ${active ? `<div class="lab-note" style="margin-top:6px;">${TR(`Abonnement jusqu'au mois `,`Subscription until month `)}${st.subUntil}.</div>` : ''}</div>
     <div class="lab-note"><b>${TR(TR("Bilan de l'informateur","Informant's track record"),"Informant's record")}</b> : ${TR('briefings', 'briefings')}, ${st.total ? TR(`${st.hits}${TR(` élément`,` item`)}${st.hits>1?'s':''}${TR(` réalisé`,` came true`)}${st.hits>1?'s':''}${TR(` sur `,` out of `)}${st.total}${TR(` annoncé`,` announced`)}${st.total>1?'s':''}`, `${st.hits} of ${st.total} announced item${st.total>1?'s':''} came true`) : TR(TR('aucun élément encore jugé','no item judged yet'), 'no item judged yet')} · ${TR('alertes', 'alerts')}, ${st.alertTotal ? TR(`${st.alertTotal}${TR(` annoncée`,` announced`)}${st.alertTotal>1?'s':''}${TR(`, dont `,`, of which `)}${st.fakes.length}${TR(` rumeur`,` rumour`)}${st.fakes.length>1?'s':''}${TR(` sans suite`,` with no follow-up`)}`, `${st.alertTotal} announced, of which ${st.fakes.length} rumour${st.fakes.length>1?'s':''} with no follow-up`) : TR(TR('aucune encore','none yet'), 'none yet')}.</div>
-    ${st.notes.length ? `<div class="lab-note" style="margin-top:8px;"><b>Derniers messages</b></div>${st.notes.slice(0,8).map(n=>`<div class="pa-item"><span>${TR(`mois `,`months `)}${n.month} : ${n.t}</span></div>`).join('')}` : ''}
+    ${st.notes.length ? `<div class="lab-note" style="margin-top:8px;"><b>${TR(`Derniers messages`,`Latest messages`)}</b></div>${st.notes.slice(0,8).map(n=>`<div class="pa-item"><span>${TR(`mois `,`months `)}${n.month} : ${n.t}</span></div>`).join('')}` : ''}
   </div>`;
 }
 
@@ -3777,7 +3782,7 @@ function simpleLessonHtml(b, success){
   let logTxt = '';
   { const hs = b.horizons || [], ri = hs.findIndex(h=>h.role==='reservoir');
     if(ri>=0){ const r = hs[ri], th = Math.round(r.thicknessLocal ?? r.thickness), seal = hs.slice(0,ri).reverse().find(h=>h.role==='seal' || h.role==='source');
-      logTxt = `${TR(` Le log de ce puits montre : `,` This well's log shows: `)}<b>${r.name}</b> de ${th}${TR(` m, porosité `,` m, porosity `)}${Math.round(r.porosity)} %${seal ? ', sous <b>'+seal.name.toLowerCase()+'</b>' : ''}${b.isGas ? TR(', avec du gaz (croisement densité-neutron)',', with gas (density-neutron crossover)') : ''}${TR(`. C'est ce que la sismique ne pouvait pas voir.`,`. That is what seismic could not see.`)}`; } }
+      logTxt = `${TR(` Le log de ce puits montre : `,` This well's log shows: `)}<b>${r.name}</b> de ${th}${TR(` m, porosité `,` m, porosity `)}${Math.round(r.porosity)} %${seal ? TR(', sous <b>',', under <b>')+seal.name.toLowerCase()+'</b>' : ''}${b.isGas ? TR(', avec du gaz (croisement densité-neutron)',', with gas (density-neutron crossover)') : ''}${TR(`. C'est ce que la sismique ne pouvait pas voir.`,`. That is what seismic could not see.`)}`; } }
   return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><b>${TR(`🌱 Leçon.`,`🌱 Lesson.`)}</b> ${t}${logTxt || TR(' Ouvrez l\'onglet Géologie : le log de ce puits montre ce que la sismique ne pouvait pas voir.',' Open the Geology tab: this well\'s log shows what seismic could not see.')}</div>`;
 }
 function showDrillReveal(b, geoOk, techOk, limitingFactor, calibHtml){
@@ -4106,7 +4111,7 @@ function labDrawSecLine(){
     const A = c(ea), B = c(eb), dx = B.x-A.x, dy = B.y-A.y, len = Math.hypot(dx, dy) || 1, u = { x:dx/len, y:dy/len };
     const off = Math.min(len*0.4, ea.offsetWidth*0.34);
     const x1 = (A.x + u.x*off).toFixed(1), y1 = (A.y + u.y*off).toFixed(1), x2 = (B.x - u.x*off).toFixed(1), y2 = (B.y - u.y*off).toFixed(1);
-    const ba = blocks[l.a], bb = blocks[l.b], tip = `Coupe (${ba.x},${ba.y}) vers (${bb.x},${bb.y})` + (l.cur ? TR(' : affichée',' : shown') : TR(' : cliquer pour la rouvrir',' : click to reopen it'));
+    const ba = blocks[l.a], bb = blocks[l.b], tip = TR(`Coupe (${ba.x},${ba.y}) vers (${bb.x},${bb.y})`,`Section (${ba.x},${ba.y}) to (${bb.x},${bb.y})`) + (l.cur ? TR(' : affichée',' : shown') : TR(' : cliquer pour la rouvrir',' : click to reopen it'));
     n++;
     out += `<g data-sec="${l.a}-${l.b}"><line class="hit" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="transparent" stroke-width="10" stroke-linecap="round" onclick="event.stopPropagation(); ${l.cur ? 'labGoSection(); renderSection();' : `secReopen(${l.a},${l.b})`}"><title>${tip}</title></line>
       <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--amber)" stroke-width="${l.cur?3:2}" stroke-linecap="round" ${l.cur?'marker-end="url(#secArrow)"':'stroke-dasharray="5 3"'} opacity="${l.cur?1:.55}" pointer-events="none"/></g>`;
@@ -4137,7 +4142,7 @@ function blockKnowledge(b){
       {n:TR('Piège','Trap'),      st:'conf', t:TR(`Facteur réel : ${f(b.trapFactor)}.`,`Actual factor: ${f(b.trapFactor)}.`)},
       {n:TR('Réservoir','Reservoir'),  st:'conf', t:TR(`Facteur réel : ${f(b.resFactor)}.`,`Actual factor: ${f(b.resFactor)}.`)},
       {n:'Couverture', st:'conf', t:TR(`Facteur réel : ${f(b.sealFactor)}.`,`Actual factor: ${f(b.sealFactor)}.`)},
-      {n:TR('Roche-mère','Source rock'), st:'conf', t:TR(`Charge : ${f(b.srcFactor)}${b.maturityClass ? ', '+b.maturityClass.toLowerCase() : ''}.`,`Charge: ${f(b.srcFactor)}${b.maturityClass ? ', '+b.maturityClass.toLowerCase() : ''}.`) + (b.srcAbsent ? TR(' Pas de roche-mère profonde dans cette province.',' No deep source rock in this province.') : '') + (b.viaFault ? TR(' Chargé par la roche-mère superficielle, au contact de la faille voisine (juxtaposition avec le réservoir).',' Charged by the shallow source rock, at the contact of the neighbouring fault (juxtaposition with the reservoir).') : b.chargeFrom ? (b.chargeFrom.self ? TR(' Le bloc est sa propre cuisine.',' The block is its own kitchen.') : TR(` Alimenté par la cuisine du bloc (${b.chargeFrom.x},${b.chargeFrom.y}), à ${String(b.chargeFrom.dist).replace('.',DEC)} blocs.`,` Fed by the kitchen of block (${b.chargeFrom.x},${b.chargeFrom.y}), ${String(b.chargeFrom.dist).replace('.',DEC)} blocks away.`)) : TR(' Aucune cuisine à portée : charge de fond seulement.',' No kitchen within reach: background charge only.'))},
+      {n:TR('Roche-mère','Source rock'), st:'conf', t:TR(`Charge : ${f(b.srcFactor)}${b.maturityClass ? ', '+matLbl(b.maturityClass).toLowerCase() : ''}.`,`Charge: ${f(b.srcFactor)}${b.maturityClass ? ', '+matLbl(b.maturityClass).toLowerCase() : ''}.`) + (b.srcAbsent ? TR(' Pas de roche-mère profonde dans cette province.',' No deep source rock in this province.') : '') + (b.viaFault ? TR(' Chargé par la roche-mère superficielle, au contact de la faille voisine (juxtaposition avec le réservoir).',' Charged by the shallow source rock, at the contact of the neighbouring fault (juxtaposition with the reservoir).') : b.chargeFrom ? (b.chargeFrom.self ? TR(' Le bloc est sa propre cuisine.',' The block is its own kitchen.') : TR(` Alimenté par la cuisine du bloc (${b.chargeFrom.x},${b.chargeFrom.y}), à ${String(b.chargeFrom.dist).replace('.',DEC)} blocs.`,` Fed by the kitchen of block (${b.chargeFrom.x},${b.chargeFrom.y}), ${String(b.chargeFrom.dist).replace('.',DEC)} blocks away.`)) : TR(' Aucune cuisine à portée : charge de fond seulement.',' No kitchen within reach: background charge only.'))},
     ];
   }
   const out = [];
@@ -4223,13 +4228,13 @@ function renderGeoPanel(b){
         <div class="pc-bar"></div><div class="pc-note">${e?.structPos!==undefined ? TR('Inconnue. Une sismique 3D donnera une première estimation.','Unknown. A 3D seismic survey will give a first estimate.') : TR('Inconnue. Commencez par le levé gravimétrique.','Unknown. Start with the gravity survey.')}</div></div>`;
     }
   } else {
-    html += `<div class="pcard"><div class="pc-top"><span>${TR(`Résultat du forage`,`Drilling result`)}</span><span class="pc-val" style="color:${b.well?'var(--green)':'var(--red)'}">${b.well?'Productif':'Sec'}</span></div>
+    html += `<div class="pcard"><div class="pc-top"><span>${TR(`Résultat du forage`,`Drilling result`)}</span><span class="pc-val" style="color:${b.well?'var(--green)':'var(--red)'}">${b.well?TR('Productif','Productive'):'Sec'}</span></div>
       <div class="pc-note">${b.well ? TR('Le puits produit : voir l\'onglet Gisements pour son suivi.','The well produces: see the Fields tab to follow it.') : TR('Aucun hydrocarbure exploitable. Les diagraphies ci-dessous montrent pourquoi.','No exploitable hydrocarbons. The logs below show why.')}</div></div>`;
   }
 
   // Système pétrolier : ce que vous savez
   html += `<div class="ps-section">${TR(`Système pétrolier · ce que vous savez`,`Petroleum system · what you know`)}</div><div class="kgrid">` +
-    blockKnowledge(b).map(k=>`<div class="kcard"><div class="k-top"><span class="k-name">${k.n}</span><span class="kst ${k.st}">${{conf:TR('Confirmé','Confirmed'),ind:'Indice',inc:'Inconnu'}[k.st]}</span></div><div class="k-txt">${k.t}</div></div>`).join('') + `</div>`;
+    blockKnowledge(b).map(k=>`<div class="kcard"><div class="k-top"><span class="k-name">${k.n}</span><span class="kst ${k.st}">${{conf:TR('Confirmé','Confirmed'),ind:TR('Indice','Index'),inc:'Inconnu'}[k.st]}</span></div><div class="k-txt">${k.t}</div></div>`).join('') + `</div>`;
 
   // Études sur ce bloc + avertissement avant de forer sans en savoir assez
   html += `<div class="ps-section">${TR(`Études sur ce bloc`,`Studies on this block`)}</div>` + blockStudiesHtml(b);
@@ -4243,7 +4248,7 @@ function renderGeoPanel(b){
     if(e.depth) html+=infoRow(TR('Profondeur du réservoir','Reservoir depth'), `${Math.round(e.depth)} m ±${Math.round(e.depthErr)} m`);
     if(e.quality!==undefined) html+=infoRow(TR('Qualité réservoir','Reservoir quality'), `${Math.round(e.quality)}/100 ±${Math.round(e.qualErr)}`);
     if(e.amplitude) html+=infoRow(TR('Indicateur direct (DHI)','Direct indicator (DHI)'), e.amplitude);
-    if(e.maturityClass) html+=infoRow(TR('Maturité roche-mère','Source rock maturity'), e.maturityClass);
+    if(e.maturityClass) html+=infoRow(TR('Maturité roche-mère','Source rock maturity'), matLbl(e.maturityClass));
     if(e.isGas) html+=`<div style="color:var(--amber);font-size:12px;margin-top:6px;">${TR(`Cible probablement `,`Target probably `)}<strong>gazeuse</strong> (surmaturation)</div>`;
     if(e.tempAtRes) html+=infoRow(TR('T° au réservoir','Reservoir temperature'),`${Math.round(e.tempAtRes)} °C`);
     if(e.pressureRes) html+=infoRow('Pression',`${e.pressureRes.toFixed(1)} MPa`);
@@ -4313,9 +4318,9 @@ function renderGeoPanel(b){
 // =====================================================================
 function wlLithClass(h){
   if(h.role==='overburden') return 'uncons';
-  if(h.role==='basement')   return /basalt/i.test(h.name) ? 'basalt' : 'basement';
-  if(h.role==='source')     return /charbon|houille/i.test(h.name) ? 'coal' : 'source';
-  const n = (h.name||'').toLowerCase();
+  if(h.role==='basement')   return /basalt/i.test(FRN(h.name)) ? 'basalt' : 'basement';
+  if(h.role==='source')     return /charbon|houille/i.test(FRN(h.name)) ? 'coal' : 'source';
+  const n = (FRN(h.name)||'').toLowerCase();
   if(/dolomie/.test(n)) return 'dolomite';
   if(/ligniteux/.test(n)) return 'shale';
   if(/charbon|houille|lignite/.test(n)) return 'coal';
@@ -4401,7 +4406,7 @@ function bvRender(){
     if(!b){ closeBigView(); return; }
     stage.innerHTML = wellLogHtml(b);
     if(!stage.querySelector('.wl-svg')){ closeBigView(); return; }
-    title.textContent = T('Diagraphies', 'Well logs') + ` : bloc (${b.x},${b.y})`;
+    title.textContent = T('Diagraphies', 'Well logs') + TR(` : bloc (${b.x},${b.y})`,` : block (${b.x},${b.y})`);
     if(stage.querySelector('button:not([data-bv-open])')){
       const zb = document.createElement('button'); zb.className = 'btn'; zb.style.display = 'inline-flex';
       zb.textContent = wlZoom ? TR('↕ Colonne entière','↕ Full column') : TR('🔍 Zoom sur le réservoir','🔍 Zoom on the reservoir'); zb.onclick = wlToggleZoom;
@@ -4540,7 +4545,7 @@ function wellLogHtml(b){
   const lin = (v,a,c,k) => tx(k) + clamp((v-a)/(c-a),0,1)*tw;       // échelle linéaire
   const lg  = (v,a,c,k) => tx(k) + clamp(Math.log10(Math.max(v,1e-3)/a)/Math.log10(c/a),0,1)*tw; // échelle log
   const pts = (arr,f) => arr.map((v,i)=>`${f(v).toFixed(1)},${ys(g.z[i]).toFixed(1)}`).join(' ');
-  let s = `<svg class="wl-svg" viewBox="0 0 ${VBW} ${H}" role="img" aria-label="Diagraphies du puits (${b.x},${b.y})" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, ui-monospace, monospace">`;
+  let s = `<svg class="wl-svg" viewBox="0 0 ${VBW} ${H}" role="img" aria-label="${TR('Diagraphies du puits','Well logs')} (${b.x},${b.y})" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, ui-monospace, monospace">`;
   // fond des pistes et grilles
   const titles = [['GR','0 — 150 API'],[TR('Résistivité','Resistivity'),'0,2 — 2000 Ω·m'],['ρb / NPHI',TR('1,95–2,95 g/cc · 45 à −15 %','1.95–2.95 g/cc · 45 to −15 %')],[TR('Sonique DT','Sonic DT'),'140 — 40 µs/ft']];
   for(let k=0;k<4;k++){
@@ -4561,7 +4566,7 @@ function wellLogHtml(b){
   g.H.forEach(h=>{
     const th = h.thicknessLocal ?? h.thickness;
     const y1 = ys(h.top), y2 = ys(Math.min(g.z1, h.top+th));
-    s += `<rect x="${left}" y="${y1.toFixed(1)}" width="${strip}" height="${Math.max(0.6,y2-y1).toFixed(1)}" fill="${h.col}" stroke="var(--line)" stroke-width="0.3"><title>${h.name} : ${Math.round(h.top)} à ${Math.round(h.top+th)} m</title></rect>`;
+    s += `<rect x="${left}" y="${y1.toFixed(1)}" width="${strip}" height="${Math.max(0.6,y2-y1).toFixed(1)}" fill="${h.col}" stroke="var(--line)" stroke-width="0.3"><title>${h.name}${TR(' : ',': ')}${Math.round(h.top)}${TR(' à ',' to ')}${Math.round(h.top+th)} m</title></rect>`;
     { const f = figureOf(h); if(f) s += `<rect x="${left}" y="${y1.toFixed(1)}" width="${strip}" height="${Math.max(0.6,y2-y1).toFixed(1)}" fill="url(#fig-${f}${figIsDark(h.col)?'-l':''})" opacity=".9" pointer-events="none"/>`; }
   });
   // croisement densité-neutron (jaune quand le neutron lit moins que la densité : signature du gaz)
@@ -4673,7 +4678,7 @@ function renderStudiesPanel(b){
     <div class="sc-meta"><span class="sc-cost">${G.mode==='sandbox'?'Gratuit':formatM(rockevalCost)}</span><span class="sc-reveal">${TR(`TOC, HI, Tmax, potentiel générateur`,`TOC, HI, Tmax, generative potential`)}</span></div>
     ${rockevalDone?'':!drilled
       ?TR('<div style="font-size:11px;color:var(--red);">Nécessite un forage réel sur ce bloc (cuttings ou carotte).</div>','<div style="font-size:11px;color:var(--red);">Requires an actual well on this block (cuttings or core).</div>')
-      :`<button class="study-btn study-btn-compact" ${canRockeval?'':'disabled'} onclick="performStudy(${b.id},'rockeval')">🧪 Rock-Eval : ${G.mode==='sandbox'?'Gratuit':formatM(rockevalCost)}</button>`}
+      :`<button class="study-btn study-btn-compact" ${canRockeval?'':'disabled'} onclick="performStudy(${b.id},'rockeval')">${TR(`🧪 Rock-Eval : `,`🧪 Rock-Eval: `)}${G.mode==='sandbox'?'Gratuit':formatM(rockevalCost)}</button>`}
   </div>`;
 
   // SONDAGE STRATIGRAPHIQUE (carte à part, toujours proposée)
@@ -4705,7 +4710,7 @@ function renderStudiesPanel(b){
     const econ = wellEconomics(w);
     html+=`<div class="ps-section" style="margin-top:12px;">${TR(`Puits actif`,`Active well`)}</div>`;
     html+=infoRow('Production',TR(`${Math.round(w.production)} ${w.isGas?'Mcf':'barils'}/mois`,`${Math.round(w.production)} ${w.isGas?'Mcf':'barrels'}/month`));
-    html+=infoRow(TR('En production','In production'),`${w.monthsActive} mois`);
+    html+=infoRow(TR('En production','In production'),TR(`${w.monthsActive} mois`,`${w.monthsActive} months`));
     html+=infoRow(TR('Revenu brut/mois','Gross revenue/month'),formatM(econ.revenue));
     html+=infoRow(TR('Coûts d\'exploitation/mois','Operating costs/month'),formatM(econ.opex));
     html+=`<div class="tr"><span class="tl">${TR(`${TR(`Net/mois`,`Net/month`)}`,`Net/month`)}</span><span style="color:${econ.net>=0?'var(--green)':'var(--red)'};font-weight:bold;">${formatM(econ.net)}</span></div>`;
@@ -4790,7 +4795,7 @@ function updateDrillSummary(blockId){
   summary.innerHTML=`
     <div class="tr"><span class="tl">${TR(`Coût forage estimé`,`Estimated drilling cost`)}</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}${b.isOffshore?' (offshore)':''}</span></div>
     <div class="tr"><span class="tl">${TR(`Probabilité de succès`,`Probability of success`)}</span><span>${probKnown?`${(prob*100).toFixed(0)}% × ${(relHere*100).toFixed(0)}${TR(`% (fiabilité du matériel à `,`% (equipment reliability at `)}${Math.round(depth)}${TR(` m, soit `,` m, i.e. `)}${Math.round(depth/eq.maxDepth*100)}${TR(`% de sa limite)`,`% of its limit)`)}`:TR('Inconnue : réalisez une sismique 3D pour l\'estimer','Unknown: run a 3D seismic survey to estimate it')}</span></div>
-    <div class="tr"><span class="tl">${TR(`Production si succès`,`Production if successful`)}</span><span>~${Math.round(estProd)} ${b.estimate.isGas?'Mcf':'barils'}${TR(`${TR(`/mois`,`/month`)}`,`/month`)}</span></div>
+    <div class="tr"><span class="tl">${TR(`Production si succès`,`Production if successful`)}</span><span>~${Math.round(estProd)} ${b.estimate.isGas?'Mcf':TR('barils','barrels')}${TR(`${TR(`/mois`,`/month`)}`,`/month`)}</span></div>
     <div class="tr"><span class="tl">${TR(`Profit mensuel net au départ`,`Net monthly profit at start`)}</span><span style="color:${netMonth>0?'var(--green)':'var(--red)'};">${formatM(netMonth)}${TR(`${TR(`/mois`,`/month`)}`,`/month`)}</span></div>
     ${evNet===null?'':`<div class="tr"><span class="tl">${TR(`Gain net espéré sur 10 ans`,`Expected net gain over 10 years`)}</span><span style="color:${evNet>0?'var(--green)':'var(--red)'};">${formatM(evNet)}</span></div>`}
     <div class="${beClass}" style="margin-top:4px;">${beText}${probKnown?'':TR(' (projection à prendre avec prudence : la probabilité de succès n\'est pas encore estimée sur ce bloc)',' (projection to be taken with caution: the probability of success is not yet estimated on this block)')}</div>
@@ -5148,7 +5153,7 @@ function labOptRender(){
     ${row('nolimit', TR('Aucune limite de temps','No time limit'), TR('La partie ne s\'arrête pas à la fin de la durée prévue du niveau (20, 25 ou 35 ans) : elle ne se termine que par la victoire ou la faillite. Modifiable en cours de partie tant que les options ne sont pas verrouillées.','The game does not stop at the end of the level\'s planned duration (20, 25 or 35 years): it ends only by victory or bankruptcy. Can be changed during the game as long as the options are not locked.'))}
     ${row('cheat', TR('Bouton « Voir la vérité » (triche)','“Show the truth” button (cheat)'), TR('Affiche la vraie coupe géologique à tout moment.','Shows the true geological section at any time.'))}
     <label class="lab-opt-row" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px;"><input type="checkbox" ${o.locked?'checked':''} onchange="labOptSet('locked', this.checked)"><span><b>${TR(`🔒 Verrouiller ces options`,`🔒 Lock these options`)}</b><br><span class="lab-mut">${TR(`Aucune modification possible en cours de partie, et le bouton « vérité » est retiré.`,`No changes possible during the game, and the “truth” button is removed.`)}</span></span></label>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;position:sticky;bottom:-14px;background:var(--panel);padding:10px 0 4px;"><button class="lab-pick" onclick="labOptCancel()">${labOptMode==='start'?'Retour':'Annuler'}</button><button class="lab-pick sel" id="labOptGo" onclick="labOptValidate()">${labOptMode==='start'?TR('Lancer la partie','Start the game'):'Appliquer'}</button></div></div>`;
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;position:sticky;bottom:-14px;background:var(--panel);padding:10px 0 4px;"><button class="lab-pick" onclick="labOptCancel()">${labOptMode==='start'?TR('Retour','Back'):'Annuler'}</button><button class="lab-pick sel" id="labOptGo" onclick="labOptValidate()">${labOptMode==='start'?TR('Lancer la partie','Start the game'):'Appliquer'}</button></div></div>`;
 }
 function labOptCancel(){ labOptClose(); }
 function labOptValidate(){
@@ -5210,9 +5215,9 @@ function secActionsRender(){
   const inProg = G.drilling.find(d=>d.blockId===b.id), money = c => G.mode==='sandbox' || G.budget>=c;
   const fmt = c => G.mode==='sandbox' ? 'gratuit' : formatM(c);
   let h = `<span class="sa-lbl">${TR(`${TR(`Bloc (`,`Block (`)}`,`Block (`)}${b.x}, ${b.y})</span>`;
-  if(b.well){ h += b.well.status==='producing' ? `<span>${TR(`Puits actif : `,`Active well: `)}${Math.round(b.well.production)} ${b.well.isGas?'Mcf':'barils'}${TR(`${TR(`/mois`,`/month`)}`,`/month`)}</span>` : `<span>${TR(`Puits `,`Well `)}${b.well.status==='closed'?TR('fermé','closed'):TR('terminé','finished')}</span>`; }
+  if(b.well){ h += b.well.status==='producing' ? `<span>${TR(`Puits actif : `,`Active well: `)}${Math.round(b.well.production)} ${b.well.isGas?'Mcf':TR('barils','barrels')}${TR(`${TR(`/mois`,`/month`)}`,`/month`)}</span>` : `<span>${TR(`Puits `,`Well `)}${b.well.status==='closed'?TR('fermé','closed'):TR('terminé','finished')}</span>`; }
   else if(b.dryHole) h += `<span>${TR(`Puits sec`,`Dry hole`)}</span>`;
-  else if(inProg) h += `<span>${inProg.method==='strati'?'Sondage':'Forage'}${TR(` en cours : fin au mois `,` in progress: ends in month `)}${inProg.endMonth}</span>`;
+  else if(inProg) h += `<span>${inProg.method==='strati'?TR('Sondage','Survey hole'):TR('Forage','Drilling')}${TR(` en cours : fin au mois `,` in progress: ends in month `)}${inProg.endMonth}</span>`;
   else if(b.studyLevel<1){
     const c = STUDIES.seismic3d.cost*(b.isOffshore?STUDIES.seismic3d.offMult:1);
     h += `<span>${TR(`Étudiez ce bloc avant de forer.`,`Study this block before drilling.`)}</span><button onclick="performStudy(${b.id},'seismic3d')" ${money(c)?'':'disabled'}>${TR(`📡 Sismique 3D · `,`📡 3D seismic · `)}${fmt(c)}</button>`;
@@ -5440,7 +5445,7 @@ function labHorizonTable(dispData, lv){
   const vc = v => v<3000 ? 'lent' : v<4200 ? 'moyen' : v<5200 ? 'rapide' : TR('très rapide','very fast');
   const fr = x => Math.round(x).toLocaleString('fr-FR');
   return `<div style="overflow-x:auto;"><table class="lab-tab"><thead><tr><th>Horizon</th><th>${TR(`Prof. toit`,`Top depth`)}</th><th>${TR(`Épaisseur`,`Thickness`)}</th><th>${TR(`Vitesse (±8 %)`,`Velocity (±8 %)`)}</th><th>${TR(`Contraste au toit`,`Contrast at top`)}</th><th>${TR(`Lithologie`,`Lithology`)}</th><th>${TR(`Cible`,`Target`)}</th></tr></thead><tbody>${rows.map(r=>
-    `<tr class="${G.labPick===r.li?'lab-sel':''}"><td><b>H${r.li+1}</b></td><td>${fr(r.top)} m</td><td>${fr(r.th)} m</td><td>${fr(r.v)} m/s <span class="lab-mut">(${vc(r.v)})</span></td><td>${r.li===0?'—':rc(r.R)}</td><td>${r.name?`<b>${r.name}</b>`:'<span class="lab-mut">?</span>'}</td><td><button class="lab-pick ${G.labPick===r.li?'sel':''}" onclick="labSetPick(${r.li})">${G.labPick===r.li?TR('🎯 cible','🎯 target'):'viser'}</button></td></tr>`).join('')}</tbody></table></div>`;
+    `<tr class="${G.labPick===r.li?'lab-sel':''}"><td><b>H${r.li+1}</b></td><td>${fr(r.top)} m</td><td>${fr(r.th)} m</td><td>${fr(r.v)} m/s <span class="lab-mut">(${vc(r.v)})</span></td><td>${r.li===0?'—':rc(r.R)}</td><td>${r.name?`<b>${r.name}</b>`:'<span class="lab-mut">?</span>'}</td><td><button class="lab-pick ${G.labPick===r.li?'sel':''}" onclick="labSetPick(${r.li})">${G.labPick===r.li?TR('🎯 cible','🎯 target'):TR('viser','aim')}</button></td></tr>`).join('')}</tbody></table></div>`;
 }
 
 // ---------- PHASE 2 : désigner l'horizon cible ----------
@@ -6289,7 +6294,7 @@ function updateHud(){
     document.getElementById('hudDrillFill').style.width = pct+'%';
     const remaining = nearest.endMonth - G.month;
     const extra = G.drilling.length>1 ? ` (+${G.drilling.length-1})` : '';
-    document.getElementById('hudDrillTxt').textContent = `${remaining} mois${extra}`;
+    document.getElementById('hudDrillTxt').textContent = TR(`${remaining} mois${extra}`,`${remaining} months${extra}`);
   } else {
     drillWrap.style.display = 'none';
   }
@@ -6402,7 +6407,7 @@ function guideCompute(){
   if(to2d.length && !capped){
     const c = to2d.reduce((sum,{b})=>sum+STUDIES.seismic2d.cost*(b.isOffshore?STUDIES.seismic2d.offMult:1),0);
     return {cur:2, text:TR(`Le profil A→B couvre ${prof.length} blocs. Une sismique 2D précisera la profondeur du réservoir et les failles.`,`The A→B profile covers ${prof.length} blocks. A 2D seismic survey will refine the reservoir depth and the faults.`),
-            act:{label:`Sismique 2D · ${formatM(c)}`, call:"guideDo('seismic2d')", ok:money(c), why:TR(`Budget insuffisant (${formatM(c)} requis).`,`Insufficient budget (${formatM(c)} required).`)}};
+            act:{label:TR(`Sismique 2D · ${formatM(c)}`,`2D seismic · ${formatM(c)}`), call:"guideDo('seismic2d')", ok:money(c), why:TR(`Budget insuffisant (${formatM(c)} requis).`,`Insufficient budget (${formatM(c)} required).`)}};
   }
   // Prochain bloc du profil à passer en 3D : le plus haut structuralement. On s'arrête
   // d'étudier dès qu'un bloc dépasse 35 % (il vaut mieux forer que multiplier les
@@ -6415,7 +6420,7 @@ function guideCompute(){
     const b = cands[0];
     const c = STUDIES.seismic3d.cost*(b.isOffshore?STUDIES.seismic3d.offMult:1);
     return {cur:3, text:TR(`Le profil montre un haut structural en (${b.x}, ${b.y}). Une sismique 3D y précisera la profondeur et cherchera des indices directs de fluides.`,`The profile shows a structural high at (${b.x}, ${b.y}). A 3D seismic survey there will refine the depth and look for direct fluid indicators.`),
-            act:{label:`Sismique 3D sur (${b.x}, ${b.y}) · ${formatM(c)}`, call:`guideDo('seismic3d',${b.id})`, ok:money(c), why:TR(`Budget insuffisant (${formatM(c)} requis).`,`Insufficient budget (${formatM(c)} required).`)}};
+            act:{label:TR(`Sismique 3D sur (${b.x}, ${b.y}) · ${formatM(c)}`,`3D seismic on (${b.x}, ${b.y}) · ${formatM(c)}`), call:`guideDo('seismic3d',${b.id})`, ok:money(c), why:TR(`Budget insuffisant (${formatM(c)} requis).`,`Insufficient budget (${formatM(c)} required).`)}};
   }
   { const unc = prof.map(o=>o.b).find(b=>labDrilled(b) && !labCalOk(b));
     if(unc) return {cur:4, text:TR(`Le puits (${unc.x}, ${unc.y}) n'est pas calé sur la sismique. Calez-le : sa lithologie se propagera alors sur le profil et vous gagnerez ${formatM(LAB_CAL_BONUS)}.`,`Well (${unc.x}, ${unc.y}) is not tied to the seismic. Tie it: its lithology will then propagate along the profile and you will earn ${formatM(LAB_CAL_BONUS)}.`),
@@ -6425,7 +6430,7 @@ function guideCompute(){
   if(LABOPT.mute && ranked.length && prof.length && !prof.some(o=>labDrilled(o.b)) && !prof.some(o=>o.b.strati)){
     const sc = prof.map(o=>o.b).filter(b=>free(b) && b.studyLevel>=1 && !b.strati).map(b=>({b, p:stratiPlan(b)})).filter(x=>x.p && x.p.equip).sort((a,z)=>a.p.cost-z.p.cost)[0];
     if(sc) return {cur:4, text:TR(`La sismique est muette et aucun puits du profil n'a de log : la coupe ne montre pas les roches. Un sondage stratigraphique en (${sc.b.x}, ${sc.b.y}) coûte environ 30 % d'un forage et révèle la lithologie (puis diagraphie).`,`Seismic is silent and no well on the profile has a log: the section does not show the rocks. A stratigraphic survey hole at (${sc.b.x}, ${sc.b.y}) costs about 30 % of a well and reveals the lithology (then the log).`),
-              act:{label:`Sondage en (${sc.b.x}, ${sc.b.y}) · ${formatM(sc.p.cost)}`, call:`guideDo('strati',${sc.b.id})`, ok:G.mode==='sandbox'||money(sc.p.cost), why:TR(`Budget insuffisant (${formatM(sc.p.cost)} requis).`,`Insufficient budget (${formatM(sc.p.cost)} required).`)}}; }
+              act:{label:TR(`Sondage en (${sc.b.x}, ${sc.b.y}) · ${formatM(sc.p.cost)}`,`Survey hole at (${sc.b.x}, ${sc.b.y}) · ${formatM(sc.p.cost)}`), call:`guideDo('strati',${sc.b.id})`, ok:G.mode==='sandbox'||money(sc.p.cost), why:TR(`Budget insuffisant (${formatM(sc.p.cost)} requis).`,`Insufficient budget (${formatM(sc.p.cost)} required).`)}}; }
   if(G.labPick==null && LABOPT.pick && ranked.length){
     return {cur:4, text:TR('Avant de forer, désignez sur la coupe l\'horizon que vous pensez être le réservoir : clic sur la sismique, ou bouton « viser » du tableau. Un mauvais choix donne un puits sec.','Before drilling, designate on the section the horizon you think is the reservoir: click on the seismic, or the “aim” button in the table. A wrong choice gives a dry hole.'),
             act:{label:TR('Aller à la coupe','Go to the section'), call:'labGoSection()', ok:true}};
@@ -6475,7 +6480,7 @@ function renderGuide(){
     const why = g.act && !g.act.ok && g.act.why ? `<div class="guide-why">${g.act.why}</div>` : '';
     html = `<ol class="guide-steps" aria-label="${TR(`Étapes`,`Steps`)}">${steps}</ol>
       <div class="guide-mini" onclick="document.getElementById('guideBar').classList.toggle('open'); if(typeof updateGuideHeight==='function') updateGuideHeight();"><span class="gm-bars">${bars}</span><span>${T('Étape','Step')} ${g.cur+1} ${T('sur','of')} 5 · ${stepName(g.cur)}</span></div>
-      <div class="guide-text"><strong>${T('Étape','Step')} ${g.cur+1} :</strong> ${g.text}</div>${act}
+      <div class="guide-text"><strong>${T('Étape','Step')} ${g.cur+1}${TR(' :',':')}</strong> ${g.text}</div>${act}
       <button class="guide-hide" onclick="guideToggle()">${T('Masquer le guide','Hide guide')}</button>${why}`;
   }
   if(html !== _guideHtml){ bar.innerHTML = html; _guideHtml = html; }
@@ -6563,7 +6568,7 @@ const FIG_RULES = [
 ];
 function figureOf(layer){
   if(!layer) return null;
-  for(const field of [layer.name||'', layer.lith||'']){
+  for(const field of [FRN(layer.name)||'', FRN(layer.lith)||'']){
     for(const [re, key] of FIG_RULES) if(re.test(field)) return key;
   }
   return null;
@@ -6954,7 +6959,7 @@ document.getElementById('tpSubmitBtn')?.addEventListener('click', ()=>{
       (`,` on the map by true probability of success
       (`)}${Math.round(b.trueProbability*100)}${TR(`%), soit un `,`%), i.e. a `)}${tier}${TR(`. Le facteur le plus faible sur ce bloc était
       `,`. The weakest factor on this block was
-      `)}<b>${FACTOR_LABEL[worst]}</b>${TR(`. Votre justification : `,`. Your justification: `)}<i>${t.justification.trim() || '(vide)'}</i>
+      `)}<b>${FACTOR_LABEL[worst]}</b>${TR(`. Votre justification : `,`. Your justification: `)}<i>${t.justification.trim() || TR('(vide)','(empty)')}</i>
     </div>`;
   });
   document.getElementById('tpTargetsResult').innerHTML = html;
@@ -7745,40 +7750,40 @@ function _doStartGame(){
   // cartes autonome, sans lien avec une carte ou une partie en cours.
   const CG_DECK = {
     piege: [
-      {id:'p1', name:TR('Anticlinal net','Clear anticline'),        val:5, desc:TR('Fermeture claire en 4 directions.','Clear closure in 4 directions.')},
-      {id:'p2', name:TR('Dôme de sel','Salt dome'),           val:4, desc:TR('Piège par remontée diapirique.','Trap by diapiric rise.')},
-      {id:'p3', name:TR('Faille scellante','Sealing fault'),      val:4, desc:TR('Rejet suffisant, argile en vis-à-vis.','Sufficient throw, clay opposite.')},
-      {id:'p4', name:TR('Biseau stratigraphique','Stratigraphic pinch-out'),val:3, desc:TR('Piège stratigraphique, moins net qu\'un anticlinal.','Stratigraphic trap, less clear-cut than an anticline.')},
-      {id:'p6', name:TR('Flanc de sel','Salt flank'),          val:3, desc:TR('Piège latéral contre un dôme, souvent étroit.','Lateral trap against a dome, often narrow.')},
-      {id:'p7', name:TR('Anticlinal faillé','Faulted anticline'),     val:4, desc:TR('Bon piège, mais compartimenté par une faille interne.','Good trap, but compartmentalised by an internal fault.')},
-      {id:'p5', name:TR('Structure ambiguë','Ambiguous structure'),     val:1, desc:TR('Fermeture incertaine sur les données disponibles.','Uncertain closure on the available data.')},
+      {id:'p1', name:TRN('Anticlinal net','Clear anticline'),        val:5, desc:TR('Fermeture claire en 4 directions.','Clear closure in 4 directions.')},
+      {id:'p2', name:TRN('Dôme de sel','Salt dome'),           val:4, desc:TR('Piège par remontée diapirique.','Trap by diapiric rise.')},
+      {id:'p3', name:TRN('Faille scellante','Sealing fault'),      val:4, desc:TR('Rejet suffisant, argile en vis-à-vis.','Sufficient throw, clay opposite.')},
+      {id:'p4', name:TRN('Biseau stratigraphique','Stratigraphic pinch-out'),val:3, desc:TR('Piège stratigraphique, moins net qu\'un anticlinal.','Stratigraphic trap, less clear-cut than an anticline.')},
+      {id:'p6', name:TRN('Flanc de sel','Salt flank'),          val:3, desc:TR('Piège latéral contre un dôme, souvent étroit.','Lateral trap against a dome, often narrow.')},
+      {id:'p7', name:TRN('Anticlinal faillé','Faulted anticline'),     val:4, desc:TR('Bon piège, mais compartimenté par une faille interne.','Good trap, but compartmentalised by an internal fault.')},
+      {id:'p5', name:TRN('Structure ambiguë','Ambiguous structure'),     val:1, desc:TR('Fermeture incertaine sur les données disponibles.','Uncertain closure on the available data.')},
     ],
     reservoir: [
-      {id:'r1', name:TR('Grès poreux bien trié','Well-sorted porous sandstone'),      val:5, desc:TR('Porosité et perméabilité excellentes.','Excellent porosity and permeability.')},
-      {id:'r2', name:TR('Calcaire fracturé','Fractured limestone'),          val:4, desc:TR('Perméabilité de fracture, hétérogène.','Fracture permeability, heterogeneous.')},
-      {id:'r3', name:TR('Carbonate karstifié','Karstified carbonate'),        val:4, desc:TR('Bonne porosité secondaire, mais imprévisible.','Good secondary porosity, but unpredictable.')},
-      {id:'r4', name:TR('Grès compacté profond','Deep compacted sandstone'),      val:2, desc:TR('Porosité réduite par la compaction.','Porosity reduced by compaction.')},
-      {id:'r6', name:TR('Calcaire récifal','Reef limestone'),           val:5, desc:TR('Porosité de charpente, souvent excellente si préservée.','Framework porosity, often excellent if preserved.')},
-      {id:'r7', name:TR('Grès turbiditique','Turbidite sandstone'),          val:3, desc:TR('Bonne porosité mais géométrie en chenaux, hétérogène.','Good porosity but channel geometry, heterogeneous.')},
-      {id:'r5', name:TR('Silt argileux','Clayey silt'),              val:1, desc:TR('Perméabilité très faible.','Very low permeability.')},
+      {id:'r1', name:TRN('Grès poreux bien trié','Well-sorted porous sandstone'),      val:5, desc:TR('Porosité et perméabilité excellentes.','Excellent porosity and permeability.')},
+      {id:'r2', name:TRN('Calcaire fracturé','Fractured limestone'),          val:4, desc:TR('Perméabilité de fracture, hétérogène.','Fracture permeability, heterogeneous.')},
+      {id:'r3', name:TRN('Carbonate karstifié','Karstified carbonate'),        val:4, desc:TR('Bonne porosité secondaire, mais imprévisible.','Good secondary porosity, but unpredictable.')},
+      {id:'r4', name:TRN('Grès compacté profond','Deep compacted sandstone'),      val:2, desc:TR('Porosité réduite par la compaction.','Porosity reduced by compaction.')},
+      {id:'r6', name:TRN('Calcaire récifal','Reef limestone'),           val:5, desc:TR('Porosité de charpente, souvent excellente si préservée.','Framework porosity, often excellent if preserved.')},
+      {id:'r7', name:TRN('Grès turbiditique','Turbidite sandstone'),          val:3, desc:TR('Bonne porosité mais géométrie en chenaux, hétérogène.','Good porosity but channel geometry, heterogeneous.')},
+      {id:'r5', name:TRN('Silt argileux','Clayey silt'),              val:1, desc:TR('Perméabilité très faible.','Very low permeability.')},
     ],
     couverture: [
-      {id:'c1', name:TR('Argile épaisse continue','Thick continuous clay'), val:5, desc:TR('Étanchéité verticale fiable sur toute la zone.','Reliable vertical seal across the whole area.')},
-      {id:'c2', name:TR('Évaporite massive','Massive evaporite'),       val:5, desc:TR('Couverture quasi parfaite si présente.','Near-perfect seal if present.')},
-      {id:'c3', name:TR('Marne compacte','Tight marl'),          val:4, desc:TR('Bonne étanchéité, un peu moins que l\'argile pure.','Good seal, a little less than pure clay.')},
-      {id:'c4', name:TR('Argile fissurée','Fissured clay'),         val:2, desc:TR('Étanchéité partiellement compromise.','Seal partly compromised.')},
-      {id:'c6', name:TR('Anhydrite laminée','Laminated anhydrite'),       val:4, desc:TR('Bonne couverture, un peu plus perméable que le sel massif.','Good seal, a little more permeable than massive salt.')},
-      {id:'c7', name:TR('Argilite compacte','Tight claystone'),       val:3, desc:TR('Étanchéité correcte, sensible à la fracturation.','Decent seal, sensitive to fracturing.')},
-      {id:'c5', name:TR('Couverture discontinue','Discontinuous seal'),  val:1, desc:TR('Fuites probables latéralement.','Likely lateral leaks.')},
+      {id:'c1', name:TRN('Argile épaisse continue','Thick continuous clay'), val:5, desc:TR('Étanchéité verticale fiable sur toute la zone.','Reliable vertical seal across the whole area.')},
+      {id:'c2', name:TRN('Évaporite massive','Massive evaporite'),       val:5, desc:TR('Couverture quasi parfaite si présente.','Near-perfect seal if present.')},
+      {id:'c3', name:TRN('Marne compacte','Tight marl'),          val:4, desc:TR('Bonne étanchéité, un peu moins que l\'argile pure.','Good seal, a little less than pure clay.')},
+      {id:'c4', name:TRN('Argile fissurée','Fissured clay'),         val:2, desc:TR('Étanchéité partiellement compromise.','Seal partly compromised.')},
+      {id:'c6', name:TRN('Anhydrite laminée','Laminated anhydrite'),       val:4, desc:TR('Bonne couverture, un peu plus perméable que le sel massif.','Good seal, a little more permeable than massive salt.')},
+      {id:'c7', name:TRN('Argilite compacte','Tight claystone'),       val:3, desc:TR('Étanchéité correcte, sensible à la fracturation.','Decent seal, sensitive to fracturing.')},
+      {id:'c5', name:TRN('Couverture discontinue','Discontinuous seal'),  val:1, desc:TR('Fuites probables latéralement.','Likely lateral leaks.')},
     ],
     charge: [
-      {id:'h1', name:TR('Kitchen mature proche','Mature kitchen nearby'),        val:5, desc:TR('Roche-mère mature à faible distance de migration.','Mature source rock within short migration distance.')},
-      {id:'h2', name:TR('Charge multiple','Multiple charge'),              val:4, desc:TR('Plusieurs voies de migration convergentes.','Several converging migration pathways.')},
-      {id:'h3', name:TR('Migration secondaire (faille)','Secondary migration (fault)'),val:3, desc:TR('Charge via une faille comme drain.','Charge via a fault acting as a drain.')},
-      {id:'h4', name:TR('Roche-mère riche mais loin','Rich source rock but distant'),   val:3, desc:TR('Bon potentiel, distance de migration risquée.','Good potential, risky migration distance.')},
-      {id:'h6', name:TR('Roche-mère surmature','Overmature source rock'),         val:2, desc:TR('Génère surtout du gaz, plus d\'huile disponible.','Generates mostly gas, no more oil available.')},
-      {id:'h7', name:TR('Double kitchen convergente','Double converging kitchen'),   val:5, desc:TR('Deux roches-mères matures alimentent le même piège.','Two mature source rocks feed the same trap.')},
-      {id:'h5', name:TR('Roche-mère immature','Immature source rock'),          val:1, desc:TR('Pas encore dans la fenêtre à huile.','Not yet in the oil window.')},
+      {id:'h1', name:TRN('Kitchen mature proche','Mature kitchen nearby'),        val:5, desc:TR('Roche-mère mature à faible distance de migration.','Mature source rock within short migration distance.')},
+      {id:'h2', name:TRN('Charge multiple','Multiple charge'),              val:4, desc:TR('Plusieurs voies de migration convergentes.','Several converging migration pathways.')},
+      {id:'h3', name:TRN('Migration secondaire (faille)','Secondary migration (fault)'),val:3, desc:TR('Charge via une faille comme drain.','Charge via a fault acting as a drain.')},
+      {id:'h4', name:TRN('Roche-mère riche mais loin','Rich source rock but distant'),   val:3, desc:TR('Bon potentiel, distance de migration risquée.','Good potential, risky migration distance.')},
+      {id:'h6', name:TRN('Roche-mère surmature','Overmature source rock'),         val:2, desc:TR('Génère surtout du gaz, plus d\'huile disponible.','Generates mostly gas, no more oil available.')},
+      {id:'h7', name:TRN('Double kitchen convergente','Double converging kitchen'),   val:5, desc:TR('Deux roches-mères matures alimentent le même piège.','Two mature source rocks feed the same trap.')},
+      {id:'h5', name:TRN('Roche-mère immature','Immature source rock'),          val:1, desc:TR('Pas encore dans la fenêtre à huile.','Not yet in the oil window.')},
     ],
   };
   const CG_CAT_LABEL = {piege:TR('Piège','Trap'), reservoir:TR('Réservoir','Reservoir'), couverture:'Couverture', charge:'Charge'};
@@ -8121,7 +8126,7 @@ function _doStartGame(){
          choices:[TR('Un dixième de la longueur d\'onde','One tenth of the wavelength'),TR('Un quart de la longueur d\'onde','A quarter of the wavelength'),TR('Deux longueurs d\'onde','Two wavelengths'),TR('Un mètre quelle que soit la fréquence','One metre whatever the frequency')], correct:1,
          explain:TR('La résolution verticale est de l\'ordre de λ/4. À grande profondeur, la vitesse est plus haute et la fréquence plus basse : la résolution se dégrade.','Vertical resolution is of the order of λ/4. At great depth, velocity is higher and frequency lower: resolution degrades.')},
         {q:TR('Une vitesse d\'intervalle inférieure à 3 000 m/s dans une couche suggère plutôt :','An interval velocity below 3,000 m/s in a layer rather suggests:'),
-         choices:[TR('De l\'anhydrite','Anhydrite'),TR('Du calcaire compact','Tight limestone'),TR('Des roches peu compactées, des argiles ou du charbon','Poorly compacted rocks, clays or coal'),'Du sel'], correct:2,
+         choices:[TR('De l\'anhydrite','Anhydrite'),TR('Du calcaire compact','Tight limestone'),TR('Des roches peu compactées, des argiles ou du charbon','Poorly compacted rocks, clays or coal'),TR('Du sel','Salt')], correct:2,
          explain:TR('Les roches peu compactées ont des vitesses lentes. L\'anhydrite, la dolomie et les calcaires compacts sont très rapides (plus de 5 000 m/s).','Poorly compacted rocks have slow velocities. Anhydrite, dolomite and tight limestones are very fast (over 5,000 m/s).')},
         {q:TR('Pourquoi un puits productif rend-il ses voisins plus prometteurs ?','Why does a productive well make its neighbours more promising?'),
          choices:[TR('Parce que la pression baisse','Because pressure drops'),TR('Parce qu\'il prouve qu\'un système pétrolier fonctionne (charge, réservoir, couverture) souvent partagé par les blocs proches','Because it proves that a petroleum system works (charge, reservoir, seal), often shared by nearby blocks'),TR('Parce que les prix montent','Because prices rise'),TR('Par simple hasard','By pure chance')], correct:1,
@@ -8238,7 +8243,7 @@ function _doStartGame(){
           } else if(kind==='force'){
             const c = qzShuffled(P.filter(x=>Math.abs(x.R)>=0.02 && Math.sign(x.R)===Math.sign(x.Re))); if(c.length<3) continue; const t3 = c.slice(0,3);
             const ab = t3.map(x=>Math.abs(x.R)), sorted=[...ab].sort((u,w)=>w-u); if(sorted[0]/sorted[1] < 1.4) continue;
-            q = { kind, chip:'Sismique', facts:t3.map((x,i)=>['Interface '+['①','②','③'][i], qzIface(x)]), ask:TR('Laquelle donne la réflexion la plus forte en amplitude ?','Which one gives the strongest reflection in amplitude?'), note:'|R| = |Z2 − Z1| / (Z2 + Z1), avec Z = ρ × V.', meta:{Rs:t3.map(x=>x.R)}, q:TR(`Trois interfaces d'un même puits. ① ${qzIface(t3[0])}. ② ${qzIface(t3[1])}. ③ ${qzIface(t3[2])}. Laquelle donne la réflexion la plus forte en amplitude ?`,`Three interfaces from the same well. ① ${qzIface(t3[0])}. ② ${qzIface(t3[1])}. ③ ${qzIface(t3[2])}. Which one gives the strongest reflection in amplitude?`),
+            q = { kind, chip:'Sismique', facts:t3.map((x,i)=>['Interface '+['①','②','③'][i], qzIface(x)]), ask:TR('Laquelle donne la réflexion la plus forte en amplitude ?','Which one gives the strongest reflection in amplitude?'), note:TR('|R| = |Z2 − Z1| / (Z2 + Z1), avec Z = ρ × V.','|R| = |Z2 − Z1| / (Z2 + Z1), with Z = ρ × V.'), meta:{Rs:t3.map(x=>x.R)}, q:TR(`Trois interfaces d'un même puits. ① ${qzIface(t3[0])}. ② ${qzIface(t3[1])}. ③ ${qzIface(t3[2])}. Laquelle donne la réflexion la plus forte en amplitude ?`,`Three interfaces from the same well. ① ${qzIface(t3[0])}. ② ${qzIface(t3[1])}. ③ ${qzIface(t3[2])}. Which one gives the strongest reflection in amplitude?`),
               choices:['Interface ①','Interface ②','Interface ③'], correct: ab.indexOf(sorted[0]),
               explain:`L'amplitude suit |R| = |Z2 − Z1| / (Z2 + Z1). ① ${qzFr(Math.round(ab[0]*1000)/1000)}, ② ${qzFr(Math.round(ab[1]*1000)/1000)}, ③ ${qzFr(Math.round(ab[2]*1000)/1000)}${TR(`. Ce qui compte est le contraste relatif d'impédance, pas la dureté d'une couche prise seule.`,`. What matters is the relative impedance contrast, not the hardness of a layer taken alone.`)}` };
           } else if(kind==='twt'){
@@ -8257,13 +8262,13 @@ function _doStartGame(){
               explain:TR(`Le calage relie profondeur et temps : V moyenne = 2 × z / t = 2 × ${z} / ${t/1000} s ≈ ${V} m/s. ${V*2} m/s viendrait d'un temps pris pour un trajet simple.`,`The tie links depth and time: average V = 2 × z / t = 2 × ${z} / ${t/1000} s ≈ ${V} m/s. ${V*2} m/s would come from a time taken as a one-way trip.`) };
           } else if(kind==='multiple'){
             const c = P.filter(x=>x.R>=0.12 && x.Re>0 && x.B.t0<1200).sort((u,w)=>Math.abs(w.R)-Math.abs(u.R)); if(!c.length) continue; const x=c[0]; const t0=Math.round(x.B.t0/10)*10; if(t0<80) continue;
-            q = { kind, chip:'Sismique', facts:[['Interface',`${x.A.name} sur ${x.B.name}`],[TR('Coefficient de réflexion','Reflection coefficient'),`R ≈ ${qzFr(Math.round(x.R*100)/100)}`],[TR('Réflecteur très fort à','Very strong reflector at'),`${t0} ms`]], ask:TR('À quel temps double attendez-vous le premier multiple de surface ?','At what two-way time do you expect the first surface multiple?'), note:TR('Un événement plus faible, de polarité inverse, apparaît plus bas sans interface correspondante.','A weaker event of reversed polarity appears lower down with no matching interface.'), meta:{t0,R:x.R}, q:`${TR(`Sur une sismique, l'interface `,`On a seismic section, the interface `)}${x.A.name}${TR(` sur `,` out of `)}${x.B.name} (R ≈ ${qzFr(Math.round(x.R*100)/100)}${TR(`) donne un réflecteur très fort à `,`) gives a very strong reflector at `)}${t0}${TR(` ms. Un événement parasite, plus faible et de polarité inverse (creux), apparaît plus bas sans interface correspondante en profondeur. À quel temps double attendez-vous le premier multiple de surface ?`,` ms. A spurious event, weaker and of reversed polarity (trough), appears lower down with no matching interface at depth. At what two-way time do you expect the first surface multiple?`)}`,
+            q = { kind, chip:'Sismique', facts:[['Interface',TR(`${x.A.name} sur ${x.B.name}`,`${x.A.name} over ${x.B.name}`)],[TR('Coefficient de réflexion','Reflection coefficient'),`R ≈ ${qzFr(Math.round(x.R*100)/100)}`],[TR('Réflecteur très fort à','Very strong reflector at'),`${t0} ms`]], ask:TR('À quel temps double attendez-vous le premier multiple de surface ?','At what two-way time do you expect the first surface multiple?'), note:TR('Un événement plus faible, de polarité inverse, apparaît plus bas sans interface correspondante.','A weaker event of reversed polarity appears lower down with no matching interface.'), meta:{t0,R:x.R}, q:`${TR(`Sur une sismique, l'interface `,`On a seismic section, the interface `)}${x.A.name}${TR(` sur `,` out of `)}${x.B.name} (R ≈ ${qzFr(Math.round(x.R*100)/100)}${TR(`) donne un réflecteur très fort à `,`) gives a very strong reflector at `)}${t0}${TR(` ms. Un événement parasite, plus faible et de polarité inverse (creux), apparaît plus bas sans interface correspondante en profondeur. À quel temps double attendez-vous le premier multiple de surface ?`,` ms. A spurious event, weaker and of reversed polarity (trough), appears lower down with no matching interface at depth. At what two-way time do you expect the first surface multiple?`)}`,
               choices:[`${t0*2} ms`,`${Math.round(t0*1.5)} ms`,`${t0*4} ms`], correct:0,
               explain:`${TR(`Le premier multiple est l'onde qui a fait un aller-retour de plus entre le réflecteur et la surface : il arrive au double du temps du primaire, soit 2 × `,`The first multiple is the wave that made one more round trip between the reflector and the surface: it arrives at twice the primary's time, i.e. 2 × `)}${t0} = ${t0*2}${TR(` ms, et, pour un primaire positif, avec une polarité inversée (la surface libre réfléchit avec un coefficient de −1). Un événement qui ne correspond à aucune interface réelle et tombe à un multiple exact du temps d'un fort réflecteur est un multiple, pas un horizon.`,` ms, and, for a positive primary, with reversed polarity (the free surface reflects with a coefficient of −1). An event that matches no real interface and falls at an exact multiple of a strong reflector's time is a multiple, not a horizon.`)}` };
           } else if(kind==='resol'){
             const l = L[Math.floor(Math.random()*L.length)]; const f = [20,25,28,30][Math.floor(Math.random()*4)], V = Math.round(l.v/50)*50; if(V<2000) continue; const e = Math.round(V/(4*f));
             q = { kind, chip:'Sismique', facts:[[TR('Fréquence dominante','Dominant frequency'),`${f} Hz`],[TR('Vitesse dans la couche','Velocity in the layer'),`${V} m/s`],['Couche',l.name]], ask:TR('Quelle épaisseur minimale de couche peut-on encore distinguer (critère du quart de longueur d\'onde) ?','What minimum layer thickness can still be distinguished (quarter-wavelength criterion)?'), meta:{f,V,e}, q:TR(`La fréquence dominante de la sismique est de ${f} Hz. Dans la couche « ${l.name} », la vitesse est de ${V} m/s. Quelle épaisseur minimale de couche peut-on encore distinguer (critère du quart de longueur d'onde) ?`,`The dominant frequency of the seismic is ${f} Hz. In the layer “${l.name}”, the velocity is ${V} m/s. What minimum layer thickness can still be distinguished (quarter-wavelength criterion)?`),
-              choices:[`environ ${e} m`,`environ ${e*2} m`,`environ ${e*4} m`], correct:0,
+              choices:[TR(`environ ${e} m`,`about ${e} m`),TR(`environ ${e*2} m`,`about ${e*2} m`),TR(`environ ${e*4} m`,`about ${e*4} m`)], correct:0,
               explain:TR(`La longueur d'onde est λ = V / f = ${V} / ${f} ≈ ${Math.round(V/f)} m. La limite de résolution verticale est λ / 4 ≈ ${e} m : en dessous, les réflexions du toit et du mur se mélangent. ${e*4} m serait la longueur d'onde entière.`,`The wavelength is λ = V / f = ${V} / ${f} ≈ ${Math.round(V/f)} m. The vertical resolution limit is λ / 4 ≈ ${e} m: below that, the reflections from top and base merge. ${e*4} m would be the full wavelength.`) };
           }
           if(q){ q.gen = true; out.push(q); break; }
@@ -8369,7 +8374,7 @@ function _doStartGame(){
             const tbl = rows.map(r=>{ const pw = p*r.rel; return r.ok ? `<tr${r.id===good?' class="best"':''}><td>${r.e.label.replace(TR('Matériel ','Equipment '),'')}</td><td>${Math.round(pw*100)} %</td><td>${qzM(gain-r.cost)}</td><td>${qzM(-r.cost)}</td><td><b>${qzM(r.ev)}</b></td></tr>` : `<tr class="off"><td>${r.e.label.replace(TR('Matériel ','Equipment '),'')}</td><td colspan="4">${TR(`exclu : limite `,`excluded: limit `)}${r.e.maxDepth} m &lt; ${depth} m</td></tr>`; }).join('')
               + `<tr${none?' class="best"':''}><td>${TR(`Ne pas forer`,`Do not drill`)}</td><td>-</td><td>0</td><td>0</td><td><b>0</b></td></tr>`;
             out.push({ gen:true, kind:'ev', meta:{depth,p,gain,price,prod0,cf:CF,none, rows:rows.map(r=>({id:r.id,ok:r.ok,rel:r.rel,cost:r.cost,ev:r.ev}))},
-              chip:TR('Gain net espéré','Expected net gain'), facts:[[TR('Réservoir à','Reservoir at'),`${depth} m`],[TR('Probabilité de succès','Probability of success'),`${Math.round(p*100)} %`],[TR('Production initiale','Initial production'),`${prod0} bbl/mois`],[TR('Prix du brut','Crude price'),`${price} $/bbl`],[TR('Gain si succès (10 ans)','Gain if successful (10 years)'),qzM(gain)],[TR('Coût au mètre','Cost per metre'),`600 / 900 / 1 350 $ × ${String(CF).replace('.',DEC)}`]], ask:TR('Quel choix maximise le gain net espéré, p × fiabilité × gain − coût ?','Which choice maximises the expected net gain, p × reliability × gain − cost?'), note:TR('Fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)). Bases : 78 % (léger), 90 % (standard), 97 % (renforcé).','Reliability = base × (1 + 0.3 × (0.5 − depth / limit)). Bases: 78 % (light), 90 % (standard), 97 % (reinforced).'),
+              chip:TR('Gain net espéré','Expected net gain'), facts:[[TR('Réservoir à','Reservoir at'),`${depth} m`],[TR('Probabilité de succès','Probability of success'),`${Math.round(p*100)} %`],[TR('Production initiale','Initial production'),TR(`${prod0} bbl/mois`,`${prod0} bbl/month`)],[TR('Prix du brut','Crude price'),`${price} $/bbl`],[TR('Gain si succès (10 ans)','Gain if successful (10 years)'),qzM(gain)],[TR('Coût au mètre','Cost per metre'),`600 / 900 / 1 350 $ × ${String(CF).replace('.',DEC)}`]], ask:TR('Quel choix maximise le gain net espéré, p × fiabilité × gain − coût ?','Which choice maximises the expected net gain, p × reliability × gain − cost?'), note:TR('Fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)). Bases : 78 % (léger), 90 % (standard), 97 % (renforcé).','Reliability = base × (1 + 0.3 × (0.5 − depth / limit)). Bases: 78 % (light), 90 % (standard), 97 % (reinforced).'),
               q:`${TR(`Bloc à terre dont le réservoir est à `,`Onshore block whose reservoir is at `)}${depth}${TR(` m, probabilité de succès géologique estimée à `,` m, geological probability of success estimated at `)}${Math.round(p*100)}${TR(` %. Production initiale attendue : `,` %. Expected initial production: `)}${prod0}${TR(` barils par mois. Au brut à `,` barrels per month. At crude `)}${price}${TR(` $, un succès rapporterait `,` $, a success would bring in `)}${qzM(gain)}${TR(` net sur 10 ans (règles de production du jeu). Coût = coût au mètre × profondeur × `,` net over 10 years (game production rules). Cost = cost per metre × depth × `)}${String(CF).replace('.',DEC)}${TR(` (niveau de coût du jeu). Fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)), bases 78 % (léger), 90 % (standard), 97 % (renforcé). Quel choix maximise le gain net espéré (p × fiabilité × gain − coût) ?`,` (game cost level). Reliability = base × (1 + 0.3 × (0.5 − depth / limit)), bases 78 % (light), 90 % (standard), 97 % (reinforced). Which choice maximises the expected net gain (p × reliability × gain − cost)?`)}`,
               choices:opts.map(o=>o.t), correct:opts.findIndex(o=>o.k===good),
               explainHtml: `<div>${none ? TR('Aucun matériel n\'a un gain net espéré positif : il vaut mieux ne pas forer.','No equipment has a positive expected net gain: it is better not to drill.') : (top.id===valid[0].id ? TR('Ici le matériel le moins cher l\'emporte : la fiabilité qu\'il perd coûte moins que le surcoût des autres.','Here the cheapest equipment wins: the reliability it loses costs less than the extra cost of the others.') : TR('Le matériel le moins cher n\'est pas toujours le meilleur : un surcoût peut être payé par une fiabilité plus haute.','The cheapest equipment is not always the best: an extra cost can be paid back by higher reliability.'))}${TR(` Voici les issues, calculées exactement pour chaque choix :`,` Here are the outcomes, computed exactly for each choice:`)}</div>
@@ -8488,7 +8493,7 @@ function _doStartGame(){
     const fb0 = document.getElementById('qzFeedback'); fb0.classList.remove('show','ok','ko'); fb0.innerHTML = '';
     const nb = document.getElementById('qzNextBtn');
     nb.style.display = 'none';
-    nb.textContent = qzIdx===qzOrder.length-1 ? TR('Voir le résultat →','See the result →') : 'Question suivante →';
+    nb.textContent = qzIdx===qzOrder.length-1 ? TR('Voir le résultat →','See the result →') : TR('Question suivante →','Next question →');
     document.getElementById('qzScore').textContent = `Question ${qzIdx+1}/${qzOrder.length} · score ${qzScore}/${qzAsked}`;
     document.getElementById('qzBar').style.width = Math.round(qzIdx/qzOrder.length*100)+'%';
 
@@ -8538,7 +8543,7 @@ function _doStartGame(){
     document.getElementById('qzAgainBtn').addEventListener('click', ()=>qzOpen(qzKey));
     document.getElementById('qzFeedback').classList.remove('show');
     document.getElementById('qzNextBtn').style.display = 'none';
-    document.getElementById('qzScore').textContent = `Score final ${qzScore}/${n}`; document.getElementById('qzBar').style.width = '100%';
+    document.getElementById('qzScore').textContent = TR(`Score final ${qzScore}/${n}`,`Final score ${qzScore}/${n}`); document.getElementById('qzBar').style.width = '100%';
     if(typeof quickRefresh==='function') quickRefresh();
   }
 
@@ -8997,7 +9002,7 @@ function _doStartGame(){
           const opts = (phi>=0.05 && phi<=0.36) ? mkNumOpts([pct, wrongFluid, wrongMat===pct ? pct+9 : wrongMat, pct*1.5+4], '%') : null;
           if(!opts) continue;
           q3 = { text:TR('Au repère B (réservoir aquifère), la densité lit ','At marker B (aquifer reservoir), the density reads ')+f2(rb)+TR(' g/cc. Matrice ',' g/cc. Matrix ')+f2(rma)+TR(' g/cc, fluide 1,00 g/cc. Quelle est la porosité-densité ?',' g/cc, fluid 1.00 g/cc. What is the density porosity?'), opts:shuffle(opts), good:String(pct), y:yB, type:'poro', meta:{rb, rma, rf:1.0, pct},
-            chip:'Calcul', facts:[[TR('Densité lue au repère B','Density read at marker B'),f2(rb)+' g/cc'],[TR('Matrice (','Matrix (')+(Lres===WL_LITH.limestone?'calcaire':Lres===WL_LITH.dolomite?'dolomie':TR('grès','sandstone'))+')',f2(rma)+' g/cc'],[TR('Fluide (eau salée)','Fluid (salt water)'),'1,00 g/cc']], ask:TR('Quelle est la porosité-densité au repère B ?','What is the density porosity at marker B?'), note:'φ = (ρ matrice − ρb) / (ρ matrice − ρ fluide).',
+            chip:'Calcul', facts:[[TR('Densité lue au repère B','Density read at marker B'),f2(rb)+' g/cc'],[TR('Matrice (','Matrix (')+(Lres===WL_LITH.limestone?'calcaire':Lres===WL_LITH.dolomite?'dolomie':TR('grès','sandstone'))+')',f2(rma)+' g/cc'],[TR('Fluide (eau salée)','Fluid (salt water)'),'1,00 g/cc']], ask:TR('Quelle est la porosité-densité au repère B ?','What is the density porosity at marker B?'), note:TR('φ = (ρ matrice − ρb) / (ρ matrice − ρ fluide).','φ = (ρ matrix − ρb) / (ρ matrix − ρ fluid).'),
             why:`φ = (${f2(rma)} − ${f2(rb)}) / (${f2(rma)} − 1,00) = ${f2(phi)}${TR(`, soit `,`, i.e. `)}<b>${pct} %</b>${TR(`. Oublier la densité du fluide donnerait `,`. Forgetting the fluid density would give `)}${wrongFluid}${TR(` %. Cette porosité-densité est apparente : l'argile et le fluide l'écartent de quelques points de la porosité réelle.`,` %. This density porosity is apparent: clay and fluid shift it a few points from the true porosity.`)}`, table: readTable(rB,'B') };
         } else if(calc==='sw'){
           const rtv = Math.round(rB.rt*10)/10, phiv = Math.round(hr.porosity), gradient = (b.tempAtRes-14)/Math.max(0.3, b.topOfReservoir/1000), tz = 14 + zB/1000*gradient, Rw = Math.round(0.12*(25+21.5)/(tz+21.5)*1000)/1000;
@@ -9016,7 +9021,7 @@ function _doStartGame(){
           const c5 = Math.round(cd/5)*5, offs = shuffle([-70,-45,45,70]).slice(0,3), vals = [c5, ...offs.map(o=>c5+o)];
           if(vals.some(v=>v < topR-20 || v > baseR+40)) continue;
           const opts = shuffle(vals.map(v=>({k:String(v), t:v+' m'})));
-          q3 = { text:TR('Le réservoir s\'étend de ','The reservoir extends from ')+Math.round(topR/5)*5+' à '+Math.round(baseR/5)*5+TR(' m. À quelle profondeur est le contact entre les hydrocarbures et l\'eau ?',' m. At what depth is the hydrocarbon-water contact?'), opts, good:String(c5), y:ys(cd), type:'contact', meta:{contact:c5, top:topR, base:baseR},
+          q3 = { text:TR('Le réservoir s\'étend de ','The reservoir extends from ')+Math.round(topR/5)*5+TR(' à ',' to ')+Math.round(baseR/5)*5+TR(' m. À quelle profondeur est le contact entre les hydrocarbures et l\'eau ?',' m. At what depth is the hydrocarbon-water contact?'), opts, good:String(c5), y:ys(cd), type:'contact', meta:{contact:c5, top:topR, base:baseR},
             chip:TR('Lecture du log','Log reading'), facts:[[TR('Toit du réservoir','Reservoir top'),Math.round(topR/5)*5+' m'],[TR('Base du réservoir','Reservoir base'),Math.round(baseR/5)*5+' m']], ask:TR('À quelle profondeur est le contact hydrocarbures-eau ?','At what depth is the hydrocarbon-water contact?'), note:TR('Sous le contact, la roche contient de l\'eau salée seule : la résistivité chute nettement.','Below the contact, the rock contains salt water only: the resistivity drops sharply.'),
             why:`${TR(`Le contact est à environ `,`The contact is at about `)}<b>${c5} m</b>${TR(` : au-dessus, la résistivité reste élevée (environ `,` : above it, the resistivity stays high (about `)}${f0(above)}${TR(` Ω·m), en dessous elle tombe à environ `,` Ω·m), below it falls to about `)}${f1(below)}${TR(` Ω·m. L'épaisseur d'hydrocarbures est donc d'environ `,` Ω·m. The hydrocarbon thickness is therefore about `)}${Math.round(cd-topR)} m. ${fluid==='gaz' ? TR('Dans un gaz, le croisement jaune densité-neutron s\'arrête lui aussi au contact.','In a gas, the yellow density-neutron crossover also stops at the contact.') : TR('La saturation en hydrocarbures est constante au-dessus du contact dans ce modèle.','Hydrocarbon saturation is constant above the contact in this model.')}`, table: '' };
         }
@@ -9099,7 +9104,7 @@ function _doStartGame(){
     document.getElementById('lgmAgain').addEventListener('click', open);
     document.getElementById('lgmFeedback').classList.remove('show');
     document.getElementById('lgmNext').style.display = 'none';
-    document.getElementById('lgmScore').textContent = `Score final ${score}/${n}`;
+    document.getElementById('lgmScore').textContent = TR(`Score final ${score}/${n}`,`Final score ${score}/${n}`);
     if(typeof quickRefresh==='function') quickRefresh();
   }
   function open(){
@@ -9253,7 +9258,7 @@ function _doStartGame(){
     const fb = document.getElementById('seiFb'); fb.className = 'sei-fb show ' + (j.ok ? 'ok' : 'ko');
     if(cur.kind==='h'){
       const cross = (R.tieCol<=R.gap)!==(R.tgtCol<=R.gap), th = Math.abs(f0(R.throwM));
-      fb.innerHTML = `<b>${j.ok ? TR('✓ Bien pointé','✓ Well picked') : TR('✗ À côté','✗ Off target')}</b>${TR(` : le toit du réservoir est à `,` : the reservoir top is at `)}<b>${f0(R.tgtZ)} m</b>${TR(` sur la colonne `,` on column `)}${R.tgtCol+1}${j.ok ? '' : TR(' (vous avez touché ',' (you tapped ') + f0(j.z) + ' m' + (j.dx > (XR-XL)/(NCOL-1)*0.45 ? TR(', sur une autre colonne',', on another column') : '') + ')'}${TR(`. Au puits il était à `,`. At the well it was at `)}${f0(R.tieZ)} m : ${cross ? `${TR(`la faille entre les colonnes `,`the fault between columns `)}${R.gap+1} et ${R.gap+2} le ${R.throwM>0?'descend':'remonte'}${TR(` d'environ `,` of about `)}${th}${TR(` m, c'est la lecture à corriger, et la pente régionale fait le reste`,` m, that is the reading to correct, and the regional dip does the rest`)}` : TR('la différence vient du pendage seul','the difference comes from the dip alone')}${TR(`. Tolérance : `,`. Tolerance: `)}${TOL_Z} m.`;
+      fb.innerHTML = `<b>${j.ok ? TR('✓ Bien pointé','✓ Well picked') : TR('✗ À côté','✗ Off target')}</b>${TR(` : le toit du réservoir est à `,` : the reservoir top is at `)}<b>${f0(R.tgtZ)} m</b>${TR(` sur la colonne `,` on column `)}${R.tgtCol+1}${j.ok ? '' : TR(' (vous avez touché ',' (you tapped ') + f0(j.z) + ' m' + (j.dx > (XR-XL)/(NCOL-1)*0.45 ? TR(', sur une autre colonne',', on another column') : '') + ')'}${TR(`. Au puits il était à `,`. At the well it was at `)}${f0(R.tieZ)} m : ${cross ? `${TR(`la faille entre les colonnes `,`the fault between columns `)}${R.gap+1} et ${R.gap+2} le ${R.throwM>0?TR('descend','goes down'):'remonte'}${TR(` d'environ `,` of about `)}${th}${TR(` m, c'est la lecture à corriger, et la pente régionale fait le reste`,` m, that is the reading to correct, and the regional dip does the rest`)}` : TR('la différence vient du pendage seul','the difference comes from the dip alone')}${TR(`. Tolérance : `,`. Tolerance: `)}${TOL_Z} m.`;
     } else {
       fb.innerHTML = `<b>${j.ok ? TR('✓ Bien vu','✓ Well spotted') : TR('✗ Pas là','✗ Not there')}</b>${TR(` : la faille passe entre les colonnes `,` : the fault passes between columns `)}<b>${R.gap+1} et ${R.gap+2}</b>${TR(` (zone verte) : le toit du réservoir y saute de `,` (green zone): the reservoir top jumps by `)}<b>${f0(Math.abs(R.throwM))} m</b>${TR(` d'un bloc à l'autre, alors que partout ailleurs la pente reste douce.`,` from one block to the next, whereas everywhere else the slope stays gentle.`)}`;
     }
@@ -9271,7 +9276,7 @@ function _doStartGame(){
     document.getElementById('seiQ').innerHTML = `<b style="font-size:16px;">${TR(`Manche terminée : `,`Round finished: `)}${score}/${n}</b><br>${score>=n-1 ? TR('Vous lisez une coupe comme un interprète.','You read a section like an interpreter.') : score>=n/2 ? TR('Correct. Reprenez la faille : le décalage commun à tous les réflecteurs est le signe qui ne trompe pas.','Correct. Go back over the fault: the offset common to all reflectors is the sign that never lies.') : TR('À retravailler : suivez toujours un seul réflecteur, de proche en proche, et repérez d\'abord le saut franc avant de lire les profondeurs.','Needs work: always follow a single reflector, step by step, and spot the clear jump first before reading the depths.')}<br>${TR(`Meilleur score : `,`Best score: `)}<b>${record ? score : prev.s}/${record ? n : prev.n}</b>${record?TR(' (nouveau record)',' (new record)'):''}`;
     document.getElementById('seiWrap').innerHTML = ''; const fb = document.getElementById('seiFb'); fb.className = 'sei-fb';
     const nx = document.getElementById('seiNext'); nx.style.display = ''; nx.textContent = TR('↻ Rejouer (nouvelles coupes)','↻ Play again (new sections)'); nx.onclick = open;
-    document.getElementById('seiScore').textContent = `Score final ${score}/${n}`; if(typeof quickRefresh==='function') quickRefresh();
+    document.getElementById('seiScore').textContent = TR(`Score final ${score}/${n}`,`Final score ${score}/${n}`); if(typeof quickRefresh==='function') quickRefresh();
   }
   function open(){
     rounds = []; for(let i=0; rounds.length<SEI_ROUNDS && i<12; i++){ const r = makeRound(); if(r) rounds.push(r); }
@@ -9344,8 +9349,9 @@ function _doStartGame(){
 // formations sont relevés dans les listes du jeu.
 // =====================================================================
 (function(){
-  const fr = (v, d=0) => (Math.abs(v)<1e-9?0:v).toFixed(d).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  const rg = (a, b, d=0) => fr(a, d) + ' à ' + fr(b, d);
+  const fr = (v, d=0) => (Math.abs(v)<1e-9?0:v).toFixed(d).replace('.', DEC).replace(/\B(?=(\d{3})+(?!\d))/g, DEC===',' ? '\u202f' : ',');
+  const TO = TR(' à ',' to ');
+  const rg = (a, b, d=0) => fr(a, d) + TO + fr(b, d);
   // conditions de référence pour les valeurs calculées
   const F = {
     sandstone:{L:'sandstone', fig:'sandstone', col:'#C4863A'}, limestone:{L:'limestone', fig:'limestone', col:'#D4A853'}, dolomite:{L:'dolomite', fig:'dolomite', col:'#B8904A'},
@@ -9358,15 +9364,15 @@ function _doStartGame(){
     dolomite:{n:449, phi:[7,21,4,28], k:[0.24,15,0.04,120], vsh:[5,29,5,29], gr:[25,46,22,48], rho:[2.46,2.68,2.34,2.73], dt:[60,80,56,93], nphi:[11,23,8,30], rt:[2.3,11,1.7,16]},
   };
   // nombre lisible : 0,07 ; 1,4 ; 12 ; 609 (pas de zéros inutiles)
-  const nf = v => v>=10 ? fr(v, 0) : v>=1 ? fr(v, 1).replace(/,0$/,'') : fr(v, 2);
-  const rga = (a,b) => nf(a) + ' à ' + nf(b);
+  const nf = v => v>=10 ? fr(v, 0) : v>=1 ? fr(v, 1).replace(new RegExp('\\'+DEC+'0$'),'') : fr(v, 2);
+  const rga = (a,b) => nf(a) + TO + nf(b);
   const ob = (a, d=0) => (d==='auto' ? rga(a[0], a[1]) + TR(' (extrêmes ',' (extremes ') + rga(a[2], a[3]) : rg(a[0], a[1], d) + TR(' (extrêmes ',' (extremes ') + rg(a[2], a[3], d)) + ')';
   function obsVals(cls){
     const o = OBS[cls], L = WL_LITH[cls];
     return [
-      ['GR', ob(o.gr) + ' API ; roche propre : ' + fr(L.gr)],
-      [TR('Densité ρb','Density ρb'), ob(o.rho, 2) + ' g/cc ; matrice : ' + fr(L.rhoMa, 2)],
-      [TR('Sonique DT','Sonic DT'), ob(o.dt) + ' µs/ft ; matrice : ' + fr(L.dtMa, 1)],
+      ['GR', ob(o.gr) + TR(' API ; roche propre : ',' API ; clean rock: ') + fr(L.gr)],
+      [TR('Densité ρb','Density ρb'), ob(o.rho, 2) + TR(' g/cc ; matrice : ',' g/cc ; matrix: ') + fr(L.rhoMa, 2)],
+      [TR('Sonique DT','Sonic DT'), ob(o.dt) + TR(' µs/ft ; matrice : ',' µs/ft ; matrix: ') + fr(L.dtMa, 1)],
       ['Neutron NPHI', ob(o.nphi) + ' % ' + (L.nOff===0 ? '(NPHI = φ)' : '(φ ' + (L.nOff<0?'-':'+') + ' ' + fr(Math.abs(L.nOff)*100, 1) + ' pt)')],
       [TR('Résistivité Rt','Resistivity Rt'), ob(o.rt, 'auto') + TR(' Ω·m dans l\'eau salée ; ×5 à ×10 si hydrocarbures',' Ω·m in salt water; ×5 to ×10 if hydrocarbons')],
     ];
@@ -9380,9 +9386,9 @@ function _doStartGame(){
   const rhoSh = 2.25 + 0.30*(1-Math.exp(-2000/2500)), dtSh = Math.max(80, 125-2000/70), nSh = Math.max(0.2, 0.38-2000/30000);
 
   const ENTRIES = [
-    {id:'sandstone', fig:'sandstone', col:'#C4863A', name:TR('Grès','Sandstone'), role:TR('Réservoir possible','Possible reservoir'), tags:['res'], reco:TR('Roche propre et poreuse : GR bas à modéré, densité sous 2,65 dès qu\'elle est poreuse, pas de séparation forte densité-neutron en eau. Le grès compact (φ < 5 %) a les mêmes courbes mais sans porosité : il est neutre.','Clean, porous rock: low to moderate GR, density below 2.65 as soon as it is porous, no strong density-neutron separation in water. Tight sandstone (φ < 5 %) has the same curves but no porosity: it is neutral.'),
+    {id:'sandstone', fig:'sandstone', col:'#C4863A', name:TRN('Grès','Sandstone'), role:TR('Réservoir possible','Possible reservoir'), tags:['res'], reco:TR('Roche propre et poreuse : GR bas à modéré, densité sous 2,65 dès qu\'elle est poreuse, pas de séparation forte densité-neutron en eau. Le grès compact (φ < 5 %) a les mêmes courbes mais sans porosité : il est neutre.','Clean, porous rock: low to moderate GR, density below 2.65 as soon as it is porous, no strong density-neutron separation in water. Tight sandstone (φ < 5 %) has the same curves but no porosity: it is neutral.'),
       vals:[...obsVals('sandstone'), ['_',TR('Paramètres de réservoir (valeurs du jeu)','Reservoir parameters (game values)')], ...obsRes('sandstone')], cls:'sandstone'},
-    {id:'conglomerate', fig:'conglomerate', col:'#A07840', name:TR('Conglomérat','Conglomerate'), role:TR('Réservoir possible','Possible reservoir'), tags:['res'], reco:TR('Galets cimentés, même réponse qu\'un grès (classe grès dans le jeu) avec une porosité souvent plus irrégulière. Rare sur une coupe.','Cemented pebbles, same response as a sandstone (sandstone class in the game) with often more irregular porosity. Rare on a section.'),
+    {id:'conglomerate', fig:'conglomerate', col:'#A07840', name:TRN('Conglomérat','Conglomerate'), role:TR('Réservoir possible','Possible reservoir'), tags:['res'], reco:TR('Galets cimentés, même réponse qu\'un grès (classe grès dans le jeu) avec une porosité souvent plus irrégulière. Rare sur une coupe.','Cemented pebbles, same response as a sandstone (sandstone class in the game) with often more irregular porosity. Rare on a section.'),
       vals:[...obsVals('sandstone'), ['_',TR('Paramètres de réservoir (valeurs du jeu)','Reservoir parameters (game values)')], ...obsRes('sandstone')], cls:'sandstone'},
     {id:'limestone', fig:'limestone', col:'#D4A853', name:'Calcaire', role:TR('Réservoir possible','Possible reservoir'), tags:['res'], reco:TR('GR très bas, densité de 2,71 en l\'absence de porosité, sonique rapide (47 µs/ft). Les calcaires oolitiques, récifaux et fracturés sont les réservoirs ; le calcaire argileux ou marneux est neutre.','Very low GR, density of 2.71 with no porosity, fast sonic (47 µs/ft). Oolitic, reefal and fractured limestones are the reservoirs; clayey or marly limestone is neutral.'),
       vals:[...obsVals('limestone'), ['_',TR('Paramètres de réservoir (valeurs du jeu)','Reservoir parameters (game values)')], ...obsRes('limestone')], cls:'limestone'},
@@ -9390,13 +9396,13 @@ function _doStartGame(){
       vals:[...obsVals('limestone'), ['_',TR('Paramètres de réservoir (valeurs du jeu)','Reservoir parameters (game values)')], ...obsRes('limestone')], cls:'limestone'},
     {id:'dolomite', fig:'dolomite', col:'#B8904A', name:'Dolomie', role:TR('Réservoir possible','Possible reservoir'), tags:['res'], reco:TR('Reconnaissable à sa densité forte (2,87 g/cc pur) et à son sonique très rapide (43 µs/ft). Porosité vugulaire possible.','Recognisable by its high density (2.87 g/cc pure) and its very fast sonic (43 µs/ft). Vuggy porosity possible.'),
       vals:[...obsVals('dolomite'), ['_',TR('Paramètres de réservoir (valeurs du jeu)','Reservoir parameters (game values)')], ...obsRes('dolomite')], cls:'dolomite'},
-    {id:'shale', fig:'shale', col:'#4a5568', name:TR('Argile, argilite, siltite','Clay, claystone, siltstone'), role:TR('Couverture (ou roche neutre)','Seal (or neutral rock)'), tags:['seal','neu'], reco:TR('GR élevé (autour de 115 API), résistivité basse et plate (1 à 3 Ω·m), densité et neutron intermédiaires. Une argile compacte de 60 à 95 % d\'argilosité scelle un réservoir.','High GR (around 115 API), low and flat resistivity (1 to 3 Ω·m), intermediate density and neutron. A tight clay with 60 to 95 % clay content seals a reservoir.'),
-      vals:[['GR', TR('105 à 125 API (115)','105 to 125 API (115)')], [TR('Densité ρb','Density ρb'), fr(2.25, 2) + ' à ' + fr(2.55, 2) + ' g/cc (' + fr(rhoSh, 2) + TR(' à 2 000 m)',' to 2,000 m)')], [TR('Sonique DT','Sonic DT'), TR('80 à 125 µs/ft (','80 to 125 µs/ft (') + fr(dtSh) + TR(' à 2 000 m)',' to 2,000 m)')], ['Neutron NPHI', TR('20 à 38 % (','20 to 38 % (') + fr(nSh*100) + TR(' à 2 000 m)',' to 2,000 m)')], [TR('Résistivité Rt','Resistivity Rt'), TR('1 à 3 Ω·m','1 to 3 Ω·m')], ['_',TR('Paramètres','Parameters')], ...NORES, [TR('Argilosité Vsh','Clay content Vsh'), TR('couverture : 60 à 95 % ; neutre : 20 à 70 %','seal: 60 to 95 %; neutral: 20 to 70 %')]], cls:'shale'},
+    {id:'shale', fig:'shale', col:'#4a5568', name:TRN('Argile, argilite, siltite','Clay, claystone, siltstone'), role:TR('Couverture (ou roche neutre)','Seal (or neutral rock)'), tags:['seal','neu'], reco:TR('GR élevé (autour de 115 API), résistivité basse et plate (1 à 3 Ω·m), densité et neutron intermédiaires. Une argile compacte de 60 à 95 % d\'argilosité scelle un réservoir.','High GR (around 115 API), low and flat resistivity (1 to 3 Ω·m), intermediate density and neutron. A tight clay with 60 to 95 % clay content seals a reservoir.'),
+      vals:[['GR', TR('105 à 125 API (115)','105 to 125 API (115)')], [TR('Densité ρb','Density ρb'), fr(2.25, 2) + TO + fr(2.55, 2) + ' g/cc (' + fr(rhoSh, 2) + TR(' à 2 000 m)',' to 2,000 m)')], [TR('Sonique DT','Sonic DT'), TR('80 à 125 µs/ft (','80 to 125 µs/ft (') + fr(dtSh) + TR(' à 2 000 m)',' to 2,000 m)')], ['Neutron NPHI', TR('20 à 38 % (','20 to 38 % (') + fr(nSh*100) + TR(' à 2 000 m)',' to 2,000 m)')], [TR('Résistivité Rt','Resistivity Rt'), TR('1 à 3 Ω·m','1 to 3 Ω·m')], ['_',TR('Paramètres','Parameters')], ...NORES, [TR('Argilosité Vsh','Clay content Vsh'), TR('couverture : 60 à 95 % ; neutre : 20 à 70 %','seal: 60 to 95 %; neutral: 20 to 70 %')]], cls:'shale'},
     {id:'marl', fig:'marl', col:'#6a7a60', name:'Marne', role:TR('Couverture ou roche neutre','Seal or neutral rock'), tags:['seal','neu'], reco:TR('Mélange d\'argile et de calcaire : dans le jeu elle se lit comme une argile (GR élevé, résistivité basse). À distinguer d\'un calcaire par son GR.','Mixture of clay and limestone: in the game it reads like a clay (high GR, low resistivity). To be told apart from a limestone by its GR.'),
       vals:[['GR', TR('105 à 125 API','105 to 125 API')], [TR('Densité ρb','Density ρb'), TR('2,25 à 2,55 g/cc','2.25 to 2.55 g/cc')], [TR('Sonique DT','Sonic DT'), TR('80 à 125 µs/ft','80 to 125 µs/ft')], ['Neutron NPHI', TR('20 à 38 %','20 to 38 %')], [TR('Résistivité Rt','Resistivity Rt'), TR('1 à 3 Ω·m','1 to 3 Ω·m')], ['_',TR('Paramètres','Parameters')], ...NORES], cls:'shale'},
-    {id:'source', fig:'shale', col:'#1a1a2e', name:TR('Roche-mère (schiste organique, black shale)','Source rock (organic shale, black shale)'), role:TR('Roche-mère','Source rock'), tags:['src'], reco:TR('GR très élevé (120 + 12 × TOC) qui dépasse l\'échelle de 150 API quand le TOC dépasse 2,5 %, densité plus basse que l\'argile, sonique plus lent, résistivité plus haute si la roche est mature.','Very high GR (120 + 12 × TOC) that goes off the 150 API scale when TOC exceeds 2.5 %, density lower than clay, slower sonic, higher resistivity if the rock is mature.'),
-      vals:[['GR', rg(120+12*1.5, 120+12*9.5) + TR(' API (repli à gauche au-delà de 150)',' API (wraps back to the left beyond 150)')], [TR('Densité ρb','Density ρb'), TR('ρ argile - 0,04 × TOC, soit ','clay ρ - 0.04 × TOC, i.e. ') + rg(rhoSh-0.04*9.5, rhoSh-0.04*1.5, 2) + TR(' g/cc à 2 000 m',' g/cc at 2,000 m')], [TR('Sonique DT','Sonic DT'), TR('DT argile + 4 × TOC, soit ','clay DT + 4 × TOC, i.e. ') + rg(dtSh+4*1.5, dtSh+4*9.5) + ' µs/ft'], ['Neutron NPHI', TR('NPHI argile - 3 pts','clay NPHI - 3 pts')], [TR('Résistivité Rt','Resistivity Rt'), TR('mature : 4 + 5 × TOC, soit ','mature: 4 + 5 × TOC, i.e. ') + rg(4+5*1.5, 4+5*9.5) + ' Ω·m ; immature : 3 Ω·m'], ['_',TR('Paramètres','Parameters')], ['TOC', TR('1,5 à 9,5 % (le charbon houiller a un TOC bien plus élevé)','1.5 to 9.5 % (hard coal has a much higher TOC)')], ...NORES], cls:'source'},
-    {id:'halite', fig:'halite', col:'#F0E8F8', name:TR('Sel gemme (halite)','Rock salt (halite)'), role:TR('Couverture parfaite, ou évaporite','Perfect seal, or evaporite'), tags:['seal','evap'], reco:TR('Densité très basse (2,03), GR quasi nul, résistivité énorme, sonique lent, trou très régulier. Se déforme en dômes (diapirs) qui piègent les flancs.','Very low density (2.03), almost zero GR, huge resistivity, slow sonic, very regular hole. Deforms into domes (diapirs) that trap the flanks.'),
+    {id:'source', fig:'shale', col:'#1a1a2e', name:TRN('Roche-mère (schiste organique, black shale)','Source rock (organic shale, black shale)'), role:TR('Roche-mère','Source rock'), tags:['src'], reco:TR('GR très élevé (120 + 12 × TOC) qui dépasse l\'échelle de 150 API quand le TOC dépasse 2,5 %, densité plus basse que l\'argile, sonique plus lent, résistivité plus haute si la roche est mature.','Very high GR (120 + 12 × TOC) that goes off the 150 API scale when TOC exceeds 2.5 %, density lower than clay, slower sonic, higher resistivity if the rock is mature.'),
+      vals:[['GR', rg(120+12*1.5, 120+12*9.5) + TR(' API (repli à gauche au-delà de 150)',' API (wraps back to the left beyond 150)')], [TR('Densité ρb','Density ρb'), TR('ρ argile - 0,04 × TOC, soit ','clay ρ - 0.04 × TOC, i.e. ') + rg(rhoSh-0.04*9.5, rhoSh-0.04*1.5, 2) + TR(' g/cc à 2 000 m',' g/cc at 2,000 m')], [TR('Sonique DT','Sonic DT'), TR('DT argile + 4 × TOC, soit ','clay DT + 4 × TOC, i.e. ') + rg(dtSh+4*1.5, dtSh+4*9.5) + ' µs/ft'], ['Neutron NPHI', TR('NPHI argile - 3 pts','clay NPHI - 3 pts')], [TR('Résistivité Rt','Resistivity Rt'), TR('mature : 4 + 5 × TOC, soit ','mature: 4 + 5 × TOC, i.e. ') + rg(4+5*1.5, 4+5*9.5) + TR(' Ω·m ; immature : 3 Ω·m',' Ω·m ; immature: 3 Ω·m')], ['_',TR('Paramètres','Parameters')], ['TOC', TR('1,5 à 9,5 % (le charbon houiller a un TOC bien plus élevé)','1.5 to 9.5 % (hard coal has a much higher TOC)')], ...NORES], cls:'source'},
+    {id:'halite', fig:'halite', col:'#F0E8F8', name:TRN('Sel gemme (halite)','Rock salt (halite)'), role:TR('Couverture parfaite, ou évaporite','Perfect seal, or evaporite'), tags:['seal','evap'], reco:TR('Densité très basse (2,03), GR quasi nul, résistivité énorme, sonique lent, trou très régulier. Se déforme en dômes (diapirs) qui piègent les flancs.','Very low density (2.03), almost zero GR, huge resistivity, slow sonic, very regular hole. Deforms into domes (diapirs) that trap the flanks.'),
       vals:[...fixedVals('halite'), ['_',TR('Paramètres','Parameters')], [TR('Porosité φ','Porosity φ'), '≈ 0 %'], [TR('Perméabilité k','Permeability k'), TR('0 mD : étanche','0 mD: tight')]], cls:'halite'},
     {id:'anhydrite', fig:'anhydrite', col:'#D8B8D8', name:'Anhydrite', role:'Couverture', tags:['seal','evap'], reco:TR('GR quasi nul, densité très haute (2,98), résistivité énorme. Souvent en bancs sous ou dans le sel.','Almost zero GR, very high density (2.98), huge resistivity. Often in beds below or within the salt.'),
       vals:[...fixedVals('anhydrite'), ['_',TR('Paramètres','Parameters')], [TR('Porosité φ','Porosity φ'), '≈ 0 %'], [TR('Perméabilité k','Permeability k'), TR('0 mD : étanche','0 mD: tight')]], cls:'anhydrite'},
@@ -9404,15 +9410,15 @@ function _doStartGame(){
       vals:[...fixedVals('gypsum'), ['_',TR('Paramètres','Parameters')], [TR('Porosité φ','Porosity φ'), '≈ 0 %'], [TR('Perméabilité k','Permeability k'), '0 mD']], cls:'gypsum'},
     {id:'potash', fig:'halite', col:'#D8A8C8', name:'Sel potassique (sylvite, carnallite)', role:TR('Évaporite, repère','Evaporite, marker'), tags:['evap'], reco:TR('Le seul sel radioactif : GR hors échelle (≈ 230 API) à cause du potassium 40, alors que la halite a un GR très bas. Excellent repère de corrélation.','The only radioactive salt: GR off scale (≈ 230 API) because of potassium 40, whereas halite has a very low GR. Excellent correlation marker.'),
       vals:[...fixedVals('potash'), ['_',TR('Paramètres','Parameters')], [TR('Porosité φ','Porosity φ'), '≈ 0 %'], [TR('Perméabilité k','Permeability k'), '0 mD']], cls:'potash'},
-    {id:'coal', fig:'coal', col:'#0d0d0d', name:TR('Charbon, lignite','Coal, lignite'), role:TR('Roche-mère (gaz) ou niveau repère','Source rock (gas) or marker bed'), tags:['src'], reco:TR('Densité très basse (1,4), neutron très élevé (55 %), sonique très lent (120 µs/ft), GR bas : aucune autre roche ne combine ces trois signes.','Very low density (1.4), very high neutron (55 %), very slow sonic (120 µs/ft), low GR: no other rock combines these three signs.'),
+    {id:'coal', fig:'coal', col:'#0d0d0d', name:TRN('Charbon, lignite','Coal, lignite'), role:TR('Roche-mère (gaz) ou niveau repère','Source rock (gas) or marker bed'), tags:['src'], reco:TR('Densité très basse (1,4), neutron très élevé (55 %), sonique très lent (120 µs/ft), GR bas : aucune autre roche ne combine ces trois signes.','Very low density (1.4), very high neutron (55 %), very slow sonic (120 µs/ft), low GR: no other rock combines these three signs.'),
       vals:[...fixedVals('coal'), ['_',TR('Paramètres','Parameters')], ['TOC', TR('supérieur à 50 % (charbon houiller, type III : gaz)','above 50 % (hard coal, type III: gas)')], [TR('Porosité φ','Porosity φ'), '≈ 0 %']], cls:'coal'},
-    {id:'basement', fig:'basement', col:'#2D1B00', name:TR('Socle (granite, gneiss, schiste métamorphique)','Basement (granite, gneiss, metamorphic schist)'), role:TR('Fond de la coupe, imperméable','Bottom of the section, impermeable'), tags:['neu'], reco:TR('Fin de la colonne : GR élevé (≈ 130 API), densité de 2,7, sonique rapide, résistivité élevée, aucune porosité.','End of the column: high GR (≈ 130 API), density of 2.7, fast sonic, high resistivity, no porosity.'),
+    {id:'basement', fig:'basement', col:'#2D1B00', name:TRN('Socle (granite, gneiss, schiste métamorphique)','Basement (granite, gneiss, metamorphic schist)'), role:TR('Fond de la coupe, imperméable','Bottom of the section, impermeable'), tags:['neu'], reco:TR('Fin de la colonne : GR élevé (≈ 130 API), densité de 2,7, sonique rapide, résistivité élevée, aucune porosité.','End of the column: high GR (≈ 130 API), density of 2.7, fast sonic, high resistivity, no porosity.'),
       vals:[...fixedVals('basement'), ['_',TR('Paramètres','Parameters')], [TR('Porosité φ','Porosity φ'), '≈ 0 %'], [TR('Perméabilité k','Permeability k'), '≈ 0 mD']], cls:'basement'},
-    {id:'basalt', fig:'basement', col:'#1a1a1a', name:TR('Basalte (socle volcanique)','Basalt (volcanic basement)'), role:'Socle', tags:['neu'], reco:TR('Comme le socle mais GR faible (≈ 35 API) et densité plus haute (2,9).','Like the basement but low GR (≈ 35 API) and higher density (2.9).'),
+    {id:'basalt', fig:'basement', col:'#1a1a1a', name:TRN('Basalte (socle volcanique)','Basalt (volcanic basement)'), role:'Socle', tags:['neu'], reco:TR('Comme le socle mais GR faible (≈ 35 API) et densité plus haute (2,9).','Like the basement but low GR (≈ 35 API) and higher density (2.9).'),
       vals:[...fixedVals('basalt'), ['_',TR('Paramètres','Parameters')], [TR('Porosité φ','Porosity φ'), '≈ 0 %']], cls:'basalt'},
     {id:'volcanic', fig:'volcanic', col:'#605850', name:'Tuf volcanoclastique', role:TR('Roche neutre','Neutral rock'), tags:['neu'], reco:TR('Cendres altérées en argile : dans le jeu, courbes d\'argile (GR élevé, résistivité basse).','Ash altered to clay: in the game, clay curves (high GR, low resistivity).'),
       vals:[['GR', TR('105 à 125 API','105 to 125 API')], [TR('Densité ρb','Density ρb'), TR('2,25 à 2,55 g/cc','2.25 to 2.55 g/cc')], [TR('Sonique DT','Sonic DT'), TR('80 à 125 µs/ft','80 to 125 µs/ft')], ['_',TR('Paramètres','Parameters')], ...NORES], cls:'shale'},
-    {id:'uncons', fig:'alluvium', col:'#8B7355', name:TR('Sédiments meubles (surface, Quaternaire)','Loose sediments (surface, Quaternary)'), role:'Recouvrement', tags:['neu','surf'], reco:TR('Début de la colonne : densité faible (1,95 à 2,07), sonique très lent (95 à 150 µs/ft), neutron de 40 %, GR moyen (≈ 70 API).','Start of the column: low density (1.95 to 2.07), very slow sonic (95 to 150 µs/ft), neutron of 40 %, medium GR (≈ 70 API).'),
+    {id:'uncons', fig:'alluvium', col:'#8B7355', name:TRN('Sédiments meubles (surface, Quaternaire)','Loose sediments (surface, Quaternary)'), role:'Recouvrement', tags:['neu','surf'], reco:TR('Début de la colonne : densité faible (1,95 à 2,07), sonique très lent (95 à 150 µs/ft), neutron de 40 %, GR moyen (≈ 70 API).','Start of the column: low density (1.95 to 2.07), very slow sonic (95 to 150 µs/ft), neutron of 40 %, medium GR (≈ 70 API).'),
       vals:[['GR', '≈ 70 API'], [TR('Densité ρb','Density ρb'), TR('1,95 à 2,07 g/cc','1.95 to 2.07 g/cc')], [TR('Sonique DT','Sonic DT'), TR('95 à 150 µs/ft','95 to 150 µs/ft')], ['Neutron NPHI', '40 %'], [TR('Résistivité Rt','Resistivity Rt'), '1,5 Ω·m'], ['_',TR('Paramètres','Parameters')], [TR('Porosité φ','Porosity φ'), TR('≈ 40 % (neutron de 40 %), sans compaction ni cimentation','≈ 40 % (neutron of 40 %), no compaction or cementation')], [TR('Perméabilité k','Permeability k'), TR('élevée, mais sans couverture : sans intérêt','high, but with no seal: of no interest')]], cls:'uncons'},
   ];
   const FAMILIES = [['all','Tout'],['res',TR('Réservoirs possibles','Possible reservoirs')],['seal','Couvertures'],['src',TR('Roches-mères','Source rocks')],['evap',TR('Évaporites','Evaporites')],['neu',TR('Neutres, socle','Neutral rocks, basement')],['surf','Surface']];
@@ -9420,7 +9426,7 @@ function _doStartGame(){
 
   // Exemples de formations : relevés dans les listes du jeu et rattachés à la fiche par le même classement que les logs
   function entryOf(item, role){
-    const n = (item.name||'').toLowerCase();
+    const n = (FRN(item.name)||'').toLowerCase();
     if(/potass/.test(n)) return 'potash';
     if(/charbon|houill|lignite/.test(n) && role!=='neutral') return 'coal';
     if(role==='source' || /black shale|bitumineux|organique/.test(n) && role==='source') return 'source';
@@ -9605,7 +9611,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
           .filter(l=>l.th>=3).sort((p,q)=>p.top-q.top);
         const res = layers.find(l=>l.role==='reservoir'); if(!res) continue;
         const TD = Math.round((res.top + 40)/10)*10;
-        const soft = { name:TR('Terrains de surface','Surface formations'), role:'overburden', cls:'uncons', top:0, th:layers[0].top, gr0:70, rho:2.0, dt:140, phi:20, perm:false };
+        const soft = { name:TRN('Terrains de surface','Surface formations'), role:'overburden', cls:'uncons', top:0, th:layers[0].top, gr0:70, rho:2.0, dt:140, phi:20, perm:false };
         const all = [soft, ...layers];
         // la cible doit être détectable au GR : un toit argileux net (GR >= 95 sur au moins 60 m) au-dessus d'un réservoir propre (GR <= 60)
         const ri = all.indexOf(res), above = all[ri-1];
@@ -9643,7 +9649,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
           if(okc && xExit >= 120 && xExit <= 340) dr = { L:Ld, maxMD:Ld+200, top:topR, zc, base:baseR, thr:thR, off, dipDeg, xf, throw:thF, rtPay, rtWater, grPay:res.gr0, grAbove:above.gr0, grBelow:(all[ri+1] ? all[ri+1].gr0 : 115), heelZ: topR + 0.35*(zc-topR), ucs: clamp(1277*Math.exp(-0.036*res.dt), 15, 300) };
         }
         if(!dr) continue;
-        return { TD, maxZ, drain:dr, resTop:res.top, resPred:res.pred, resUnc:res.unc, gr:grAt, zop, ramp, Gmax, delta, layers:all, layerAt, gs, gp, gpPred, gf, gfPred, ucs: z => clamp(1277*Math.exp(-0.036*layerAt(z).dt), 15, 300), blockName:`bloc (${b.x}, ${b.y})` };
+        return { TD, maxZ, drain:dr, resTop:res.top, resPred:res.pred, resUnc:res.unc, gr:grAt, zop, ramp, Gmax, delta, layers:all, layerAt, gs, gp, gpPred, gf, gfPred, ucs: z => clamp(1277*Math.exp(-0.036*layerAt(z).dt), 15, 300), blockName:TR(`bloc (${b.x}, ${b.y})`,`block (${b.x}, ${b.y})`) };
       }
       return null;
     });
@@ -9999,7 +10005,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
     return `<div class="rg-end"><h3>${sco.score>=80 ? TR('✓ Drain bien placé','✓ Drain well placed') : sco.score>=55 ? TR('Drain correct','Drain acceptable') : TR('✗ Drain mal placé','✗ Drain poorly placed')}</h3>
       ${Math.round(dr.md)}${TR(` m forés en `,` m drilled in `)}<b>${f1(dr.hours)} h</b> : <b>${Math.round(sco.pct*100)} %</b>${TR(` dans la zone d'hydrocarbures, `,` in the hydrocarbon zone, `)}${p('above')}${TR(` % au-dessus du toit (argile), `,` % above the top (clay), `)}${p('water')}${TR(` % sous le contact (eau), `,` % below the contact (water), `)}${p('below')}${TR(` % sous le réservoir. Score : `,` % below the reservoir. Score: `)}<b>${sco.score}/100</b>${sco.pen ? ` (${sco.raw}${TR(` moins `,` minus `)}${sco.pen}${TR(` points d'incidents)`,` incident points)`)}` : ''}.${dr.failed ? TR(' <b>Drain perdu : outil coincé définitivement.</b>',' <b>Drain lost: tool permanently stuck.</b>') : ''}${dr.incidents ? ` ${dr.incidents} incident${dr.incidents>1?'s':''} :` : ''}
       ${dr.log.length ? `<ul>${dr.log.filter(l=>l.type!=='ok'&&l.type!=='ko').map(l=>`<li>${Math.round(l.md)} m : ${l.txt}</li>`).join('')}</ul>` : ''}
-      <div class="rg-hint">${TR(`Le toit s'est déplacé de `,`The top moved by `)}${Math.round(Math.min(...Array.from({length:71},(_,i)=>d.off(i*10))))} à ${Math.round(Math.max(...Array.from({length:71},(_,i)=>d.off(i*10))))}${TR(` m par rapport au talon : pendage `,` m relative to the heel: dip `)}${f1(d.dipDeg)}${TR(`°, faille de `,`°, fault of `)}${Math.round(Math.abs(d.throw))} m ${d.throw>0?TR('vers le bas','downward'):TR('vers le haut','upward')}${TR(` vers `,` toward `)}${Math.round(d.xf)} m.</div>
+      <div class="rg-hint">${TR(`Le toit s'est déplacé de `,`The top moved by `)}${Math.round(Math.min(...Array.from({length:71},(_,i)=>d.off(i*10))))}${TR(' à ',' to ')}${Math.round(Math.max(...Array.from({length:71},(_,i)=>d.off(i*10))))}${TR(` m par rapport au talon : pendage `,` m relative to the heel: dip `)}${f1(d.dipDeg)}${TR(`°, faille de `,`°, fault of `)}${Math.round(Math.abs(d.throw))} m ${d.throw>0?TR('vers le bas','downward'):TR('vers le haut','upward')}${TR(` vers `,` toward `)}${Math.round(d.xf)} m.</div>
       ${tips.length ? `<ul>${tips.map(t=>`<li>${t}</li>`).join('')}</ul>` : TR('<br>Aucune sortie de zone notable.','<br>No notable exit from the zone.')}
       <div class="rg-hint">${best}</div>
       <div class="rg-btns" style="margin-top:10px;"><button class="go" id="rgAgain">${TR(`↻ Nouveau puits`,`↻ New well`)}</button></div></div>`; }
@@ -10074,6 +10080,24 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
   $('rgClose').addEventListener('click', ()=>{ stop(); $('rigModal').classList.remove('open'); });
   window.__rig = { drNew, drStep, drAct, drRaise, drScore, drZone, drMeasure, drainBot, grSaysReservoir, bottomsUp, rigScenario, rigNew, tick, act, playBot, scoreOf, ropOf, qMin, gfOpen, gfOpenPred, get S(){ return S; }, render: ()=>render(), openRig, DZ, MARGIN, G0 };
 })();
+</script>
+<script>
+/*HTML_EN_BEGIN*/
+// Mode anglais : dictionnaire des textes fixes de la page (nœuds de texte exacts et attributs title, aria-label, placeholder, alt), appliqué à la volée par un observateur du DOM. Sans effet en français.
+(function(){
+  if(document.documentElement.lang !== 'en') return;
+  const HTML_EN = {"Études":"Studies","Puits":"Wells","Génération de la carte...":"Generating the map...","Avancé":"Advanced","Essayer la Découverte":"Try Discovery","Plus tard":"Later","🌱 Découverte":"🌱 Discovery","12 M$ · 10 ans · 8×8":"12 M$ · 10 years · 8×8","15 M$ · 25 ans":"15 M$ · 25 years","8 M$ · 20 ans":"8 M$ · 20 years","🌍 Grande exploration":"🌍 Grand exploration","45 M$ · 35 ans":"45 M$ · 35 years","Bassin géologique":"Geological basin","🃏 Assembler un prospect":"🃏 Build a prospect","🪨 Quiz lithofaciès":"🪨 Lithofacies quiz","🌡️ Quiz maturation":"🌡️ Maturation quiz","🧪 Quiz Rock-Eval":"🧪 Rock-Eval quiz","📡 Quiz sismique":"📡 Seismic quiz","📈 Lire un log":"📈 Read a log","⛏ Dimensionner son forage":"⛏ Size your well","📡 Interpréter une coupe sismique":"📡 Interpret a seismic section","🏗 Console de forage":"🏗 Drilling console","Carte de 8×8 dans le Bassin parisien, sans finance, sans marché agité, sans informateur ni coût d'abandon. Le guide reste ouvert et chaque forage s'accompagne d'une leçon. Pour comprendre pourquoi on étudie avant de forer.":"8×8 map in the Paris Basin, with no finance, no jittery market, no informant and no abandonment cost. The guide stays open and each well comes with a lesson. To understand why you study before drilling.","· Objectif":"· Objective","· Durée":"· Duration","10 ans":"10 years","Budget confortable, études abordables. Idéal pour découvrir le moteur géologique.":"Comfortable budget, affordable studies. Ideal for discovering the geological engine.","25 ans":"25 years","Budget serré, géologie complexe, marché volatile. Chaque forage compte.":"Tight budget, complex geology, volatile market. Every well counts.","20 ans":"20 years","🎓 Mode TP":"🎓 Practice mode","Objectif géologique, pas financier. Identifiez les 2 meilleures cibles et justifiez vos choix. Révélation de la vraie géologie après chaque forage.":"Geological objective, not financial. Identify the 2 best targets and justify your choices. True geology revealed after each well.","Géologique":"Geological","⚙ Bac à sable":"⚙ Sandbox","Budget illimité, géologie révélée d'emblée. Pour explorer les mécaniques.":"Unlimited budget, geology revealed from the start. To explore the mechanics.","aucun":"none","🌍 Grande Exploration":"🌍 Grand Exploration","Grande carte (30×30 suggéré) avec plusieurs provinces lithostratigraphiques distinctes à explorer. Budget étendu pour couvrir un territoire plus vaste sans être à l'étroit financièrement.":"Large map (30×30 suggested) with several distinct lithostratigraphic provinces to explore. Extended budget to cover a larger territory without financial constraints.","35 ans":"35 years","Mode Finance":"Finance mode","Emprunts, stockage, hedging, EOR, accidents":"Loans, storage, hedging, EOR, accidents","Géologie pure":"Pure geology","Parcours suggéré : débutant → avancé":"Suggested path: beginner → advanced","🎲 Aléatoire (libre)":"🎲 Random (free)","Niveau 1 : débutant":"Level 1: beginner","Anticlinaux peu profonds, exhumation ×2.8, dominante onshore : forages peu profonds et peu coûteux":"Shallow anticlines, exhumation ×2.8, mostly onshore: shallow and inexpensive wells","Parisien":"Paris","Niveau 2 : intermédiaire":"Level 2: intermediate","Marge passive":"Passive margin","Avant-pays":"Foreland","Profondeurs modérées, orogenèse pyrénéenne, cas intermédiaire réel":"Moderate depths, Pyrenean orogeny, a real intermediate case","Niveau 3 : avancé":"Level 3: advanced","Sud de la mer du Nord : Rotliegend sous le sel du Zechstein, gaz, offshore profond : matériel et budget conséquents nécessaires":"Southern North Sea: Rotliegend beneath the Zechstein salt, gas, deep offshore: substantial equipment and budget needed","Mer du Nord":"North Sea","Sel Louann, failles de croissance, subsidence continue (exhumation ×1) : le plus profond et le plus complexe":"Louann salt, growth faults, continuous subsidence (exhumation ×1): the deepest and most complex","Taille de la carte":"Map size","Inclus":"Included","Non":"No","Seed géologique":"Geological seed","Même seed = même carte pour tout un groupe":"Same seed = same map for a whole group","Générer un seed aléatoire":"Generate a random seed","Incertitude des études":"Study uncertainty","Précision des estimations géologiques":"Precision of geological estimates","Faible":"Low","Réaliste":"Realistic","Élevée":"High","☾ Sombre":"☾ Dark","Oui":"Yes","↺ Réinitialiser aux valeurs par défaut":"↺ Reset to default values","Ajuste plusieurs curseurs d'un coup":"Adjusts several sliders at once","Petits jeux indépendants d'une partie complète, pour s'entraîner sur un concept précis sans lancer toute une simulation.":"Small games independent of a full game, to practise a specific concept without launching a whole simulation.","Un log de puits complet (GR, résistivité, densité-neutron, sonique) et des repères A et B : identifiez la lithologie à la profondeur A, puis le fluide du réservoir en B (gaz, huile ou eau).":"A complete well log (GR, resistivity, density-neutron, sonic) and markers A and B: identify the lithology at depth A, then the reservoir fluid at B (gas, oil or water).","Durée":"Duration","Une coupe sismique générée à partir d'une vraie géologie du jeu : suivez le toit du réservoir depuis un puits de calage jusqu'à une autre colonne, puis situez la faille. Les réflecteurs bleus marquent une hausse d'impédance, les rouges une baisse.":"A seismic section generated from a real game geology: follow the reservoir top from a tie well to another column, then locate the fault. Blue reflectors mark an impedance increase, red ones a decrease.","Pointé":"Picked","🃏 Assemble ton prospect":"🃏 Build your prospect","Choisissez une carte par facteur du système pétrolier (piège, réservoir, couverture, charge) et jouez les synergies entre elles avant de forer.":"Choose one card per petroleum system factor (trap, reservoir, seal, charge) and play the synergies between them before drilling.","🪨 Quiz Lithofaciès":"🪨 Lithofacies Quiz","Une description pétrographique s'affiche, identifiez la roche parmi 4 propositions. Rapide, pour s'entraîner à la reconnaissance.":"A petrographic description is shown, identify the rock among 4 options. Quick, to practise recognition.","🌡️ Quiz Maturation":"🌡️ Maturation Quiz","Un contexte de profondeur, gradient et exhumation est donné, devinez si la roche-mère est immature, dans la fenêtre à huile, ou à gaz.":"A depth, gradient and exhumation context is given, guess whether the source rock is immature, in the oil window, or in the gas window.","TOC, indice d'hydrogène, Tmax : entraînez-vous à interpréter ces trois mesures pour juger du potentiel générateur d'une roche-mère.":"TOC, hydrogen index, Tmax: practise interpreting these three measurements to judge a source rock's generative potential.","Pilotez un forage de la surface au réservoir : poids sur l'outil, rotation, pompe, densité de boue. Un kick, une perte de circulation, un coincement ou un outil usé peuvent survenir : diagnostiquez et réglez. Simplifié et pédagogique, pas une procédure opérationnelle.":"Steer a well from the surface to the reservoir: weight on bit, rotation, pump, mud density. A kick, a loss of circulation, a sticking or a worn tool may occur: diagnose and fix. Simplified and educational, not an operational procedure.","Choisissez le matériel de forage qui maximise le gain net espéré, ou repérez le puits qui sollicite le plus son matériel. Les coûts, limites et fiabilités sont ceux du jeu, calculés sur des blocs générés.":"Choose the drilling equipment that maximises the expected net gain, or spot the well that stresses its equipment the most. Costs, limits and reliabilities are the game's own, computed on generated blocks.","📡 Quiz Sismique":"📡 Seismic Quiz","Impédance, polarité, multiples, taches brillantes, calage puits-sismique : entraînez-vous à lire une sismique et à ne pas vous faire piéger.":"Impedance, polarity, multiples, bright spots, well-seismic tie: practise reading seismic and not falling into traps.","Défi du jour":"Challenge of the day","✓ Continuer":"✓ Continue","Vue agrandie":"Enlarged view","Zoom arrière":"Zoom out","Zoom avant":"Zoom in","✕ Fermer":"✕ Close","▶ Reprendre la partie":"▶ Resume game","🎓 Tutoriel":"🎓 Tutorial","← Précédent":"← Previous","Passer le tutoriel":"Skip the tutorial","🎯 Mes cibles (Mode TP)":"🎯 My targets (Practice mode)","Identifiez les 2 blocs qui vous semblent les meilleurs prospects sur cette carte et justifiez chaque choix en quelques mots (piège, réservoir, couverture, charge : qu'est-ce qui vous convainc sur ce bloc précis ?). Sélectionnez un bloc sur la carte, puis revenez ici pour l'ajouter.":"Identify the 2 blocks that look like the best prospects on this map and justify each choice in a few words (trap, reservoir, seal, charge: what convinces you about this particular block?). Select a block on the map, then come back here to add it.","➕ Ajouter le bloc actuellement sélectionné":"➕ Add the currently selected block","✓ Soumettre mes 2 cibles":"✓ Submit my 2 targets","⚙ Paramètres de confort":"⚙ Comfort settings","📖 Glossaire":"📖 Glossary","📚 Bibliothèque des lithologies":"📚 Lithology library","antisèche : logs, réservoirs":"cheat sheet: logs, reservoirs","🎓 Revoir le tutoriel":"🎓 Review the tutorial","🏠 Retour à l'accueil":"🏠 Back to home","Seuls les réglages d'affichage sont modifiables en cours de partie. La taille de carte, le bassin ou le niveau d'incertitude sont fixés à la génération de la carte et ne peuvent pas être changés sans recommencer une partie.":"Only display settings can be changed during a game. Map size, basin and uncertainty level are fixed when the map is generated and cannot be changed without starting a new game.","← Retour":"← Back","FIN DE PARTIE":"GAME OVER","🛢 Gisements exploités":"🛢 Fields in production","🗺️ Voir les gisements sur la carte":"🗺️ Show the fields on the map","▶ REJOUER":"▶ REPLAY","Progression vers l'objectif":"Progress toward the goal","Cash flow/mois":"Cash flow/month","Brut":"Crude","Cours du brut : 60 derniers mois (traits pointillés : vos alertes de prix)":"Crude price: last 60 months (dotted lines: your price alerts)","Informateur : avis de prévision et alertes d'événements du marché (payant, pas toujours juste)":"Informant: forecast notices and market event alerts (paid, not always right)","Informateur de marché":"Market informant","Alertes de prix : être prévenu quand le brut franchit un seuil":"Price alerts: be notified when crude crosses a threshold","Alertes de prix":"Price alerts","Forage":"Drilling","Vous pouvez lancer une étude sur un autre bloc pendant ce temps":"You can launch a study on another block in the meantime","Mes cibles (0/2)":"My targets (0/2)","Vitesse du temps":"Time speed","Changer la vitesse du temps":"Change time speed","Outil de carte":"Map tool","Sélection":"Select","Coupe A→B":"Section A→B","Planifier un forage":"Plan a well","Mode : Sélection":"Mode: Select","Afficher ou masquer tous les traits de coupe sur la carte (la coupe affichée en trait plein, les autres en pointillé)":"Show or hide all section lines on the map (the displayed section as a solid line, the others dotted)","Traits de coupe":"Section lines","Vue d'ensemble : toute la carte à l'écran":"Overview: the whole map on screen","Vue d'ensemble":"Overview","Légende de la carte":"Map legend","Légende":"Legend","Relief structural · gravimétrie":"Structural relief · gravity","bas":"low","haut":"high","Terre en ocre, mer en bleu. Un haut structural piège plus souvent les hydrocarbures.":"Land in ochre, sea in blue. A structural high traps hydrocarbons more often.","Probabilité estimée · sismique 3D":"Estimated probability · 3D seismic","Le chiffre dans la case est l'estimation, en %. Il n'apparaît qu'après une sismique 3D.":"The number in the cell is the estimate, in %. It only appears after a 3D seismic survey.","Non exploré":"Unexplored","Bloc sélectionné":"Selected block","Extrémités de la coupe":"Section ends","Puits sec":"Dry hole","Puits productif":"Producing well","Terre":"Land","Mer":"Sea","Hachuré = non exploré":"Hatched = unexplored","Glisser pour redimensionner":"Drag to resize","← swipez pour changer d'onglet →":"← swipe to change tab →","Cliquez un bloc sur la carte pour voir ce que vous savez de lui.":"Click a block on the map to see what you know about it.","Activez le mode":"Turn on the mode","📐 Coupe A→B":"📐 Section A→B","puis cliquez deux blocs pour tracer le profil.":"then click two blocks to draw the profile.","Une fois A et B définis, vous pouvez lancer la":"Once A and B are set, you can launch the","sismique 2D":"2D seismic","sur ce profil : elle révèle la profondeur des horizons sur tous les blocs intersectés simultanément.":"on this profile: it reveals the depth of the horizons on all intersected blocks at once.","📡 Lancer sismique 2D sur ce profil":"📡 Run 2D seismic on this profile","👁 Voir la vérité (triche)":"👁 Show the truth (cheat)","Sélectionnez un bloc pour voir les études disponibles.":"Select a block to see the available studies.","Aucun gisement pour l'instant.":"No field yet.","Mode finance non activé.":"Finance mode not enabled.","Choisissez une carte dans chacune des 4 catégories du système pétrolier pour composer votre prospect. Certaines combinaisons se renforcent, d'autres se contredisent. Une fois les 4 cartes choisies, lancez le forage virtuel.":"Choose a card in each of the 4 petroleum system categories to compose your prospect. Some combinations reinforce each other, others contradict. Once the 4 cards are chosen, launch the virtual well.","⛏ Forer ce prospect":"⛏ Drill this prospect","🔄 Nouvelle main":"🔄 New hand","Manches jouées : 0 · Réussites : 0":"Rounds played: 0 · Wins: 0","Lire un log":"Read a log","Suite →":"Next →","Légende et aide":"Legend and help","Chaque log vient d'un puits tiré au hasard (bassin et seed différents). Les courbes : GR en vert, résistivité en rouge (trait plein : profonde, pointillé : peu profonde), densité en rouge et neutron en bleu pointillé (le jaune signale un croisement), sonique en violet. La colonne de gauche donne les couches, sans leur nom.":"Each log comes from a randomly drawn well (different basin and seed). The curves: GR in green, resistivity in red (solid line: deep, dotted: shallow), density in red and neutron in dotted blue (yellow marks a crossover), sonic in purple. The left column shows the layers, without their names.","Repères de lecture du jeu.":"Game reading benchmarks.","Dans une roche poreuse, une résistivité profonde sous 10 Ω·m indique de l'eau salée, au-dessus des hydrocarbures. Le jaune (neutron nettement sous la porosité-densité) distingue le gaz de l'huile.":"In a porous rock, a deep resistivity below 10 Ω·m indicates salt water, above it hydrocarbons. Yellow (neutron clearly below density porosity) tells gas from oil.","Formules des questions de calcul.":"Formulas for the calculation questions.","Volume d'argile : Vsh = (GR − GR roche propre) / (GR argile − GR roche propre). Porosité-densité : φ = (ρ matrice − ρb) / (ρ matrice − ρ fluide). Saturation en eau (Archie, a = 1, m = n = 2) : Sw = √(Rw / (φ² × Rt)). Contact : la résistivité chute nettement sous le contact hydrocarbures-eau.":"Clay volume: Vsh = (GR − clean rock GR) / (clay GR − clean rock GR). Density porosity: φ = (ρ matrix − ρb) / (ρ matrix − ρ fluid). Water saturation (Archie, a = 1, m = n = 2): Sw = √(Rw / (φ² × Rt)). Contact: resistivity drops sharply below the hydrocarbon-water contact.","Ces repères sont calibrés sur les puits du jeu et chaque question est choisie pour qu'ils tranchent : sur de vrais logs, les cas ambigus existent (roche argileuse, eau douce, gaz peu saturé) et les mêmes courbes se discutent.":"These benchmarks are calibrated on the game's wells and each question is chosen so that they settle it: on real logs, ambiguous cases exist (clayey rock, fresh water, poorly saturated gas) and the same curves are debated.","Interpréter une coupe sismique":"Interpret a seismic section","Chaque coupe est tirée d'une vraie géologie du jeu (bassin et seed différents). Bleu : l'impédance augmente sous le réflecteur, rouge : elle diminue. Plus le trait est épais, plus le contraste est fort. Une faille décale d'un coup tous les réflecteurs entre deux colonnes ; un pli les incline progressivement. La distance n'est pas à l'échelle : seule la profondeur est chiffrée.":"Each section is drawn from a real game geology (different basin and seed). Blue: impedance increases below the reflector, red: it decreases. The thicker the line, the stronger the contrast. A fault shifts all reflectors between two columns at once; a fold tilts them gradually. Distance is not to scale: only depth is quantified.","Bibliothèque des lithologies":"Lithology library","Chercher une lithologie":"Search a lithology","Chercher une roche ou une formation (grès, Brent, sel, charbon…)":"Search a rock or formation (sandstone, Brent, salt, coal…)","Règles rapides pour lire un log":"Quick rules to read a log","GR bas":"Low GR","(moins de 50 API) : roche propre, grès, calcaire, dolomie, sel, anhydrite.":"(under 50 API): clean rock, sandstone, limestone, dolomite, salt, anhydrite.","GR haut":"High GR","(plus de 100) : argile, ou roche-mère si la courbe sort de l'échelle.":"(over 100): clay, or source rock if the curve goes off scale.","Densité":"Density",": 2,03 g/cc = sel gemme, 2,98 = anhydrite, 1,4 = charbon, 2,87 = dolomie pure, 2,71 = calcaire pur, 2,65 = grès pur. Une porosité la fait baisser.":": 2.03 g/cc = rock salt, 2.98 = anhydrite, 1.4 = coal, 2.87 = pure dolomite, 2.71 = pure limestone, 2.65 = pure sandstone. Porosity lowers it.","Sonique lent":"Slow sonic","(plus de 100 µs/ft) : roche très poreuse, sédiments meubles, charbon, argile peu compactée.":"(over 100 µs/ft): very porous rock, loose sediments, coal, poorly compacted clay.","Sonique rapide":"Fast sonic","(moins de 50) : dolomie, calcaire compact, anhydrite, socle.":"(under 50): dolomite, tight limestone, anhydrite, basement.","Résistivité":"Resistivity","énorme (plus de 1 000 Ω·m) sur GR bas et sans porosité : sel ou anhydrite. Basse (moins de 5) dans une roche poreuse : eau salée. Haute dans une roche poreuse : hydrocarbures.":"huge (over 1,000 Ω·m) on low GR and with no porosity: salt or anhydrite. Low (under 5) in a porous rock: salt water. High in a porous rock: hydrocarbons.","Croisement densité-neutron":"Density-neutron crossover","(jaune) dans une roche poreuse : gaz.":"(yellow) in a porous rock: gas.","Console de forage":"Drilling console","Quaternaire":"Quaternary","Craie":"Chalk","Gypse":"Gypsum","Siltite":"Siltstone","Fenêtre à huile":"Oil window","Gaz":"Gas","Pauvre":"Poor","Bon":"Good","Moyen":"Medium","Couverture":"Seal","FIN":"END","Pression":"Pressure","Ciment":"Cement","Synclinal":"Syncline","Anticlinal":"Anticline","Complet":"Full","Biseau":"Pinch-out","Neutre":"Neutral","Socle":"Basement","Fév":"Feb","Avr":"Apr","Mai":"May","Aoû":"Aug","Déc":"Dec","Forer":"Drill","Calcaire":"Limestone","Dolomie":"Dolomite","Marne":"Marl","Charbon":"Coal","Faille":"Fault","Informateur":"Informant","Carotte":"Core","Argilite":"Claystone","Houille":"Hard coal","Nul":"None","Sismique":"Seismic","Au-dessus":"Above","Couche":"Layer","Basalte":"Basalt","Calcul":"Calculation","Huile":"Oil","Sonique":"Sonic","Tout":"All","Profondeur":"Depth","Avancement":"Rate of penetration","Heures":"Hours","Pertes":"Losses","Inclinaison":"Inclination","Surmature (gaz)":"Overmature (gas)","Fenêtre à gaz":"Gas window","Grès":"Sandstone","Argile":"Clay","Sel":"Salt","Roche-mère":"Source rock","Piège":"Trap","Réservoir":"Reservoir","Sec":"Dry","Fermer":"Close","Retour":"Back","Suivant →":"Next →","Précédent":"Previous","Terminer":"Finish","Question suivante →":"Next question →","Score : 0/0":"Score: 0/0","Step 1 :":"Step 1:"};
+  const norm = s => s.replace(/\s+/g,' ').trim();
+  const tr = n => { const v = n.nodeValue; if(!v) return; const t = v.trim(); if(!t) return; const e = HTML_EN[norm(t)]; if(e !== undefined && e !== t) n.nodeValue = v.replace(t, () => e); };
+  const ATTR = ['title','aria-label','placeholder','alt'];
+  const attrs = el => { for(const a of ATTR){ const v = el.getAttribute && el.getAttribute(a); if(v){ const e = HTML_EN[norm(v)]; if(e !== undefined && e !== v) el.setAttribute(a, e); } } };
+  const walk = root => { if(root.nodeType === 3) return tr(root); if(root.nodeType !== 1 || /^(SCRIPT|STYLE)$/.test(root.tagName)) return; attrs(root); for(let c = root.firstChild; c; c = c.nextSibling) walk(c); };
+  window.__htmlEn = { dict: HTML_EN, walk };
+  const start = () => { walk(document.body); new MutationObserver(ms => { for(const m of ms){ if(m.type === 'childList') m.addedNodes.forEach(walk); else if(m.type === 'characterData') tr(m.target); else if(m.type === 'attributes') attrs(m.target); } })
+    .observe(document.documentElement, { subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:ATTR }); };
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+/*HTML_EN_END*/
 </script>
 </body>
 </html>
