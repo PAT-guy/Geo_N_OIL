@@ -44,29 +44,15 @@ def template_parts(content, base, units, top_whole_ok=True):
         if c=='\\': i+=2; continue
         if c=='$' and content.startswith('${',i):
             flush(pos,i)
-            j=i+2; depth=1
-            while j<n and depth>0:
-                e=content[j]
-                if e in '\'"':
-                    k=j+1
-                    while k<n and content[k]!=e: k += 2 if content[k]=='\\' else 1
-                    j=k+1; continue
-                if e=='`':
-                    k=j+1; dd=0
-                    while k<n:
-                        f=content[k]
-                        if f=='\\': k+=2; continue
-                        if f=='`' and dd==0: break
-                        if f=='$' and content.startswith('${',k): dd+=1; k+=2; continue
-                        if f=='{' and dd>0: dd+=1
-                        if f=='}' and dd>0: dd-=1
-                        k+=1
-                    j=k+1; continue
-                if e=='{': depth+=1
-                elif e=='}': depth-=1
-                j+=1
+            j=scan.expr_end(content,i+2)
             expr = content[i+2:j-1]
-            for t in scan.scan(expr, base+i+2):
+            etoks = scan.scan(expr, base+i+2)
+            for ti,t in enumerate(etoks):
+                lo = t['s']-(base+i+2)
+                if re.search(r"\bTR?\(\s*$", expr[max(0,lo-6):lo]): continue
+                if ti>0:
+                    lo2 = etoks[ti-1]['s']-(base+i+2)
+                    if re.search(r"\bTR?\(\s*$", expr[max(0,lo2-6):lo2]): continue
                 if t['q']=='`':
                     template_parts(t['t'], t['s']+1, units)
                 elif frenchish_str(t['t']):
@@ -113,6 +99,8 @@ def collect(src, whole_keys=frozenset()):
         if re.search(r"\bTR?\(\s*$", pre): continue
         if k>0 and re.search(r"\bTR?\($", src[max(0,toks[k-1]['s']-3):toks[k-1]['s']]): continue
         key = decode(it['t'])
+        # clé d'objet littéral ({ 'a':..., 'b':... }) : jamais enveloppée
+        if re.match(r"\s*:", src[it['e']:it['e']+4]) and re.search(r"[{,]\s*$", src[max(0,it['s']-6):it['s']]): continue
         if it['q']!='`':
             if scan.frenchish(key) or (frenchish_str(it['t']) and len(key)>3 and ' ' in key):
                 units.append(dict(kind='whole', s=it['s'], e=it['e'], q=it['q'], raw=it['t'], key=key))

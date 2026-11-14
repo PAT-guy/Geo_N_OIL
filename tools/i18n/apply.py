@@ -10,27 +10,7 @@ def skeleton(txt):
     out=[]; i=0; n=len(txt)
     while i<n:
         if txt.startswith('${',i):
-            j=i+2; d=1
-            while j<n and d>0:
-                c=txt[j]
-                if c in '\'"':
-                    k=j+1
-                    while k<n and txt[k]!=c: k += 2 if txt[k]=='\\' else 1
-                    j=k+1; continue
-                if c=='`':
-                    k=j+1; dd=0
-                    while k<n:
-                        f=txt[k]
-                        if f=='\\': k+=2; continue
-                        if f=='`' and dd==0: break
-                        if f=='$' and txt.startswith('${',k): dd+=1; k+=2; continue
-                        if f=='{' and dd>0: dd+=1
-                        if f=='}' and dd>0: dd-=1
-                        k+=1
-                    j=k+1; continue
-                if c=='{': d+=1
-                elif c=='}': d-=1
-                j+=1
+            j=scan.expr_end(txt,i+2)
             expr = txt[i+2:j-1]
             expr = re.sub(r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"", "S", expr)
             expr = re.sub(r"`(?:[^`\\]|\\.)*`", "S", expr, flags=re.S)

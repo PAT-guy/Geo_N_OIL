@@ -12,6 +12,40 @@ def frenchish(t):
     return n >= 2 and len(words) >= 3
 def scripts(src):
     return [(m.start(1), m.end(1)) for m in re.finditer(r"<script(?![^>]*src)[^>]*>(.*?)</script>", src, re.S)]
+def expr_end(code, j):
+    """j : position juste après '${'. Renvoie la position juste après l'accolade fermante (gère chaînes, gabarits imbriqués et expressions régulières)."""
+    n=len(code); depth=1; prev='('
+    while j<n and depth>0:
+        e=code[j]
+        if e in '\'"':
+            k=j+1
+            while k<n and code[k]!=e: k += 2 if code[k]=='\\' else 1
+            j=k+1; prev=e; continue
+        if e=='`':
+            k=j+1; dd=0
+            while k<n:
+                f=code[k]
+                if f=='\\': k+=2; continue
+                if f=='`' and dd==0: break
+                if f=='$' and code.startswith('${',k): k=expr_end(code,k+2); continue
+                k+=1
+            j=k+1; prev='`'; continue
+        if e=='/' and prev in '(,=:[!&|?{};':
+            k=j+1; incls=False
+            while k<n:
+                c=code[k]
+                if c=='\\': k+=2; continue
+                if c=='[': incls=True
+                elif c==']': incls=False
+                elif c=='/' and not incls: break
+                elif c=='\n': k=j; break
+                k+=1
+            if k>j: j=k+1; prev=')'; continue
+        if e=='{': depth+=1
+        elif e=='}': depth-=1
+        if not e.isspace(): prev=e
+        j+=1
+    return j
 def scan(code, base):
     out=[]; i=0; n=len(code); prev=''
     def skip_regex(i):
@@ -42,28 +76,7 @@ def scan(code, base):
                 if d=='\\': j+=2; continue
                 if d=='`' and depth==0: break
                 if d=='$' and code.startswith('${',j):
-                    depth+=1; j+=2
-                    while j<n and depth>0:
-                        e=code[j]
-                        if e in '\'"':
-                            k=j+1
-                            while k<n and code[k]!=e: k += 2 if code[k]=='\\' else 1
-                            j=k+1; continue
-                        if e=='`':
-                            k=j+1; dd=0
-                            while k<n:
-                                f=code[k]
-                                if f=='\\': k+=2; continue
-                                if f=='`' and dd==0: break
-                                if f=='$' and code.startswith('${',k): dd+=1; k+=2; continue
-                                if f=='{' and dd>0: dd+=1
-                                if f=='}' and dd>0: dd-=1
-                                k+=1
-                            j=k+1; continue
-                        if e=='{': depth+=1
-                        elif e=='}': depth-=1
-                        j+=1
-                    continue
+                    j=expr_end(code,j+2); continue
                 j+=1
             out.append(dict(s=base+i, e=base+j+1, q='`', t=code[i+1:j])); prev='`'; i=j+1; continue
         if c=='/' and (prev in '(,=:[!&|?{};\n' or prev==''):
