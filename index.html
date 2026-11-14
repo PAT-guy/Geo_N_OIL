@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.75</title>
+<title>GeoExplorer V4.76</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2031,6 +2031,15 @@ function generateGeology(gridSize, basinType, offshore, seed){
       const resFaciesVal = resFacies(x,y);
       const srcFaciesVal = sourceFacies(x,y);
       const srcAbsent = !!(sourceIdx>=0 && localStrat[sourceIdx]?.hiatus); // province sans roche-mère profonde : rien n'est généré ici
+      // Roche-mère superficielle AU-DESSUS du réservoir (Kimmeridge sur Brent) : elle ne charge pas vers le bas, sauf là où une faille de grand
+      // rejet la met en contact avec le réservoir (bloc voisin du tracé de la faille). Sa génération dépend de sa propre maturité.
+      let upperGen = 0, faultJuxt = false;
+      { const ui = localStrat.findIndex((l,i)=>l.role==='source' && !l.deepSource && i<reservoirIdx);
+        if(ui>=0 && horizons[ui] && horizons[ui].top>0){
+          const pt = 14 + horizons[ui].top*exhumation/1000*gradient, mu = pt<60 ? .05 : pt<=150 ? clamp(1-Math.abs(pt-105)/45,.15,1) : clamp(.8-(pt-150)/180,.3,.8);
+          upperGen = clamp(.1+srcFaciesVal*.85,.02,.9)*mu;
+          faultJuxt = faults.some(f=> Math.abs(f.throw) > 60 && Math.abs((x-f.px)*f.nx + (y-f.py)*f.ny) <= 0.75);
+        } }
       // V4.49 : le TOC de la roche-mère suit la richesse organique LOCALE (le faciès qui fixe aussi la force de génération),
       // de 0,3 à 9,5 %. Avant, il était tiré une fois par couche (1,5 à 9,5 %) sans lien avec la charge : une roche-mère affichée
       // « pauvre » pouvait remplir un piège. N'intervient dans aucun calcul de probabilité : seuls l'affichage du TOC,
@@ -2087,7 +2096,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
         id, x, y, horizons, topOfReservoir, tempAtRes, tempAtSrc, pressureRes,
         maturity, maturityClass, isGas,
         gradient, exhumation, paleoTemp, srcTopDepth, // exposés pour les quiz générés (Rock-Eval, Maturation) : aucun effet sur la géologie
-        trapFactor, resFactor, sealFactor, genStrength, trueQuality,
+        trapFactor, resFactor, sealFactor, genStrength, trueQuality, upperGen, faultJuxt,
         resThicknessLocal, inSalt, faultThrow, isOffshore, provinceIdx, srcAbsent,
       });
     }
@@ -2158,6 +2167,10 @@ function generateGeology(gridSize, basinType, offshore, seed){
       // on ne compte pas deux fois le même volume physique d'hydrocarbures).
       if(c > charge){ charge = c; chargeFrom = k; }
     });
+    // contact de faille avec la roche-mère superficielle : charge locale, un peu moins efficace qu'une vraie cuisine voisine
+    let viaFault = false;
+    if(b.faultJuxt && b.upperGen > 0.15){ const cf = b.upperGen*0.7; if(cf > charge){ charge = cf; chargeFrom = null; viaFault = true; } }
+    b.viaFault = viaFault;
     b.srcFactor = clamp(charge, .02, .9);
     b.chargeFrom = chargeFrom ? { x:chargeFrom.x, y:chargeFrom.y, dist:+Math.hypot(b.x-chargeFrom.x, b.y-chargeFrom.y).toFixed(1), self: chargeFrom.id===b.id } : null;
   });
@@ -2189,7 +2202,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       gradient:b.gradient, exhumation:b.exhumation, paleoTemp:b.paleoTemp, srcTopDepth:b.srcTopDepth,
       trapFactor:b.trapFactor, resFactor:b.resFactor, sealFactor:b.sealFactor, srcFactor:b.srcFactor,
       genStrength:b.genStrength,
-      resThicknessLocal:b.resThicknessLocal, inSalt:b.inSalt, faultThrow:b.faultThrow, provinceIdx:b.provinceIdx, srcAbsent:b.srcAbsent, chargeFrom:b.chargeFrom,
+      resThicknessLocal:b.resThicknessLocal, inSalt:b.inSalt, faultThrow:b.faultThrow, provinceIdx:b.provinceIdx, srcAbsent:b.srcAbsent, chargeFrom:b.chargeFrom, viaFault:b.viaFault, upperGen:b.upperGen,
       isOffshore:b.isOffshore,
       studies: [],
       studyLevel: 0,
@@ -4064,7 +4077,7 @@ function blockKnowledge(b){
       {n:'Piège',      st:'conf', t:`Facteur réel : ${f(b.trapFactor)}.`},
       {n:'Réservoir',  st:'conf', t:`Facteur réel : ${f(b.resFactor)}.`},
       {n:'Couverture', st:'conf', t:`Facteur réel : ${f(b.sealFactor)}.`},
-      {n:'Roche-mère', st:'conf', t:`Charge : ${f(b.srcFactor)}${b.maturityClass ? ', '+b.maturityClass.toLowerCase() : ''}.` + (b.srcAbsent ? ' Pas de roche-mère profonde dans cette province.' : '') + (b.chargeFrom ? (b.chargeFrom.self ? ' Le bloc est sa propre cuisine.' : ` Alimenté par la cuisine du bloc (${b.chargeFrom.x},${b.chargeFrom.y}), à ${String(b.chargeFrom.dist).replace('.',',')} blocs.`) : ' Aucune cuisine à portée : charge de fond seulement.')},
+      {n:'Roche-mère', st:'conf', t:`Charge : ${f(b.srcFactor)}${b.maturityClass ? ', '+b.maturityClass.toLowerCase() : ''}.` + (b.srcAbsent ? ' Pas de roche-mère profonde dans cette province.' : '') + (b.viaFault ? ' Chargé par la roche-mère superficielle, au contact de la faille voisine (juxtaposition avec le réservoir).' : b.chargeFrom ? (b.chargeFrom.self ? ' Le bloc est sa propre cuisine.' : ` Alimenté par la cuisine du bloc (${b.chargeFrom.x},${b.chargeFrom.y}), à ${String(b.chargeFrom.dist).replace('.',',')} blocs.`) : ' Aucune cuisine à portée : charge de fond seulement.')},
     ];
   }
   const out = [];
@@ -8448,7 +8461,7 @@ function _doStartGame(){
         <b style="color:var(--amber);">Réservoir</b> : une roche poreuse et perméable (grès, calcaire).<br>
         <b style="color:var(--amber);">Couverture</b> : une roche imperméable au-dessus (argile épaisse, sel, anhydrite).<br>
         <b style="color:var(--amber);">Charge</b> : des hydrocarbures venus d'une roche-mère mature, qui ont
-        migré jusqu'au piège.`,
+        migré jusqu'au piège. Une roche-mère placée <i>au-dessus</i> du réservoir ne le charge que là où une faille les met en contact.`,
     },
     {
       title: 'Les cinq gestes',
