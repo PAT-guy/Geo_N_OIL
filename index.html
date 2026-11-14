@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.78</title>
+<title>GeoExplorer V4.79</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -672,6 +672,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
     <div class="menu-section" id="tab-quick">
       <div class="q-lbl"><span class="i18n" data-fr="Votre niveau" data-en="Your level">Votre niveau</span></div>
       <div class="q-modes" id="quickModes">
+        <button type="button" class="q-mode" data-mode="decouverte"><b>🌱 Découverte</b><span class="i18n" data-fr="Petite carte, règles allégées, environ 10 minutes. Pour comprendre la boucle." data-en="Small map, lighter rules, about 10 minutes. To grasp the loop.">Petite carte, règles allégées, environ 10 minutes. Pour comprendre la boucle.</span><i>12 M$ · 10 ans · 8×8</i></button>
         <button type="button" class="q-mode" data-mode="junior"><b>🟡 Junior</b><span class="i18n" data-fr="Budget confortable. Pour découvrir le jeu." data-en="Comfortable budget. To discover the game.">Budget confortable. Pour découvrir le jeu.</span><i>15 M$ · 25 ans</i></button>
         <button type="button" class="q-mode" data-mode="expert"><b>🔴 Senior</b><span class="i18n" data-fr="Budget serré, marché volatile. Chaque forage compte." data-en="Tight budget, volatile market. Every well counts.">Budget serré, marché volatile. Chaque forage compte.</span><i>8 M$ · 20 ans</i></button>
         <button type="button" class="q-mode" data-mode="expedition"><b>🌍 Grande exploration</b><span class="i18n" data-fr="Carte 30×30, plusieurs provinces géologiques, budget étendu." data-en="30×30 map, several geological provinces, larger budget.">Carte 30×30, plusieurs provinces géologiques, budget étendu.</span><i>45 M$ · 35 ans</i></button>
@@ -696,6 +697,11 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
     </div>
 
     <div class="menu-section active" id="tab-mode">
+      <div class="mode-card" data-mode="decouverte">
+        <div class="mode-name">🌱 Découverte</div>
+        <div class="mode-desc">Carte de 8×8 dans le Bassin parisien, sans finance, sans marché agité, sans informateur ni coût d'abandon. Le guide reste ouvert et chaque forage s'accompagne d'une leçon. Pour comprendre pourquoi on étudie avant de forer.</div>
+        <div class="mode-stats">Budget <span>$12M</span> · Objectif <span>$25M</span> · Durée <span>10 ans</span></div>
+      </div>
       <div class="mode-card sel" data-mode="junior">
         <div class="mode-name">🟡 Junior Geologist</div>
         <div class="mode-desc">Budget confortable, études abordables. Idéal pour découvrir le moteur géologique.</div>
@@ -757,6 +763,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
       <div class="menu-opt-row">
         <span class="menu-opt-lbl">Taille de la carte</span>
         <div class="tg" id="mapSizePicker">
+          <button data-val="8">8×8</button>
           <button data-val="10">10×10</button>
           <button data-val="12" class="sel">12×12</button>
           <button data-val="15">15×15</button>
@@ -1246,6 +1253,8 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
 // CONFIGURATION DU JEU
 // =====================================================================
 const MODES = {
+  // Découverte : carte de 8×8 (Bassin parisien, à terre), règles allégées (voir G.simple), pas de faillite, fin au bout de 10 ans
+  decouverte:{ budget:12e6, winGoal:25e6, maxYears:10, bankruptcyEnabled:false, suggestedGridSize:8, simple:true, forceBasin:'paris' },
   junior:   { budget:15e6, winGoal:40e6,  maxYears:25, bankruptcyEnabled:true },
   expert:   { budget:8e6,  winGoal:30e6,  maxYears:20, bankruptcyEnabled:true },
   tp:       { budget:20e6, winGoal:0,     maxYears:0,  bankruptcyEnabled:false, tpMode:true },
@@ -2836,7 +2845,7 @@ function drillBlock(blockId, method, equip, est){
   const cost = depth * eq.costM * me.costMult * offMult;
   if(G.budget < cost && G.mode!=='sandbox'){addLog('Budget insuffisant pour ce forage.','bad');return;}
   G.budget -= cost;
-  b.planned = false;
+  b.planned = false; b.estAtDrill = (b.playerEst && b.playerEst.p!==null && b.playerEst.p!==undefined) ? {p:b.playerEst.p, own:true} : (b.estimate?.prob!==undefined ? {p:b.estimate.prob, own:false} : null);
 
   const drillingMonths = method==='strati' ? Math.max(1, Math.round(depth/1200)) : Math.max(2, Math.round(depth/600));
   G.drilling.push({blockId, method, equip, cost, depth, cf, startMonth:G.month, endMonth:G.month+drillingMonths,
@@ -3014,7 +3023,7 @@ function wellEconomics(w){
 
 // Abandon d'un puits (bouchons de ciment, remise en état du site) : 12 % du coût de forage à terre, 18 % en mer. Payé une seule fois,
 // à la fermeture ou à l'épuisement. Les puits déjà fermés ou épuisés dans une sauvegarde plus ancienne ne sont pas rétroactivement facturés.
-const abandonCost = w => (G.mode==='sandbox' ? 0 : Math.round((w.cost||0) * (w.offshore ? 0.18 : 0.12)));
+const abandonCost = w => (G.mode==='sandbox' || G.simple ? 0 : Math.round((w.cost||0) * (w.offshore ? 0.18 : 0.12)));
 const abandonLiability = () => G.wells.reduce((t,w)=> t + ((w.status==='producing' || w.status==='blowout') && !w.abandonPaid ? abandonCost(w) : 0), 0);
 function payAbandon(w){
   if(w.abandonPaid) return 0;
@@ -3590,10 +3599,10 @@ function stepPrice(){
   // derniers seulement avec le mode Finance, qui porte déjà les accidents.
   G.marketEvents = G.marketEvents || [];
   const plan = ev => { ev.at = G.month + 2 + Math.floor(Math.random()*7); G.marketEvents.push(ev); };
-  if(Math.random()<.05) plan({ kind:'trend', target:(Math.random()-.5)*.7 });
-  if(Math.random()<.012) plan({ kind:'shock', size:(Math.random()-.5)*30 });
-  if(Math.random()<.004) plan({ kind:'embargo', size:8 + Math.random()*6 });
-  if(Math.random()<.004) plan({ kind:'recession', size:7 + Math.random()*5 });
+  if(!G.simple && Math.random()<.05) plan({ kind:'trend', target:(Math.random()-.5)*.7 });
+  if(!G.simple && Math.random()<.012) plan({ kind:'shock', size:(Math.random()-.5)*30 });
+  if(!G.simple && Math.random()<.004) plan({ kind:'embargo', size:8 + Math.random()*6 });
+  if(!G.simple && Math.random()<.004) plan({ kind:'recession', size:7 + Math.random()*5 });
   if(G.financeMode && Math.random()<.005) plan({ kind:'storm', dur:2 + Math.floor(Math.random()*3) });
   if(G.financeMode && Math.random()<.003) plan({ kind:'tax', dur:12 });
   let shock=0;
@@ -3679,6 +3688,10 @@ function showEnd(reason){
     <div><span class="end-lbl">Revenus cumulés</span><br><strong>${formatM(totalProd)}</strong></div>
   `;
   { const extra = recapMarketCalibHtml(); if(extra) document.getElementById('endStats').insertAdjacentHTML('beforeend', extra); }
+  if(G.simple){
+    document.getElementById('endStats').insertAdjacentHTML('beforeend', `<div style="grid-column:1/-1;font-size:12px;line-height:1.55;"><b>🌱 Découverte terminée.</b> Vous avez fait la boucle complète : étudier, estimer, forer, apprendre du résultat. Le niveau <b>Junior</b> ajoute une carte plus grande, la finance (emprunts, couverture, accidents), un marché qui bouge et un informateur.<br><button class="adv-reset" id="endJuniorBtn" style="margin-top:6px;">Passer à Junior</button></div>`);
+    document.getElementById('endJuniorBtn')?.addEventListener('click', ()=>{ document.getElementById('endScreen').style.display='none'; document.getElementById('menu').classList.remove('hidden'); document.querySelector('.mode-card[data-mode="junior"]')?.click(); if(typeof quickRefresh==='function') quickRefresh(); });
+  }
   if(G.daily){
     const nw = Math.round(netWorth() - abandonLiability()), st = dailyStore(), prev = st[G.daily], rec = !prev || nw > prev.nw;
     if(rec){ st[G.daily] = { nw, years:+(G.month/12).toFixed(1), wells:G.wells.length }; try { localStorage.setItem('geoexplorer_daily', JSON.stringify(st)); } catch(e){} }
@@ -3732,6 +3745,14 @@ const SUSPENSE_LINES = [
   'Mesure de pression...', 'Interprétation des logs...',
 ];
 
+// Mode Découverte : une leçon après chaque forage, qui relie l'estimation faite avant au résultat
+function simpleLessonHtml(b, success){
+  const e = b.estAtDrill, p = e ? e.p : null;
+  const t = (p===null || p===undefined)
+    ? `Vous avez foré sans estimation : c'est un pari à l'aveugle. Une sismique 3D donne une probabilité de succès avant de dépenser le prix d'un forage.`
+    : `${e.own ? 'Vous aviez annoncé' : 'Avant le forage, vos études donnaient'} environ <b>${Math.round(p*100)} %</b> de chances à ce bloc. ${success ? 'Ça a réussi.' : 'Ça n\'a pas réussi : un pari à '+Math.round(p*100)+' % échoue environ '+Math.round((1-p)*100)+' fois sur 100.'} Une estimation n'est pas une certitude, c'est sa moyenne sur beaucoup de forages qui compte.`;
+  return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><b>🌱 Leçon.</b> ${t} Ouvrez l'onglet Géologie : le log de ce puits montre ce que la sismique ne pouvait pas voir.</div>`;
+}
 function showDrillReveal(b, geoOk, techOk, limitingFactor, calibHtml){
   drillRevealQueue.push({b, geoOk, techOk, limitingFactor, calibHtml});
   if(!drillRevealPlaying) playNextDrillReveal();
@@ -3788,6 +3809,7 @@ function playNextDrillReveal(){
       detail.innerHTML = limitingFactor==='labmiss' ? `Cause : <b>mauvais horizon visé</b>. Le puits a traversé la colonne sans toucher le réservoir.` : `Facteur limitant : <b>${FACTOR_LABEL[limitingFactor]}</b> : ${FACTOR_EXPLAIN_BAD[limitingFactor]}.`;
     }
     if(calibHtml) detail.innerHTML += calibHtml;
+    if(G.simple) detail.innerHTML += simpleLessonHtml(b, success);
     closeBtn.style.display = '';
   }, 1500);
 }
@@ -5056,7 +5078,7 @@ const LAB_PRESETS = {
   expert:     { label:'Expert', d:'Toutes les règles, sans bouton « vérité ».', o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, thick:true, cheat:false } },
 };
 // Préréglage proposé par niveau : les règles se durcissent avec le niveau (modifiables avant la partie)
-const LAB_MODE_PRESET = { junior:'decouverte', expert:'inter', expedition:'complet', tp:'decouverte', sandbox:'decouverte' };
+const LAB_MODE_PRESET = { decouverte:'decouverte', junior:'decouverte', expert:'inter', expedition:'complet', tp:'decouverte', sandbox:'decouverte' };
 let LABOPT = { ...LAB_DEFAULT_OPT, ...LAB_PRESETS.decouverte.o };
 function labNormOpt(o){ const n = { ...LAB_DEFAULT_OPT, ...o }; if(!n.mute) n.cal = false; if(n.locked) n.cheat = false; return n; }
 function labApplyOpt(){
@@ -6567,7 +6589,7 @@ function formatM(v){
   return s+v.toFixed(0)+'\u00a0$';
 }
 const BASIN_NAMES = {random:'Bassin aléatoire', paris:'Bassin parisien', rift:'Bassin de rift', passive:'Marge passive', foreland:'Avant-pays', aquitaine:'Bassin aquitain', north_sea:'Mer du Nord', gulf_coast:'Gulf Coast'};
-const MODE_NAMES = {junior:'Géologue junior', expert:'Géologue senior', tp:'Mode TP', sandbox:'Bac à sable', expedition:'Grande exploration'};
+const MODE_NAMES = {decouverte:'Découverte', junior:'Géologue junior', expert:'Géologue senior', tp:'Mode TP', sandbox:'Bac à sable', expedition:'Grande exploration'};
 
 // =====================================================================
 // GESTION DES CLICS CARTE & OUTILS
@@ -7153,7 +7175,7 @@ document.querySelectorAll('.mode-card[data-mode]').forEach(c=>c.addEventListener
   // Le mode Finance (emprunts, accidents, couverture) est actif par défaut, mais il n'a pas de sens
   // en TP (objectif géologique) ni en bac à sable : on le coupe en y entrant et on le rétablit en en sortant.
   // Le choix manuel du joueur n'est touché que lors de ces passages.
-  const noFin = m => m==='tp' || m==='sandbox';
+  const noFin = m => m==='tp' || m==='sandbox' || m==='decouverte';
   if(noFin(c.dataset.mode) !== noFin(prevMode)){
     menuConfig.financeMode = !noFin(c.dataset.mode);
     document.querySelectorAll('#financePicker button').forEach(b=>b.classList.toggle('sel', (b.dataset.val==='1')===menuConfig.financeMode));
@@ -7162,6 +7184,14 @@ document.querySelectorAll('.mode-card[data-mode]').forEach(c=>c.addEventListener
   // Exploration → 30×30) : on la présélectionne, mais le joueur reste libre
   // de la changer ensuite dans l'onglet Monde.
   const suggested = MODES[c.dataset.mode]?.suggestedGridSize;
+  // Découverte : bassin parisien à terre ; en la quittant, on rend la taille standard
+  if(MODES[c.dataset.mode]?.forceBasin){
+    document.querySelector(`#basinPicker button[data-val="${MODES[c.dataset.mode].forceBasin}"]`)?.click();
+    document.querySelector('#offshorePicker button[data-val="0"]')?.click();
+  } else if(prevMode==='decouverte'){
+    menuConfig.gridSize = 12; document.querySelectorAll('#mapSizePicker button').forEach(b=>b.classList.toggle('sel', parseInt(b.dataset.val)===12));
+    document.querySelector('#offshorePicker button[data-val="1"]')?.click();
+  }
   if(suggested){
     menuConfig.gridSize = suggested;
     document.querySelectorAll('#mapSizePicker button').forEach(b=>{
@@ -7456,6 +7486,7 @@ function loadGame(){
   renderGeoPanel(selectedBlock!==null ? blocks[selectedBlock] : null);
   renderStudiesPanel(selectedBlock!==null ? blocks[selectedBlock] : null);
   setFinanceVisible(!!G.financeMode);
+  { const ib = document.getElementById('btnInformant'); if(ib) ib.style.display = G.simple ? 'none' : ''; }
   labApplyOpt();
   priceAlertRefresh();
   if(G.financeMode && typeof renderFinancePanel==='function') renderFinancePanel();
@@ -7497,6 +7528,7 @@ function _doStartGame(){
     offshore:       menuConfig.offshore,
     basinType:      menuConfig.basinType,
     financeMode:    menuConfig.financeMode,
+    simple:         !!m.simple,
     uncertaintyLevel: menuConfig.uncertainty,
     budget:         m.budget,
     month:0, speed:1, paused:false, labPick:null, labCal:{}, labProc:{}, labSecPrev:null, labOpt:{ ...LABOPT },
@@ -7534,6 +7566,8 @@ function _doStartGame(){
 
   // Onglet Finance : afficher/masquer selon le mode
   setFinanceVisible(!!G.financeMode);
+  { const ib = document.getElementById('btnInformant'); if(ib) ib.style.display = G.simple ? 'none' : ''; }
+  if(G.simple){ guideHidden = false; try { localStorage.setItem('geoexplorer_guide','1'); } catch(e){} }
   labApplyOpt();
   priceAlertRefresh();
   // Le contenu du panneau n'était calculé qu'au premier tour de mois : avant, il
