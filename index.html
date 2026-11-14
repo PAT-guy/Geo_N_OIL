@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.71</title>
+<title>GeoExplorer V4.72</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -9150,6 +9150,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
 .sec-actions button{min-height:40px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:12px;cursor:pointer;}
 .sec-actions button.go{background:var(--text);color:var(--bg);border-color:var(--text);}
 .sec-actions button:disabled{opacity:.45;cursor:not-allowed;}
+.rg-inc{margin:8px 10px;padding:8px 10px;border:1px solid var(--red);border-radius:8px;background:color-mix(in srgb, var(--red) 8%, var(--panel));font-size:12px;line-height:1.5;}
 .rg-hint#rgMwNote{min-height:4.7em;}
 .rg-hint{font-size:11.5px;color:var(--muted);line-height:1.55;margin-top:8px;}
 @media (min-width:900px){ #rigModal{align-items:center;} #rigModal > *{width:100%;max-width:760px;} }
@@ -9364,14 +9365,44 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
   function drMeasure(d, x, z){ const zn = drZone(d, x, z), nz = labHash(x*0.31 + z*0.17) - 0.5, n2 = labHash(x*0.57 - z*0.23) - 0.5;
     const gr = (zn==='above' ? d.grAbove : zn==='below' ? d.grBelow : d.grPay) + nz*14, rt = zn==='pay' ? d.rtPay*(1+n2*0.18) : zn==='water' ? d.rtWater*(1+n2*0.18) : 3*(1+n2*0.3);
     return { zone:zn, gr:Math.max(5, gr), rt:Math.max(0.5, rt) }; }
-  function drNew(S){ const d = S.sc.drain, z0 = d.heelZ; return { brief:false, x:0, z:z0, md:0, pitch:0, target:0, trail:[{x:-20,z:z0},{x:-10,z:z0},{x:0,z:z0}], logs:[], marks:[], steps:0, inPay:0, cnt:{pay:0,above:0,water:0,below:0}, hours:0, status:'run', lastGrZone:'pay', lastRtZone:'pay', auto:false }; }
+  function drNew(S){ const d = S.sc.drain, z0 = d.heelZ; return { brief:false, x:0, z:z0, md:0, pitch:0, target:0, trail:[{x:-20,z:z0},{x:-10,z:z0},{x:0,z:z0}], logs:[], marks:[], steps:0, inPay:0, cnt:{pay:0,above:0,water:0,below:0}, hours:0, status:'run', lastGrZone:'pay', lastRtZone:'pay', auto:false, inc:null, incOff:false, wear:0, incidents:0, pen:0, lossDone:false, risk:0, worn:false, failed:null, bitChanges:0, dls:[], prevPitch:0, log:[] }; }
   const drInterp = (tr, back) => { const n = tr.length-1, i = Math.floor(back/DR_STEP), f = back/DR_STEP - i, a = tr[n-i], b = tr[n-i-1]; return { x:a.x + (b.x-a.x)*f, z:a.z + (b.z-a.z)*f }; };
+  // Incidents du drain : coincement (plus probable dans l'argile, après un coude serré, avec un outil usé), perte de circulation au passage de la
+  // faille, outil usé. Un incident arrête le forage jusqu'à décision : drAct. Chaque incident coûte des heures et des points ; un coincement non libéré met fin au drain.
+  const DR_PEN = { stuck:3, loss:2, bit:2 };
+  function drRaise(S, type, txt){ const dr = S.dr; dr.inc = { type, att:0 }; dr.incidents++; dr.pen += DR_PEN[type]; dr.auto = false; dr.log.push({ md:dr.md, type, txt }); }
+  function drAct(S, a){
+    const dr = S.dr; if(!dr || !dr.inc || dr.status!=='run') return false; const t = dr.inc.type, ok = p => Math.random() < p;
+    if(t==='stuck'){
+      if(a==='jar'){ dr.hours += 4; if(ok(0.55)){ dr.inc = null; dr.log.push({ md:dr.md, type:'ok', txt:'Coulissage réussi : l\'outil est libre.' }); } else { dr.inc.att++; dr.log.push({ md:dr.md, type:'ko', txt:'Coulissage sans effet ('+dr.inc.att+'/3).' }); if(dr.inc.att>=3){ dr.failed = 'coincement'; dr.pen += 12; dr.status = 'done'; dr.inc = null; } } return true; }
+      if(a==='spot'){ dr.hours += 12; if(ok(0.85)){ dr.inc = null; dr.log.push({ md:dr.md, type:'ok', txt:'Pilule libératrice : l\'outil est libre.' }); } else { dr.inc.att++; dr.log.push({ md:dr.md, type:'ko', txt:'La pilule n\'a pas suffi ('+dr.inc.att+'/3).' }); if(dr.inc.att>=3){ dr.failed = 'coincement'; dr.pen += 12; dr.status = 'done'; dr.inc = null; } } return true; }
+    }
+    if(t==='loss'){
+      if(a==='lcm'){ dr.hours += 8; dr.inc = null; dr.log.push({ md:dr.md, type:'ok', txt:'Pilule colmatante : les pertes sont bouchées.' }); return true; }
+      if(a==='ignore'){ dr.inc = null; dr.risk = 12; dr.log.push({ md:dr.md, type:'ko', txt:'Pertes ignorées : le trou est fragilisé sur les 120 m suivants.' }); return true; }
+    }
+    if(t==='bit'){
+      if(a==='change'){ dr.hours += 16; dr.wear = 0; dr.worn = false; dr.wornAsked = false; dr.bitChanges++; dr.inc = null; dr.log.push({ md:dr.md, type:'ok', txt:'Outil changé : la vitesse de forage est rétablie.' }); return true; }
+      if(a==='keep'){ dr.worn = true; dr.inc = null; dr.log.push({ md:dr.md, type:'ko', txt:'Outil usé conservé : forage plus lent et risque de coincement accru.' }); return true; }
+    }
+    return false;
+  }
   function drStep(S){
-    const dr = S.dr; if(!dr || dr.status!=='run') return; const d = S.sc.drain;
+    const dr = S.dr; if(!dr || dr.status!=='run' || dr.inc) return; const d = S.sc.drain;
     dr.pitch += clamp(dr.target - dr.pitch, -DR_DLS, DR_DLS); dr.pitch = clamp(dr.pitch, -12, 12);
     const r = dr.pitch*Math.PI/180; dr.x += DR_STEP*Math.cos(r); dr.z += DR_STEP*Math.sin(r); dr.md += DR_STEP; dr.trail.push({x:dr.x, z:dr.z});
     const here = drZone(d, dr.x, dr.z); dr.cnt[here]++; dr.steps++; if(here==='pay') dr.inPay++;
-    const rop = 14*Math.pow(50/d.ucs, 0.7)*(here==='above' || here==='below' ? 0.55 : 1); dr.hours += DR_STEP/rop;
+    dr.dls.push(Math.abs(dr.pitch - dr.prevPitch)); dr.prevPitch = dr.pitch; if(dr.dls.length > 6) dr.dls.shift();
+    const rop = 14*Math.pow(50/d.ucs, 0.7)*(here==='above' || here==='below' ? 0.55 : 1)*(dr.worn ? 0.5 : 1); dr.hours += DR_STEP/rop;
+    if(!dr.incOff && dr.md < d.L){   // pas d'incident au dernier pas : le drain est terminé
+      dr.wear += DR_STEP*(d.ucs/100)/900;
+      const sharp = dr.dls.reduce((a,b)=>a+b,0) >= 8;   // coude serré : plus de 8° sur 60 m
+      if(dr.risk > 0) dr.risk--;
+      const pStuck = 0.005*((here==='above'||here==='below') ? 3 : 1)*(sharp ? 2 : 1)*(dr.worn ? 2 : 1)*(dr.risk>0 ? 3 : 1);
+      if(!dr.lossDone && Math.abs(dr.x - d.xf) <= 5){ dr.lossDone = true; if(Math.random() < 0.6){ drRaise(S, 'loss', 'Perte de circulation au passage de la faille.'); }
+      } else if(!dr.worn && !dr.wornAsked && dr.wear >= 0.85){ drRaise(S, 'bit', 'Outil usé : la vitesse de forage chute.'); dr.wornAsked = true; }
+      else if(Math.random() < pStuck) drRaise(S, 'stuck', 'Outil coincé'+(here==='above'||here==='below' ? ' dans l\'argile' : '')+'.');
+    }
     const gs = drInterp(dr.trail, DR_GR_BACK), rs = drInterp(dr.trail, DR_RT_BACK), mg = drMeasure(d, gs.x, gs.z), mr = drMeasure(d, rs.x, rs.z);
     dr.logs.push({ x:dr.x, gr:mg.gr, rt:mr.rt, zoneGr:mg.zone, zoneRt:mr.zone, bit:here, gx:gs.x, gz:gs.z, rx:rs.x, rz:rs.z });
     // limites détectées : le GR signale le toit ou la base (argile), la résistivité signale le contact
@@ -9381,11 +9412,12 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
     dr.lastGrZone = mg.zone; if(!sh(mr.zone)) dr.lastRtZone = mr.zone;
     if(dr.md >= d.L){ dr.status = 'done'; dr.auto = false; }
   }
-  function drScore(S){ const dr = S.dr, d = S.sc.drain, pct = dr.steps ? dr.inPay/dr.steps : 0, len = Math.min(1, dr.md/d.L), score = Math.round(100*pct*len);
-    return { pct, len, score, cnt:dr.cnt, md:dr.md, hours:dr.hours }; }
+  function drScore(S){ const dr = S.dr, d = S.sc.drain, pct = dr.steps ? dr.inPay/dr.steps : 0, len = Math.min(1, dr.md/d.L), raw = Math.round(100*pct*len), score = Math.max(0, raw - (dr.pen||0));
+    return { pct, len, raw, score, pen:dr.pen||0, incidents:dr.incidents||0, cnt:dr.cnt, md:dr.md, hours:dr.hours }; }
   // joueurs automatiques du drain : « naïf » (garde l'horizontale), « suiveur » (réagit aux seules diagraphies)
   function drainBot(S, kind){ const dr = S.dr, d = S.sc.drain; let guard = 0, anchor = { x:0, z:d.top }, slope = 0, used = 0;
-    while(dr.status==='run' && guard++ < 400){
+    while(dr.status==='run' && guard++ < 900){
+      if(dr.inc){ const t = dr.inc.type; drAct(S, t==='stuck' ? 'spot' : t==='loss' ? 'lcm' : 'change'); continue; }
       if(kind==='naive'){ dr.target = 0; drStep(S); continue; }
       // limites détectées : points du toit (sortie par le toit, retour dans le réservoir après une sortie par le toit) ; la pente vient de deux points successifs
       while(used < dr.marks.length){ const mk = dr.marks[used++]; if(mk.kind==='sortie par le toit' || (mk.kind==='retour dans le réservoir' && dr.lastExit==='toit')){ if(mk.kind==='sortie par le toit') dr.lastExit = 'toit'; else dr.lastExit = null;
@@ -9543,6 +9575,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
         <li>Le <b>GR</b> (capteur ${DR_GR_BACK} m derrière l'outil) : une argile (GR haut, au-dessus de 90 API) signale que vous sortez par le toit.</li>
         <li>La <b>résistivité</b> (capteur ${DR_RT_BACK} m derrière l'outil) : une chute de Rt dans une roche propre signale que vous traversez le contact.</li>
         <li>L'<b>inclinaison visée</b> : elle change de 2° au plus par 10 m (6° par 30 m). Un capteur en retard veut dire que l'outil est déjà sorti quand l'alerte arrive : anticipez.</li></ul>
+      <div style="margin-top:8px;"><b>Incidents possibles.</b> Un <b>coincement</b> (plus probable dans l'argile, après un coude serré, avec un outil usé), une <b>perte de circulation</b> au passage de la faille, un <b>outil usé</b>. Chacun arrête le forage jusqu'à votre décision, coûte des heures et quelques points. Trois coincements non libérés mettent fin au drain.</div>
       <div class="rg-hint">Score : part de la longueur forée dans la zone. Au-dessus de 80 %, le drain est bien placé. Les cercles sur la coupe sont les limites détectées par les diagraphies : ils donnent la position réelle du toit et du contact là où vous êtes passé.</div>
       <div class="rg-btns" style="margin-top:10px;"><button class="go" id="rgDrStart">Commencer le drain</button></div></div>`; }
   function drainEnd(){ const dr = S.dr, d = S.sc.drain, sco = drScore(S), tot = Math.max(1, dr.steps), p = k => Math.round(dr.cnt[k]/tot*100);
@@ -9552,11 +9585,19 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
     if(p('water') >= 10) tips.push(`Vous avez traversé le contact sur ${p('water')} % de la longueur : le contact est horizontal, la zone se rétrécit quand le toit descend. Visez le haut de la colonne.`);
     if(p('below') >= 5) tips.push(`Vous êtes sorti par la base du réservoir sur ${p('below')} % de la longueur.`);
     return `<div class="rg-end"><h3>${sco.score>=80 ? '✓ Drain bien placé' : sco.score>=55 ? 'Drain correct' : '✗ Drain mal placé'}</h3>
-      ${Math.round(dr.md)} m forés en <b>${f1(dr.hours)} h</b> : <b>${Math.round(sco.pct*100)} %</b> dans la zone d'hydrocarbures, ${p('above')} % au-dessus du toit (argile), ${p('water')} % sous le contact (eau), ${p('below')} % sous le réservoir. Score : <b>${sco.score}/100</b>.
+      ${Math.round(dr.md)} m forés en <b>${f1(dr.hours)} h</b> : <b>${Math.round(sco.pct*100)} %</b> dans la zone d'hydrocarbures, ${p('above')} % au-dessus du toit (argile), ${p('water')} % sous le contact (eau), ${p('below')} % sous le réservoir. Score : <b>${sco.score}/100</b>${sco.pen ? ` (${sco.raw} moins ${sco.pen} points d'incidents)` : ''}.${dr.failed ? ' <b>Drain perdu : outil coincé définitivement.</b>' : ''}${dr.incidents ? ` ${dr.incidents} incident${dr.incidents>1?'s':''} :` : ''}
+      ${dr.log.length ? `<ul>${dr.log.filter(l=>l.type!=='ok'&&l.type!=='ko').map(l=>`<li>${Math.round(l.md)} m : ${l.txt}</li>`).join('')}</ul>` : ''}
       <div class="rg-hint">Le toit s'est déplacé de ${Math.round(Math.min(...Array.from({length:71},(_,i)=>d.off(i*10))))} à ${Math.round(Math.max(...Array.from({length:71},(_,i)=>d.off(i*10))))} m par rapport au talon : pendage ${f1(d.dipDeg)}°, faille de ${Math.round(Math.abs(d.throw))} m ${d.throw>0?'vers le bas':'vers le haut'} vers ${Math.round(d.xf)} m.</div>
       ${tips.length ? `<ul>${tips.map(t=>`<li>${t}</li>`).join('')}</ul>` : '<br>Aucune sortie de zone notable.'}
       <div class="rg-hint">${best}</div>
       <div class="rg-btns" style="margin-top:10px;"><button class="go" id="rgAgain">↻ Nouveau puits</button></div></div>`; }
+  function drIncidentHtml(){
+    const dr = S.dr, t = dr.inc.type;
+    const T = { stuck:['🪢 Outil coincé', 'Le train de tiges ne bouge plus (tentatives : '+dr.inc.att+'/3). Après trois échecs le drain est perdu.', [['jar','Coulisser (4 h, environ 55 % de réussite)'],['spot','Pilule libératrice (12 h, environ 85 %)']]],
+      loss:['💧 Perte de circulation', 'La boue fuit dans la faille. Un bouchon coûte 8 heures ; l\'ignorer fragilise le trou : le risque de coincement triple sur les 120 m suivants.', [['lcm','Pilule colmatante (8 h)'],['ignore','Ignorer et continuer']]],
+      bit:['🛠 Outil usé', 'La vitesse de forage a chuté. Changer l\'outil coûte 16 heures ; le garder double le temps par mètre et accroît le risque de coincement.', [['change','Changer l\'outil (16 h)'],['keep','Garder l\'outil usé']]] }[t];
+    return `<div class="rg-inc"><b>${T[0]}</b><div>${T[1]}</div><div class="rg-btns" style="margin-top:6px;">${T[2].map(([k,l])=>`<button class="go" data-dract="${k}">${l}</button>`).join('')}</div></div>`;
+  }
   function renderDrain(){
     const dr = S.dr, d = S.sc.drain, last = dr.logs.length ? dr.logs[dr.logs.length-1] : null, sco = drScore(S);
     const st = [['Distance', Math.round(dr.md)+' m'], ['Inclinaison', (dr.pitch>=0?'+':'')+f1(dr.pitch)+'°'], ['GR', last ? Math.round(last.gr)+' API' : '-'], ['Rt', last ? (last.rt>=100?Math.round(last.rt):f1(last.rt))+' Ω·m' : '-'], ['Dans la zone', dr.steps ? Math.round(sco.pct*100)+' %' : '-'], ['Heures', f1(dr.hours)+' h']];
@@ -9570,15 +9611,18 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
       h += `<div class="rg-hint">Diagraphies : ${txt}. Inclinaison actuelle <b>${(dr.pitch>=0?'+':'')+f1(dr.pitch)}°</b> pour <b>${(dr.target>=0?'+':'')+f1(dr.target)}°</b> visés (positif : vers le bas, 2° au plus par 10 m).</div>
         <div class="rg-ctl" style="grid-template-columns:1fr;"><label>Inclinaison visée <b id="rgDrTV">${(dr.target>=0?'+':'')+f1(dr.target)}°</b></label>
           <input type="range" id="rgDrT" min="-10" max="10" step="0.5" value="${dr.target}" aria-label="Inclinaison visée en degrés, positif vers le bas"></div>
-        <div class="rg-btns"><button class="go" id="rgDrGo">${dr.auto?'⏸ Pause':'▶ Forer'}</button><button id="rgDrOne">Forer 10 m</button><button id="rgDrSpeed">Vitesse ×${speed}</button><button id="rgDrEnd" ${dr.md<200?'disabled':''}>Terminer le drain</button></div>`;
+        <div class="rg-btns"><button class="go" id="rgDrGo" ${dr.inc?'disabled':''}>${dr.auto?'⏸ Pause':'▶ Forer'}</button><button id="rgDrOne" ${dr.inc?'disabled':''}>Forer 10 m</button><button id="rgDrSpeed">Vitesse ×${speed}</button><button id="rgDrEnd" ${dr.md<200?'disabled':''}>Terminer le drain</button></div>`;
+      if(dr.inc){ const t = dr.inc.type;
+        h = h.replace('<div class="rg-hint">Diagraphies', drIncidentHtml() + '<div class="rg-hint">Diagraphies'); }
     }
     h += `<div class="rg-log" id="rgLog">${dr.marks.slice(-5).reverse().map(m=>`<div>${Math.round(m.x)} m : ${m.kind}</div>`).join('')}</div>`;
     $('rgBody').innerHTML = h; bindDrain();
   }
-  function loopDrain(){ stop(); if(S.dr.status==='run' && S.dr.auto) timer = setInterval(()=>{ for(let i=0;i<speed;i++){ if(S.dr.status!=='run') break; drStep(S); } renderDrain(); if(S.dr.status!=='run'){ S.dr.auto=false; stop(); renderDrain(); } }, 320); }
+  function loopDrain(){ stop(); if(S.dr.status==='run' && S.dr.auto) timer = setInterval(()=>{ for(let i=0;i<speed;i++){ if(S.dr.status!=='run' || S.dr.inc) break; drStep(S); } renderDrain(); if(S.dr.status!=='run' || S.dr.inc){ S.dr.auto=false; stop(); renderDrain(); } }, 320); }
   function bindDrain(){
     const on = (id,fn)=>{ const e=$(id); if(e) e.addEventListener('click', fn); };
     const t = $('rgDrT'); if(t) t.addEventListener('input', ()=>{ S.dr.target = +t.value; const v=$('rgDrTV'); if(v) v.textContent = (S.dr.target>=0?'+':'')+f1(S.dr.target)+'°'; });
+    document.querySelectorAll('[data-dract]').forEach(b=>b.addEventListener('click', ()=>{ drAct(S, b.dataset.dract); renderDrain(); }));
     on('rgDrStart', ()=>{ S.dr.brief = false; renderDrain(); });
     on('rgDrGo', ()=>{ S.dr.auto = !S.dr.auto; renderDrain(); loopDrain(); });
     on('rgDrOne', ()=>{ S.dr.auto = false; stop(); drStep(S); renderDrain(); });
@@ -9616,7 +9660,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
   }
   $('rigOpenBtn').addEventListener('click', openRig);
   $('rgClose').addEventListener('click', ()=>{ stop(); $('rigModal').classList.remove('open'); });
-  window.__rig = { drNew, drStep, drScore, drZone, drMeasure, drainBot, grSaysReservoir, bottomsUp, rigScenario, rigNew, tick, act, playBot, scoreOf, ropOf, qMin, gfOpen, gfOpenPred, get S(){ return S; }, render: ()=>render(), openRig, DZ, MARGIN, G0 };
+  window.__rig = { drNew, drStep, drAct, drRaise, drScore, drZone, drMeasure, drainBot, grSaysReservoir, bottomsUp, rigScenario, rigNew, tick, act, playBot, scoreOf, ropOf, qMin, gfOpen, gfOpenPred, get S(){ return S; }, render: ()=>render(), openRig, DZ, MARGIN, G0 };
 })();
 </script>
 </body>
