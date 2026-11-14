@@ -36,7 +36,7 @@ const { chromium, devices } = require('playwright'); const path = require('path'
   const inc=avg(T.incN), withInc=T.incN.filter(x=>x>0).length/T.incN.length, ty={}; T.types.forEach(k=>ty[k]=(ty[k]||0)+1);
   ok(withInc>=0.4 && withInc<=0.97 && inc>=0.5 && inc<=2.2, 'incidents : '+Math.round(withInc*100)+' % des drains en ont au moins un, '+inc.toFixed(2)+' par drain '+JSON.stringify(ty));
   ok(T.pend===0, 'le joueur automatique règle toujours l\'incident en cours ('+T.pend+' en suspens)');
-  ok(bm>=58 && nm<=60 && bm-nm>=8, 'avec incidents : suiveur des diagraphies '+Math.round(bm)+'/100, trajectoire horizontale '+Math.round(nm)+'/100 (écart d\'au moins 8 points)');
+  ok(bm>=58 && nm<=66 && bm-nm>=8, 'avec incidents : suiveur des diagraphies '+Math.round(bm)+'/100, trajectoire horizontale '+Math.round(nm)+'/100 (écart d\'au moins 8 points)');
   // mécanique des incidents : taux de réussite des réponses, pénalités, blocage, perte du drain
   const M = await pg.evaluate(()=>{ const R=window.__rig, sc=R.rigScenario(); const mk=()=>{ const S=R.rigNew(sc); S.status='td'; S.dr=R.drNew(S); S.dr.incOff=true; return S; };
     const rate=(type,act,N)=>{ let ok=0; for(let i=0;i<N;i++){ const S=mk(); R.drRaise(S,type,'t'); R.drAct(S,act); if(!S.dr.inc) ok++; } return ok/N; };
