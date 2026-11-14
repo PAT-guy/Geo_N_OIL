@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.68</title>
+<title>GeoExplorer V4.69</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -1124,7 +1124,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
       </div>
       <span id="toolLabel">Mode : Sélection</span>
       <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
-        <label class="lab-secchk" title="Afficher ou masquer le trait de coupe (flèche de A vers B) sur la carte"><input type="checkbox" id="secLineChk" checked onchange="labToggleSecLine(this.checked)"> Trait de coupe</label>
+        <label class="lab-secchk" title="Afficher ou masquer tous les traits de coupe sur la carte (la coupe affichée en trait plein, les autres en pointillé)"><input type="checkbox" id="secLineChk" checked onchange="labToggleSecLine(this.checked)"> Traits de coupe</label>
         <button class="btn" id="zoomOut" aria-label="Zoom arrière">−</button>
         <span id="zoomLbl" style="font-size:12px; color:var(--muted); min-width:40px; text-align:center; font-family:var(--mono);">100%</span>
         <button class="btn" id="zoomIn" aria-label="Zoom avant">+</button>
@@ -1191,6 +1191,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
       </div>
       <div id="sectionTools" style="display:none;text-align:right;padding:6px 8px;"><button class="study-btn study-btn-compact" onclick="openBigView('section')">⤢ <span class="i18n" data-fr="Agrandir la coupe" data-en="Enlarge section">Agrandir la coupe</span></button> <button class="study-btn study-btn-compact" onclick="openLithoLib()">📚 <span class="i18n" data-fr="Lithologies" data-en="Lithologies">Lithologies</span></button> <button class="study-btn study-btn-compact" id="labTruthBtn" onclick="LAB.truth=!LAB.truth; this.textContent = LAB.truth ? '🙈 Cacher la vérité' : '👁 Voir la vérité (triche)'; renderSection();">👁 Voir la vérité (triche)</button> <button class="study-btn study-btn-compact" id="labOptBtn" onclick="labOptOpen('game')">⚙ Options</button></div>
       <svg id="sectionSvg" style="display:none;"></svg>
+      <div class="sec-actions" id="sectionActions" style="display:none;"></div>
       <div class="section-legend" id="sectionLegend" style="display:none;"></div>
       <div id="sectionInterpret" style="display:none; padding:10px 12px 12px; background:var(--panel); border-top:1px solid var(--line); font-size:12px; line-height:1.6; color:var(--text);"></div>
     </div>
@@ -3834,30 +3835,44 @@ let LAB_SECLINE = true;
 try { if(localStorage.getItem('geoexplorer_secline')==='0') LAB_SECLINE = false; } catch(e){}
 { const c = document.getElementById('secLineChk'); if(c) c.checked = LAB_SECLINE; }
 function labToggleSecLine(on){ LAB_SECLINE = !!on; try { localStorage.setItem('geoexplorer_secline', on ? '1' : '0'); } catch(e){} labDrawSecLine(); }
+// Toutes les coupes tracées restent affichées (la plus récente en trait plein, les autres plus discrètes et cliquables pour les rouvrir)
+function secRemember(a, b){
+  G.sectionsHistory = G.sectionsHistory || [];
+  if(!G.sectionsHistory.some(h=>(h.a===a && h.b===b) || (h.a===b && h.b===a))) G.sectionsHistory.push({a, b});
+  if(G.sectionsHistory.length > 24) G.sectionsHistory.shift();
+}
+function secReopen(a, b){
+  G.sectionA = a; G.sectionB = b; G.labSecPrev = null;
+  labGoSection(); renderSection(); rerenderAllBlocks();
+}
 function labDrawSecLine(){
   const grid = document.getElementById('grid'); if(!grid) return;
   const chk = document.getElementById('secLineChk'); if(chk) chk.checked = LAB_SECLINE;
   let svg = document.getElementById('secLineSvg');
-  // pendant le tracé d'une nouvelle coupe, la précédente reste affichée en pointillé
-  let ia = G.sectionA, ib = G.sectionB, ghost = false;
-  if((ia==null || ib==null) && G.labSecPrev){ ia = G.labSecPrev.a; ib = G.labSecPrev.b; ghost = true; }
-  if(!LAB_SECLINE || ia==null || ib==null || grid.offsetParent===null){ if(svg) svg.remove(); return; }
-  const ea = grid.querySelector(`.block[data-id="${ia}"]`), eb = grid.querySelector(`.block[data-id="${ib}"]`);
-  if(!ea || !eb){ if(svg) svg.remove(); return; }
+  const cur = (G.sectionA!=null && G.sectionB!=null) ? {a:G.sectionA, b:G.sectionB} : null;
+  const lines = (G.sectionsHistory||[]).map(h=>({a:h.a, b:h.b, cur: !!cur && ((cur.a===h.a && cur.b===h.b) || (cur.a===h.b && cur.b===h.a))}));
+  if(cur && !lines.some(l=>l.cur)) lines.push({a:cur.a, b:cur.b, cur:true});
+  lines.sort((x,y)=>(x.cur?1:0)-(y.cur?1:0)); // la coupe affichée en dernier, donc au-dessus
+  if(!LAB_SECLINE || !lines.length || grid.offsetParent===null){ if(svg) svg.remove(); return; }
   const NS = 'http://www.w3.org/2000/svg';
   if(!svg){ svg = document.createElementNS(NS, 'svg'); svg.id = 'secLineSvg'; }
   if(svg.parentNode !== grid) grid.appendChild(svg);
   svg.setAttribute('width', grid.scrollWidth); svg.setAttribute('height', grid.scrollHeight);
   const c = e => ({ x: e.offsetLeft + e.offsetWidth/2, y: e.offsetTop + e.offsetHeight/2 });
-  const A = c(ea), B = c(eb), dx = B.x-A.x, dy = B.y-A.y, len = Math.hypot(dx, dy) || 1, u = { x:dx/len, y:dy/len };
-  const off = Math.min(len*0.4, ea.offsetWidth*0.34);
-  const x1 = A.x + u.x*off, y1 = A.y + u.y*off, x2 = B.x - u.x*off, y2 = B.y - u.y*off;
-  const a = blocks[ia], b = blocks[ib];
-  svg.innerHTML = `<defs><marker id="secArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--amber)"/></marker></defs>
-    <line class="hit" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="transparent" stroke-width="10" stroke-linecap="round"><title>${ghost ? 'Coupe précédente' : `Coupe A (${a.x}, ${a.y}) vers B (${b.x}, ${b.y}) : cliquer pour revoir la coupe`}</title></line>
-    <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--amber)" stroke-width="3" stroke-linecap="round" marker-end="url(#secArrow)" opacity="${ghost ? .4 : .92}" ${ghost ? 'stroke-dasharray="6 5"' : ''} pointer-events="none"/>`;
-  if(ghost) svg.querySelector('.hit').style.pointerEvents = 'none';
-  else svg.querySelector('.hit').addEventListener('click', ev=>{ ev.stopPropagation(); labGoSection(); renderSection(); });
+  let out = `<defs><marker id="secArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--amber)"/></marker></defs>`;
+  let n = 0;
+  lines.forEach(l=>{
+    const ea = grid.querySelector(`.block[data-id="${l.a}"]`), eb = grid.querySelector(`.block[data-id="${l.b}"]`); if(!ea || !eb) return;
+    const A = c(ea), B = c(eb), dx = B.x-A.x, dy = B.y-A.y, len = Math.hypot(dx, dy) || 1, u = { x:dx/len, y:dy/len };
+    const off = Math.min(len*0.4, ea.offsetWidth*0.34);
+    const x1 = (A.x + u.x*off).toFixed(1), y1 = (A.y + u.y*off).toFixed(1), x2 = (B.x - u.x*off).toFixed(1), y2 = (B.y - u.y*off).toFixed(1);
+    const ba = blocks[l.a], bb = blocks[l.b], tip = `Coupe (${ba.x},${ba.y}) vers (${bb.x},${bb.y})` + (l.cur ? ' : affichée' : ' : cliquer pour la rouvrir');
+    n++;
+    out += `<g data-sec="${l.a}-${l.b}"><line class="hit" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="transparent" stroke-width="10" stroke-linecap="round" onclick="event.stopPropagation(); ${l.cur ? 'labGoSection(); renderSection();' : `secReopen(${l.a},${l.b})`}"><title>${tip}</title></line>
+      <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--amber)" stroke-width="${l.cur?3:2}" stroke-linecap="round" ${l.cur?'marker-end="url(#secArrow)"':'stroke-dasharray="5 3"'} opacity="${l.cur?1:.55}" pointer-events="none"/></g>`;
+  });
+  svg.innerHTML = out;
+  if(!n) svg.remove();
 }
 
 function rerenderAllBlocks(){
@@ -4912,12 +4927,13 @@ const STRATI_LOG_COST = 90e3, STRATI_LOG_OFF = 1.6;
 const stratiLogCost = b => G.mode==='sandbox' ? 0 : STRATI_LOG_COST*(b.isOffshore ? STRATI_LOG_OFF : 1);
 const stratiHasLog = b => b.studies.some(s=>s.type==='welllog');
 // matériel le moins cher qui atteint la profondeur estimée
-function stratiPlan(b){
+function drillPlan(b, method){
   const depth = drillDepthEstimate(b); if(depth==null) return null;
   const off = siteCost(b, drillCostFactor());
-  const opts = Object.entries(EQUIPMENT).filter(([k,e])=>depth<=e.maxDepth).map(([k,e])=>({equip:k, cost:depth*e.costM*METHODS.strati.costMult*off})).sort((a,z)=>a.cost-z.cost);
+  const opts = Object.entries(EQUIPMENT).filter(([k,e])=>depth<=e.maxDepth).map(([k,e])=>({equip:k, cost:depth*e.costM*METHODS[method].costMult*off})).sort((a,z)=>a.cost-z.cost);
   return opts.length ? { depth, equip:opts[0].equip, cost:opts[0].cost } : { depth, equip:null, cost:null };
 }
+const stratiPlan = b => drillPlan(b, 'strati');
 function launchStrati(id){
   const b = blocks[id], p = stratiPlan(b);
   if(!p || !p.equip){ toast('Aucun matériel n\'atteint la profondeur estimée de ce bloc.'); return; }
@@ -4934,6 +4950,37 @@ function stratiLog(id){
   if(selectedBlock===id){ renderGeoPanel(b); renderStudiesPanel(b); }
   if(typeof renderSection==='function') renderSection(); if(typeof renderGuide==='function') renderGuide();
 }
+// Boutons de travaux sous la coupe : le bloc sélectionné peut être étudié, sondé ou foré sans quitter la coupe
+function secDrill(id){
+  const b = blocks[id], p = drillPlan(b, 'vertical');
+  if(!p || !p.equip){ toast('Aucun matériel n\'atteint la profondeur estimée de ce bloc.'); return; }
+  drillBlock(id, 'vertical', p.equip, b.playerEst);
+  renderStudiesPanel(b); secActionsRender();
+}
+function secActionsRender(){
+  const el = document.getElementById('sectionActions'); if(!el) return;
+  const b = selectedBlock!==null ? blocks[selectedBlock] : null;
+  if(!b || G.sectionA===null || G.sectionB===null || !getProfileBlocks(G.sectionA, G.sectionB).some(o=>o.b.id===b.id)){ el.style.display='none'; el.innerHTML=''; return; }
+  const inProg = G.drilling.find(d=>d.blockId===b.id), money = c => G.mode==='sandbox' || G.budget>=c;
+  const fmt = c => G.mode==='sandbox' ? 'gratuit' : formatM(c);
+  let h = `<span class="sa-lbl">Bloc (${b.x}, ${b.y})</span>`;
+  if(b.well){ h += b.well.status==='producing' ? `<span>Puits actif : ${Math.round(b.well.production)} ${b.well.isGas?'Mcf':'barils'}/mois</span>` : `<span>Puits ${b.well.status==='closed'?'fermé':'terminé'}</span>`; }
+  else if(b.dryHole) h += `<span>Puits sec</span>`;
+  else if(inProg) h += `<span>${inProg.method==='strati'?'Sondage':'Forage'} en cours : fin au mois ${inProg.endMonth}</span>`;
+  else if(b.studyLevel<1){
+    const c = STUDIES.seismic3d.cost*(b.isOffshore?STUDIES.seismic3d.offMult:1);
+    h += `<span>Étudiez ce bloc avant de forer.</span><button onclick="performStudy(${b.id},'seismic3d')" ${money(c)?'':'disabled'}>📡 Sismique 3D · ${fmt(c)}</button>`;
+  } else {
+    const sp = b.strati ? null : stratiPlan(b), dp = drillPlan(b, 'vertical');
+    if(!b.strati) h += sp && sp.equip ? `<button onclick="launchStrati(${b.id})" ${money(sp.cost)?'':'disabled'}>🧪 Sondage · ${fmt(sp.cost)}</button>` : '';
+    else if(!stratiHasLog(b)) h += `<button onclick="stratiLog(${b.id}); secActionsRender();" ${money(stratiLogCost(b))?'':'disabled'}>📈 Diagraphie du sondage · ${fmt(stratiLogCost(b))}</button>`;
+    else h += `<span>Sondage diagraphié</span>`;
+    h += dp && dp.equip ? `<button class="go" onclick="secDrill(${b.id})" ${money(dp.cost)?'':'disabled'}>⛏ Forer · ${fmt(dp.cost)}</button>` : `<span style="color:var(--red)">Aucun matériel n'atteint la profondeur estimée.</span>`;
+    h += `<button onclick="switchTabOrScreenStudies()">Plus d'options</button>`;
+  }
+  el.innerHTML = h; el.style.display = 'flex';
+}
+function switchTabOrScreenStudies(){ if(isMobileLayout()) showMobileScreen('studies'); else switchTab('studies'); }
 function stratiCardHtml(b){
   const done = stratiHasLog(b), p = b.strati ? null : stratiPlan(b);
   let h = `<div class="ps-section" style="margin-top:12px;">Sondage stratigraphique</div><div class="study-card" id="stratiCard">
@@ -5284,6 +5331,7 @@ function renderSection(){
   if(G.sectionA===null || G.sectionB===null){
     if(secTools) secTools.style.display='none';
     svgEl.style.display='none'; hint.style.display='block';
+    { const sa = document.getElementById('sectionActions'); if(sa) sa.style.display='none'; }
     legend.style.display='none';
     if(seismicBar) seismicBar.style.display='none';
     return;
@@ -5822,6 +5870,7 @@ function renderSection(){
     fill="var(--muted)" text-anchor="middle">Distance non à l'échelle : seule la profondeur (axe vertical) est chiffrée</text>`;
 
   svgEl.innerHTML = svg;
+  secActionsRender();
   svgEl.setAttribute('data-lab', JSON.stringify({ m:[MARG.l, MARG.t, PW, PH], d:[dMin, dMax], b:dispData.map(bd=>bd.layers ? { t:bd.t, L:bd.layers.map(l=>[Math.round(l.top), Math.round(l.thickness)]) } : null) }));
   svgEl.setAttribute('data-sec', JSON.stringify({ l:MARG.l, w:PW }));
   const secClearLabel = ()=>{ svgEl.querySelectorAll('.sec-layer-poly').forEach(p=>p.classList.remove('sec-layer-selected')); secSelLi = null; const l0 = document.getElementById('sectionLayerLabel'); if(l0) l0.remove(); };
@@ -6371,7 +6420,7 @@ function onBlockClick(id){
       if(G.sectionA===null||G.sectionB!==null){
         G.sectionA=id; G.sectionB=null;
       } else {
-        G.sectionB=id; G.labSecPrev = null;
+        G.sectionB=id; G.labSecPrev = null; secRemember(G.sectionA, id);
         // Le profil est posé : l'outil revient à Sélection, sinon le clic suivant effaçait la coupe.
         setTool('select');
         // Basculer sur l'écran coupe (carte -> volet, unifié en disposition mobile)
@@ -7230,7 +7279,7 @@ function _doStartGame(){
     budget:         m.budget,
     month:0, speed:1, paused:false, labPick:null, labCal:{}, labProc:{}, labSecPrev:null, labOpt:{ ...LABOPT },
     price:80, priceHistory:[80], priceAlerts:[], labPickBonusProv:{},
-    wells:[], drilling:[], sectionA:null, sectionB:null,
+    wells:[], drilling:[], sectionA:null, sectionB:null, sectionsHistory:[],
     tool:'select', history:[], lastCF:0, lastRevenue:0, lastOpex:0, lastLoanPayment:0,
     priceTrend:0, priceTrendTarget:0, revealFieldsMode:false,
     // Finance
@@ -8231,7 +8280,7 @@ function _doStartGame(){
       body: `Le bandeau <b>Guide</b>, en haut de l'écran, propose toujours la prochaine étape et dit pourquoi une
         action est bloquée :<br><br>
         <b>1. Cartographier</b> : la gravimétrie couvre toute la carte et révèle les hauts structuraux.<br>
-        <b>2. Tracer une coupe</b> : outil <i>Coupe A→B</i>, deux clics sur la carte.<br>
+        <b>2. Tracer une coupe</b> : outil <i>Coupe A→B</i>, deux clics sur la carte. Toutes vos coupes restent visibles sur la carte (bouton <i>Traits de coupe</i> pour les masquer) ; un clic sur un trait ancien la rouvre.<br>
         <b>3. Sismique 2D</b> : précise la profondeur des couches et les failles le long de la coupe.<br>
         <b>4. Sismique 3D</b> : la meilleure information sans forer, avec une probabilité de succès estimée.<br>
         <b>5. Forer</b> : le seul moyen de savoir.<br><br>
@@ -8242,6 +8291,7 @@ function _doStartGame(){
       body: `Chaque case change de couleur avec l'information disponible : relief structural après la gravimétrie,
         probabilité estimée (en %) après une sismique 3D. Cliquez une case : l'onglet <b>Bloc</b> détaille ce
         qu'on sait, l'onglet <b>Études</b> propose la suite.<br><br>
+        Sous la coupe, une barre propose le sondage, la diagraphie et le forage du bloc sélectionné sans changer d'écran.<br><br>
         La <b>coupe</b> montre une tranche verticale entre deux blocs. Le bouton <i>Agrandir la coupe</i> l'ouvre en
         pleine page (sur téléphone, <i>Pivoter</i> la couche à l'horizontale). Seule la profondeur est chiffrée :
         la distance n'est pas à l'échelle.`,
@@ -8972,6 +9022,11 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
 .rg-tbl th{width:36%;text-align:left;font-weight:500;color:var(--muted);padding:4px 4px 4px 0;}
 .rg-tbl td{width:64%;padding:4px 6px 4px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);}
 .rg-tbl tr{height:26px;border-top:1px solid var(--border,rgba(128,128,128,.25));}
+.sec-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;border-top:1px solid var(--line);background:var(--panel);font-size:12px;}
+.sec-actions .sa-lbl{font-weight:600;margin-right:4px;}
+.sec-actions button{min-height:40px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:12px;cursor:pointer;}
+.sec-actions button.go{background:var(--text);color:var(--bg);border-color:var(--text);}
+.sec-actions button:disabled{opacity:.45;cursor:not-allowed;}
 .rg-hint#rgMwNote{min-height:4.7em;}
 .rg-hint{font-size:11.5px;color:var(--muted);line-height:1.55;margin-top:8px;}
 @media (min-width:900px){ #rigModal{align-items:center;} #rigModal > *{width:100%;max-width:760px;} }
