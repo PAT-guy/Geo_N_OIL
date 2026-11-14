@@ -90,3 +90,17 @@ Commande : `node tools/tests/sim_lab.js 60 decouverte,inter,complet,expert oracl
 - V4.45 (rappel léger du prix vers 80 $, `PRICE_REVERT` = 0,003, finance activée, 60 parties, Découverte) : prudent 33 %, guide 20 %, parfait 77 %, hasard 7 %. Parties de 25 ans passant plus de 5 ans sous 40 $ : 5,3 % avant, 1,4 % après (simulation du seul prix, 4000 tirages).
 - V4.50 (fiabilité du matériel selon la charge, finance activée, Découverte, 80 parties) : prudent 33 % (35 % avant), guide 21 % (20 %), hasard 4 % (5 %), parfait 60 % (76 %) ; à 120 parties, parfait 62 % contre 71 %. Le joueur qui connaît les vraies valeurs perd environ 9 points car il ne peut plus exploiter le matériel léger près de sa limite.
 - Non mesuré : le sondage stratigraphique (le robot n'en tire aucun avantage), l'effet du bruit, des multiples et du retraitement (aucun effet économique dans le simulateur), la lisibilité pour un humain.
+
+## Traduction anglaise (V4.81)
+
+Le jeu existe en français (langue d'origine, inchangée) et en anglais. Principe : toute chaîne française du JavaScript est enveloppée dans `TR(français, anglais)` ; `TR` renvoie le premier argument en français et le second en anglais, selon `document.documentElement.lang` fixé avant tout le reste (lecture de `localStorage.geoexplorer_lang`). Changer de langue recharge la page (partie sauvegardée d'abord), car les noms de roches et libellés sont construits au chargement. Les textes fixes du HTML sont traduits à la volée par `HTML_EN` (observateur du DOM, actif seulement en anglais). `DEC` donne le séparateur décimal.
+
+Pièges évités : les noms de roches passent par `TRN` et le classement (regex sur les mots-clés français) lit `FRN(nom)`, qui rend le nom français d'origine, pour que la géologie, les probabilités et les logs soient identiques dans les deux langues ; les valeurs internes comme `maturityClass` restent françaises, seul l'affichage passe par `matLbl`.
+
+Outils (`tools/i18n/`, Python) :
+- `scan.py`, `units.py` : analyse lexicale de `index.html` (chaînes, gabarits, expressions régulières, commentaires) et découpage en unités de traduction (« whole » pour une chaîne ou un gabarit court, « run » pour les textes entre balises d'un gros gabarit HTML).
+- `ubatch.py N taille` : écrit `/tmp/i18n/ub_N.json`, la liste des unités encore sans traduction ; `umerge.py N` fusionne `ue_N.json` (index vers anglais) dans `dict/u_N.json`. Variable `I18N_LOOSE=1` : détection plus généreuse du français, pour la seconde passe sur les textes courts.
+- `apply.py [--dry]` : remplace chaque unité traduite par `TR('français','anglais')` (ou `${TR(\`fr\`,\`en\`)}` dans un gros gabarit) et refuse tout remplacement dont les expressions `${...}` diffèrent entre le français et l'anglais. Le français ne change pas d'un caractère.
+- `hbatch.py`, `hmerge.py`, `apply_html.py` : même chaîne pour le HTML statique ; `apply_html.py` réécrit le bloc `HTML_EN` de `index.html` à partir de `dict/h_*.json`, `shorts.json` et `dict/x_extra.json`.
+
+Tests : `anglais_reste.js` parcourt l'interface en anglais et liste ce qui reste en français ; `langue_equivalence.js` vérifie que 24 cartes (8 bassins, 3 graines) donnent exactement la même géologie, les mêmes probabilités et les mêmes logs de puits dans les deux langues.
