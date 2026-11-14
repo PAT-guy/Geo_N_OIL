@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.66</title>
+<title>GeoExplorer V4.67</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3480,6 +3480,7 @@ function showEnd(reason){
     <div><span class="end-lbl">Budget final</span><br><strong>${formatM(G.budget)}</strong></div>
     ${G.financeMode && debtTotal()>1000 ? `<div><span class="end-lbl">Dette restante</span><br><strong>${formatM(debtTotal())}</strong></div>` : ''}
     ${abandonLiability()>0 ? `<div><span class="end-lbl">Abandon des puits encore actifs</span><br><strong>${formatM(abandonLiability())}</strong></div>` : ''}
+    ${G.seedShown ? `<div><span class="end-lbl">Seed de la carte</span><br><strong>${G.seedShown}</strong> · ${BASIN_NAMES[G.basinType]||G.basinType}, ${G.gridSize}×${G.gridSize}</div>` : ''}
     <div><span class="end-lbl">Budget initial</span><br><strong>${formatM(MODES[G.mode].budget)}</strong></div>
     <div><span class="end-lbl">Durée de partie</span><br><strong>${(G.month/12).toFixed(1)} ans</strong></div>
     <div><span class="end-lbl">Puits forés</span><br><strong>${G.wells.length + blocks.filter(b=>b.dryHole).length} (${G.wells.length} productifs, ${blocks.filter(b=>b.dryHole).length} secs, ${G.wells.filter(w=>w.status==='producing').length} encore actifs)</strong></div>
@@ -7184,7 +7185,10 @@ function _doStartGame(){
   applyCostMultipliers();
 
   // Générer la géologie avec le seed si fourni
-  const seedNum = menuConfig.seed ? seedToInt(menuConfig.seed) : null;
+  // Seed toujours connue : sans seed saisie on en tire une à 5 chiffres, affichée au journal et au récap pour rejouer la même carte.
+  const seedShown = menuConfig.seed ? String(menuConfig.seed) : String(10000 + Math.floor(Math.random()*89999));
+  G.seedShown = seedShown;
+  const seedNum = seedToInt(seedShown);
   generateGeology(menuConfig.gridSize, menuConfig.basinType, menuConfig.offshore, seedNum);
   // défi du jour : valable seulement si les réglages sont ceux du jour (le joueur a pu les changer entre-temps)
   { const dc = dailyConfig(); G.daily = (menuConfig.daily === dc.date && menuConfig.gridSize===dc.gridSize && menuConfig.basinType===dc.basinType && menuConfig.mode===dc.mode && String(menuConfig.seed)===String(dc.seed)) ? dc.date : null; }
@@ -7217,7 +7221,7 @@ function _doStartGame(){
   if(BASIN_BRIEFS[menuConfig.basinType]){
     addLog(`🌍 ${BASIN_BRIEFS[menuConfig.basinType]}`, 'ev');
   }
-  if(menuConfig.seed) addLog(`🌱 Seed géologique : ${menuConfig.seed}`);
+  addLog(`🌱 Seed géologique : ${G.seedShown} (même seed et mêmes réglages de carte = même géologie)`);
   if(G.financeMode)   addLog(`💰 Mode Finance activé : emprunts, stockage, hedging, EOR, accidents.`);
   if(m.tpMode)        addLog(`🎓 Mode TP : la vraie géologie sera révélée après chaque forage.`);
 
