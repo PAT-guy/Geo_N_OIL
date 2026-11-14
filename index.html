@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.73</title>
+<title>GeoExplorer V4.74</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2793,6 +2793,7 @@ function applyCalibration(est, geoOk, initProd, b){
   G.budget += pay;
   G.calib = G.calib || {n:0, net:0};
   G.calib.n++; G.calib.net += pay;
+  if(est.p!==null && est.p!==undefined){ G.calibLog = G.calibLog || []; G.calibLog.push({ p:est.p, ok:o, pay:Math.round(pay) }); }
   addLog(`🎯 Calibration bloc (${b.x},${b.y}) : ${pay>=0?'+':''}${formatM(pay)}.`, pay>=0?'good':'bad');
   return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><b>Vos estimations</b> : ${lines.join(' ')} Total : <b>${pay>=0?'+':''}${formatM(pay)}</b>.</div>`;
 }
@@ -3500,9 +3501,9 @@ function infoNote(t){ const st = infoState(); st.notes.unshift({ month:G.month, 
 function infoBuyBrief(){
   const st = infoState(), c = infoCost(INFO_BRIEF_COST);
   if(G.budget < c){ toast('Budget insuffisant pour le briefing (' + formatM(c) + ').'); return; }
-  G.budget -= c; updateHud();
+  G.budget -= c; updateHud(); st.spent = (st.spent||0) + c;
   const items = [];
-  (G.marketEvents||[]).forEach(ev=>{ const d = ev.at - G.month; if(d>INFO_BRIEF_H || d<1 || !infoIsBig(ev)) return; if(Math.random() < INFO_BRIEF_DETECT) items.push({ desc:infoDesc(ev), at:ev.at, real:true, shownAt:ev.at + (Math.random()<.5?-1:1)*(Math.random()<.5?1:0) }); });
+  (G.marketEvents||[]).forEach(ev=>{ const d = ev.at - G.month; if(d>INFO_BRIEF_H || d<1 || !infoIsBig(ev)) return; if(Math.random() < INFO_BRIEF_DETECT){ ev.told = true; items.push({ desc:infoDesc(ev), at:ev.at, real:true, shownAt:ev.at + (Math.random()<.5?-1:1)*(Math.random()<.5?1:0) }); } });
   if(Math.random() < 0.35){ const f = infoFakeEvent(), at = G.month + 2 + Math.floor(Math.random()*6); items.push({ desc:infoDesc(f), at, real:false, shownAt:at }); }
   items.sort((x,y)=>x.shownAt-y.shownAt);
   st.briefs.push({ month:G.month, items, done:false });
@@ -3512,7 +3513,7 @@ function infoBuyBrief(){
 function infoSubscribe(){
   const st = infoState(), c = infoCost(INFO_SUB_COST);
   if(G.budget < c){ toast('Budget insuffisant pour l\'abonnement (' + formatM(c) + ').'); return; }
-  G.budget -= c; updateHud();
+  G.budget -= c; updateHud(); st.spent = (st.spent||0) + c;
   st.subUntil = Math.max(st.subUntil, G.month) + INFO_SUB_MONTHS;
   infoNote(`Abonnement aux alertes actif jusqu'au mois ${st.subUntil} : événements annoncés 1 à 3 mois avant (détection ${Math.round(INFO_DETECT*100)} %, fausses alertes possibles).`);
 }
@@ -3529,7 +3530,7 @@ function informantTick(){
   (G.marketEvents||[]).forEach(ev=>{
     const d = ev.at - G.month; if(ev.alerted || d > 3 || d < 1 || !infoIsBig(ev)) return;
     ev.alerted = true; if(Math.random() > INFO_DETECT) return;
-    st.alertTotal++; st.alertHits++; infoNote(`${infoDesc(ev, d).replace(/^./, c=>c.toUpperCase())}. Fiabilité annoncée ${Math.round(INFO_DETECT*100)} %.`);
+    ev.told = true; st.alertTotal++; st.alertHits++; infoNote(`${infoDesc(ev, d).replace(/^./, c=>c.toUpperCase())}. Fiabilité annoncée ${Math.round(INFO_DETECT*100)} %.`);
   });
   if(Math.random() < INFO_FAKE){ const f = infoFakeEvent(), d = 2 + Math.floor(Math.random()*2); st.fakes.push({ at:G.month+d }); st.alertTotal++;
     infoNote(`${infoDesc(f, d).replace(/^./, c=>c.toUpperCase())}. Fiabilité annoncée ${Math.round(INFO_DETECT*100)} %.`); }
@@ -3573,6 +3574,7 @@ function stepPrice(){
   let shock=0;
   G.marketEvents = G.marketEvents.filter(ev=>{
     if(ev.at > G.month) return true;
+    if(ev.kind!=='trend' && (ev.kind!=='shock' || Math.abs(ev.size)>10)){ G.eventLog = G.eventLog || []; G.eventLog.push({ month:G.month, kind:ev.kind, size:ev.size, dur:ev.dur, alerted:!!ev.told }); }
     if(ev.kind==='trend') G.priceTrendTarget = ev.target;
     else if(ev.kind==='shock'){ shock += ev.size; if(Math.abs(ev.size)>10) addLog(`⚠ Choc de marché : cours ${ev.size>0?'en hausse':'en baisse'} brutale.`,'ev'); }
     else if(ev.kind==='embargo'){ shock += ev.size; G.priceTrendTarget = 0.08; addLog('🛢 Embargo : le brut s\'envole, la tendance reste haussière plusieurs mois.','ev'); }
@@ -3603,6 +3605,28 @@ function checkEndConditions(){
   if(m.maxYears>0 && years>=m.maxYears && !LABOPT.nolimit){ showEnd('time'); }
 }
 
+// Récap de fin : calibration des estimations (par tranche) et marché subi (événements, informateur)
+function recapMarketCalibHtml(){
+  const parts = [];
+  const log = G.calibLog || [];
+  if(log.length){
+    const tr = [['moins de 30 %', x=>x.p<0.3], ['30 à 60 %', x=>x.p>=0.3 && x.p<0.6], ['60 % et plus', x=>x.p>=0.6]];
+    const rows = tr.map(([lab,f])=>{ const a = log.filter(f); if(!a.length) return ''; const mp = Math.round(100*a.reduce((t,x)=>t+x.p,0)/a.length), real = Math.round(100*a.reduce((t,x)=>t+x.ok,0)/a.length);
+      return `<tr><td>${lab}</td><td>${a.length}</td><td>${mp} %</td><td>${real} %</td></tr>`; }).join('');
+    const mean = log.reduce((t,x)=>t+x.p,0)/log.length, real = log.reduce((t,x)=>t+x.ok,0)/log.length, gap = Math.round((mean-real)*100);
+    const verdict = log.length < 4 ? 'Trop peu d\'estimations pour juger.' : gap > 12 ? 'Vous étiez trop optimiste : vos succès annoncés se réalisent moins souvent que vous ne le disiez.' : gap < -12 ? 'Vous étiez trop prudent : vos succès se réalisent plus souvent que vous ne le disiez.' : 'Bien calibré : vos probabilités annoncées sont proches des résultats.';
+    parts.push(`<b>Calibration de vos estimations</b> (${log.length}, gain net ${G.calib.net>=0?'+':''}${formatM(G.calib.net)}).<table class="recap-tbl"><tr><th>Annoncé</th><th>Puits</th><th>Moyenne annoncée</th><th>Réussite réelle</th></tr>${rows}</table>${verdict}`);
+  } else if(G.calib?.n) parts.push(`<b>Calibration</b> : ${G.calib.n} estimation${G.calib.n>1?'s':''} de classe de production, gain net ${G.calib.net>=0?'+':''}${formatM(G.calib.net)}.`);
+  const ev = G.eventLog || [], st = G.informant;
+  if(ev.length || (st && (st.spent||st.notes?.length))){
+    const lab = e => ({ shock: e.size>0?'choc de prix à la hausse':'choc de prix à la baisse', embargo:'embargo', recession:'récession', storm:'tempête sur les plateformes', tax:'taxe exceptionnelle' }[e.kind] || e.kind);
+    const told = ev.filter(e=>e.alerted).length;
+    let t = `<b>Marché</b> : ${ev.length ? ev.length+' événement'+(ev.length>1?'s':'')+' subi'+(ev.length>1?'s':'')+' ('+ev.slice(-6).map(e=>`${lab(e)} au mois ${e.month}${e.alerted?' ✓ annoncé':''}`).join(', ')+')' : 'aucun événement majeur'}.`;
+    if(st && st.spent) t += ` Informateur : ${formatM(st.spent)} dépensés, ${told} événement${told>1?'s':''} sur ${ev.length} annoncé${told>1?'s':''} à l'avance, ${st.fakes?.length||0} fausse${(st.fakes?.length||0)>1?'s':''} alerte${(st.fakes?.length||0)>1?'s':''}.`;
+    parts.push(t);
+  }
+  return parts.length ? `<div style="grid-column:1/-1;font-size:12px;line-height:1.55;">${parts.join('<br><br>')}</div>` : '';
+}
 function showEnd(reason){
   setSpeed(0);
   // Une fenêtre de forage ou d'alerte encore ouverte ne doit pas rester par-dessus l'écran de fin.
@@ -3628,8 +3652,8 @@ function showEnd(reason){
     <div><span class="end-lbl">Puits forés</span><br><strong>${G.wells.length + blocks.filter(b=>b.dryHole).length} (${G.wells.length} productifs, ${blocks.filter(b=>b.dryHole).length} secs, ${G.wells.filter(w=>w.status==='producing').length} encore actifs)</strong></div>
     <div><span class="end-lbl">Cours final</span><br><strong>$${G.price.toFixed(1)}/bbl</strong></div>
     <div><span class="end-lbl">Revenus cumulés</span><br><strong>${formatM(totalProd)}</strong></div>
-    ${G.calib?.n?`<div><span class="end-lbl">Calibration (${G.calib.n} ${G.calib.n>1?"estimations":"estimation"})</span><br><strong>${G.calib.net>=0?'+':''}${formatM(G.calib.net)}</strong></div>`:''}
   `;
+  { const extra = recapMarketCalibHtml(); if(extra) document.getElementById('endStats').insertAdjacentHTML('beforeend', extra); }
   if(G.daily){
     const nw = Math.round(netWorth() - abandonLiability()), st = dailyStore(), prev = st[G.daily], rec = !prev || nw > prev.nw;
     if(rec){ st[G.daily] = { nw, years:+(G.month/12).toFixed(1), wells:G.wells.length }; try { localStorage.setItem('geoexplorer_daily', JSON.stringify(st)); } catch(e){} }
@@ -7424,7 +7448,7 @@ function _doStartGame(){
     budget:         m.budget,
     month:0, speed:1, paused:false, labPick:null, labCal:{}, labProc:{}, labSecPrev:null, labOpt:{ ...LABOPT },
     price:80, priceHistory:[80], priceAlerts:[], labPickBonusProv:{},
-    wells:[], drilling:[], sectionA:null, sectionB:null, sectionsHistory:[], marketEvents:[], informant:null, stormMonthsLeft:0, taxMonthsLeft:0,
+    wells:[], drilling:[], sectionA:null, sectionB:null, sectionsHistory:[], marketEvents:[], informant:null, stormMonthsLeft:0, taxMonthsLeft:0, eventLog:[], calibLog:[],
     tool:'select', history:[], lastCF:0, lastRevenue:0, lastOpex:0, lastLoanPayment:0,
     priceTrend:0, priceTrendTarget:0, revealFieldsMode:false,
     // Finance
@@ -9169,6 +9193,9 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
 .rg-end{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:14px;margin:6px 0;font-size:13px;line-height:1.55;}
 .rg-end h3{margin:0 0 6px;font-size:16px;}
 .rg-end ul{margin:6px 0 0;padding-left:18px;}
+.recap-tbl{width:100%;border-collapse:collapse;margin:4px 0;font-size:11.5px;}
+.recap-tbl th{text-align:left;font-weight:500;color:var(--muted);padding:3px 6px 3px 0;}
+.recap-tbl td{padding:3px 6px 3px 0;border-top:1px solid var(--line);font-family:var(--mono);}
 .rg-tbl{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:8px;font-size:11.5px;}
 .rg-tbl th{width:36%;text-align:left;font-weight:500;color:var(--muted);padding:4px 4px 4px 0;}
 .rg-tbl td{width:64%;padding:4px 6px 4px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);}
