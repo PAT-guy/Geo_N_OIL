@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.72</title>
+<title>GeoExplorer V4.73</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2203,27 +2203,49 @@ function generateGeology(gridSize, basinType, offshore, seed){
   // étale donc les probabilités par RANG de bloc sur la carte : l'ordre des
   // blocs, donc la géologie qui les distingue, est inchangé ; seule leur
   // échelle change (moyenne ≈ 24 %, meilleurs blocs entre 60 et 85 %).
-  const order = [...blocks].sort((a,z)=>a.trueProbability-z.trueProbability);
-  order.forEach((b,i)=>{
-    b.pRaw = b.trueProbability; // probabilité brute avant recalibrage
-    b.trueProbability = PCAL.pmin + (PCAL.pmax-PCAL.pmin)*Math.pow(i/Math.max(1,order.length-1), PCAL.exp);
-  });
+  // Étalonnage : 80 % par RANG sur la carte (l'ordre des blocs, donc la géologie qui les distingue, est inchangé) et 20 % par position dans la
+  // distribution de référence : une carte dont la géologie brute est faible (peu de charge, pièges médiocres) est globalement plus pauvre
+  // qu'une carte riche. Un plancher de 10 % de blocs au-dessus de 50 % garantit une carte jouable (la part absolue est réduite sinon).
+  const order = [...blocks].sort((a,z)=>a.trueProbability-z.trueProbability), nB = order.length;
+  order.forEach((b,i)=>{ b.pRaw = b.trueProbability; b._q = i/Math.max(1,nB-1); b._qa = pAbsQuantile(b.pRaw); });
+  PCAL_E = PCAL.exp;
+  const pOf = (b,w) => PCAL.pmin + (PCAL.pmax-PCAL.pmin)*Math.pow((1-w)*b._q + w*b._qa, PCAL.exp);
+  let w = PCAL.abs; while(w > 0 && blocks.filter(b=>pOf(b,w) >= 0.5).length < PCAL.floorShare*nB) w = Math.max(0, +(w-0.05).toFixed(2));
+  PCAL_W = w; _pRawFor = null;
+  blocks.forEach(b=>{ b.trueProbability = pOf(b,w); delete b._q; delete b._qa; });
 
   return {anticlines, faults, saltDomes};
 }
 
-const PCAL = { pmin:0.03, pmax:0.85, exp:3 };
+// exp 2,8 (3 avant la V4.73) : le mélange rang et référence resserre la distribution ; cette valeur garde la probabilité moyenne des cartes à environ 24 %
+const PCAL = { pmin:0.03, pmax:0.85, exp:2.8, abs:0.20, floorShare:0.10 };
+// Distribution de référence des probabilités brutes (401 quantiles, 800 cartes de tous les bassins et tailles) : sert à situer un bloc par
+// rapport à l'ENSEMBLE des cartes possibles, et non seulement par rapport aux autres blocs de sa carte. À régénérer si la formule brute change
+// (le test calibration_bassin.js le détecte : part moyenne de bons blocs qui dérive).
+const PRAW_REF = [0.0752,0.0837,0.085,0.0856,0.0861,0.0866,0.087,0.0873,0.0876,0.0879,0.0882,0.0884,0.0887,0.089,0.0892,0.0895,0.0897,0.09,0.0902,0.0904,0.0906,0.0909,0.0911,0.0913,0.0915,0.0917,0.0919,0.0921,0.0923,0.0925,0.0927,0.0929,0.093,0.0932,0.0934,0.0935,0.0937,0.0939,0.094,0.0941,0.0943,0.0944,0.0946,0.0948,0.0949,0.095,0.0952,0.0953,0.0955,0.0956,0.0957,0.0959,0.096,0.0961,0.0962,0.0964,0.0965,0.0966,0.0967,0.0969,0.097,0.0971,0.0972,0.0973,0.0974,0.0976,0.0977,0.0978,0.0979,0.098,0.0981,0.0982,0.0983,0.0984,0.0985,0.0987,0.0988,0.0989,0.099,0.0991,0.0992,0.0993,0.0994,0.0995,0.0996,0.0997,0.0998,0.0999,0.1,0.1001,0.1002,0.1003,0.1004,0.1004,0.1005,0.1006,0.1007,0.1008,0.1009,0.101,0.1011,0.1012,0.1013,0.1013,0.1014,0.1015,0.1016,0.1017,0.1018,0.1019,0.1019,0.102,0.1021,0.1022,0.1023,0.1024,0.1024,0.1025,0.1026,0.1027,0.1028,0.1029,0.1029,0.103,0.1031,0.1032,0.1033,0.1033,0.1034,0.1035,0.1036,0.1037,0.1037,0.1038,0.1039,0.104,0.1041,0.1041,0.1042,0.1043,0.1044,0.1045,0.1045,0.1046,0.1047,0.1048,0.1049,0.105,0.105,0.1051,0.1052,0.1053,0.1053,0.1054,0.1055,0.1056,0.1057,0.1057,0.1058,0.1059,0.106,0.1061,0.1061,0.1062,0.1063,0.1064,0.1065,0.1066,0.1066,0.1067,0.1068,0.1069,0.107,0.1071,0.1071,0.1072,0.1073,0.1074,0.1075,0.1076,0.1076,0.1077,0.1078,0.1079,0.108,0.1081,0.1082,0.1083,0.1083,0.1084,0.1085,0.1086,0.1087,0.1088,0.1089,0.109,0.109,0.1091,0.1092,0.1093,0.1094,0.1095,0.1096,0.1097,0.1098,0.1099,0.11,0.1101,0.1102,0.1103,0.1104,0.1105,0.1106,0.1107,0.1108,0.1109,0.111,0.1111,0.1112,0.1113,0.1114,0.1115,0.1116,0.1117,0.1118,0.1119,0.1121,0.1122,0.1123,0.1124,0.1125,0.1126,0.1128,0.1129,0.113,0.1132,0.1133,0.1134,0.1135,0.1137,0.1138,0.1139,0.1141,0.1142,0.1144,0.1145,0.1147,0.1148,0.1149,0.1151,0.1153,0.1154,0.1155,0.1157,0.1158,0.116,0.1162,0.1163,0.1165,0.1167,0.1168,0.117,0.1172,0.1173,0.1175,0.1177,0.1179,0.1181,0.1182,0.1184,0.1186,0.1188,0.119,0.1191,0.1193,0.1195,0.1197,0.1199,0.1201,0.1202,0.1204,0.1206,0.1208,0.121,0.1212,0.1214,0.1216,0.1218,0.122,0.1222,0.1224,0.1226,0.1228,0.123,0.1232,0.1234,0.1236,0.1238,0.124,0.1242,0.1244,0.1246,0.1248,0.125,0.1252,0.1254,0.1257,0.1258,0.1261,0.1263,0.1265,0.1267,0.1269,0.1271,0.1274,0.1276,0.1278,0.128,0.1283,0.1285,0.1287,0.129,0.1292,0.1294,0.1297,0.1299,0.1301,0.1304,0.1306,0.1309,0.1311,0.1314,0.1316,0.1319,0.1321,0.1324,0.1326,0.1329,0.1332,0.1335,0.1337,0.134,0.1343,0.1346,0.1348,0.1351,0.1354,0.1357,0.136,0.1363,0.1366,0.1369,0.1372,0.1375,0.1378,0.1381,0.1385,0.1388,0.1391,0.1395,0.1398,0.1402,0.1406,0.141,0.1414,0.1418,0.1422,0.1426,0.1431,0.1435,0.1439,0.1443,0.1448,0.1452,0.1457,0.1462,0.1467,0.1472,0.1477,0.1483,0.1489,0.1494,0.1501,0.1508,0.1515,0.1522,0.153,0.1538,0.1547,0.1557,0.1566,0.1576,0.1588,0.1602,0.1617,0.1635,0.1655,0.1679,0.1715,0.1777,0.288];
+function pAbsQuantile(raw){
+  const n = PRAW_REF.length - 1; if(raw <= PRAW_REF[0]) return 0; if(raw >= PRAW_REF[n]) return 1;
+  let lo = 0, hi = n; while(hi-lo > 1){ const m = (lo+hi)>>1; if(PRAW_REF[m] <= raw) lo = m; else hi = m; }
+  const span = PRAW_REF[hi] - PRAW_REF[lo]; return (lo + (span>0 ? (raw-PRAW_REF[lo])/span : 0)) / n;
+}
+let PCAL_W = PCAL.abs, PCAL_E = PCAL.exp; // part absolue et exposant de la carte en cours (anciennes sauvegardes : 0 et 3) // part d'étalonnage absolu retenue pour la carte en cours (réduite si la carte serait trop pauvre)
 // Applique à une probabilité brute (ex. 2e réservoir d'un side-track) la même
 // échelle que celle des blocs de la carte. Les sauvegardes anciennes n'ont pas
 // de pRaw : on garde alors la valeur telle quelle.
 let _pRawFor = null, _pRawSorted = null;
+// Potentiel régional de la carte : moyenne des probabilités vraies (évaluation régionale que donnerait un rapport de bassin)
+function mapRichness(){
+  const n = blocks.length || 1, mean = blocks.reduce((t,b)=>t+b.trueProbability,0)/n;
+  const label = mean < 0.19 ? 'pauvre' : mean > 0.26 ? 'riche' : 'moyen';
+  return { mean:+mean.toFixed(3), label, hi:+(blocks.filter(b=>b.trueProbability>=0.6).length/n).toFixed(3) };
+}
 function pCalibrate(raw){
   if(!blocks.length || blocks[0].pRaw === undefined) return raw;
   if(_pRawFor !== blocks){ _pRawSorted = blocks.map(b=>b.pRaw).sort((a,z)=>a-z); _pRawFor = blocks; }
   let lo = 0, hi = _pRawSorted.length;
   while(lo < hi){ const m = (lo+hi)>>1; if(_pRawSorted[m] < raw) lo = m+1; else hi = m; }
-  const q = clamp(lo/Math.max(1,_pRawSorted.length-1), 0, 1);
-  return PCAL.pmin + (PCAL.pmax-PCAL.pmin)*Math.pow(q, PCAL.exp);
+  const qRank = clamp(lo/Math.max(1,_pRawSorted.length-1), 0, 1), q = (1-PCAL_W)*qRank + PCAL_W*pAbsQuantile(raw);
+  return PCAL.pmin + (PCAL.pmax-PCAL.pmin)*Math.pow(q, PCAL_E);
 }
 
 function smoothField(size, coarse, rng){
@@ -3600,7 +3622,7 @@ function showEnd(reason){
     <div><span class="end-lbl">Budget final</span><br><strong>${formatM(G.budget)}</strong></div>
     ${G.financeMode && debtTotal()>1000 ? `<div><span class="end-lbl">Dette restante</span><br><strong>${formatM(debtTotal())}</strong></div>` : ''}
     ${abandonLiability()>0 ? `<div><span class="end-lbl">Abandon des puits encore actifs</span><br><strong>${formatM(abandonLiability())}</strong></div>` : ''}
-    ${G.seedShown ? `<div><span class="end-lbl">Seed de la carte</span><br><strong>${G.seedShown}</strong> · ${BASIN_NAMES[G.basinType]||G.basinType}, ${G.gridSize}×${G.gridSize}</div>` : ''}
+    ${G.seedShown ? `<div><span class="end-lbl">Seed de la carte</span><br><strong>${G.seedShown}</strong> · ${BASIN_NAMES[G.basinType]||G.basinType}, ${G.gridSize}×${G.gridSize}${G.richness ? ' · bassin '+G.richness.label : ''}</div>` : ''}
     <div><span class="end-lbl">Budget initial</span><br><strong>${formatM(MODES[G.mode].budget)}</strong></div>
     <div><span class="end-lbl">Durée de partie</span><br><strong>${(G.month/12).toFixed(1)} ans</strong></div>
     <div><span class="end-lbl">Puits forés</span><br><strong>${G.wells.length + blocks.filter(b=>b.dryHole).length} (${G.wells.length} productifs, ${blocks.filter(b=>b.dryHole).length} secs, ${G.wells.filter(w=>w.status==='producing').length} encore actifs)</strong></div>
@@ -7327,6 +7349,8 @@ function loadGame(){
   Object.assign(G, payload.G);
   if(G.labOpt) LABOPT = labNormOpt(G.labOpt); else LABOPT = labNormOpt({ ...LAB_PRESETS.decouverte.o }); // sauvegarde d'avant V4.33 : règles d'origine
   blocks = payload.blocks.map(b => ({ ...b, el: null })); // .el sera réattaché par buildGrid()
+  PCAL_W = G.pcalW ?? 0; PCAL_E = G.pcalW===undefined ? 3 : PCAL.exp; // anciennes sauvegardes : étalonnage par rang seul et exposant 3, comme à leur création
+  _pRawFor = null;
   // Bug V4.1 : JSON.stringify/parse transforme l'objet puits partagé entre
   // G.wells et b.well en deux copies indépendantes. On remet b.well sur
   // l'élément de G.wells (la seule copie que monthTick fait évoluer).
@@ -7420,6 +7444,8 @@ function _doStartGame(){
   G.seedShown = seedShown;
   const seedNum = seedToInt(seedShown);
   generateGeology(menuConfig.gridSize, menuConfig.basinType, menuConfig.offshore, seedNum);
+  G.pcalW = PCAL_W;
+  { const ri = mapRichness(); G.richness = ri; }
   // défi du jour : valable seulement si les réglages sont ceux du jour (le joueur a pu les changer entre-temps)
   { const dc = dailyConfig(); G.daily = (menuConfig.daily === dc.date && menuConfig.gridSize===dc.gridSize && menuConfig.basinType===dc.basinType && menuConfig.mode===dc.mode && String(menuConfig.seed)===String(dc.seed)) ? dc.date : null; }
 
@@ -7452,6 +7478,7 @@ function _doStartGame(){
     addLog(`🌍 ${BASIN_BRIEFS[menuConfig.basinType]}`, 'ev');
   }
   addLog(`🌱 Seed géologique : ${G.seedShown} (même seed et mêmes réglages de carte = même géologie)`);
+  if(G.richness) addLog(`📊 Potentiel régional du bassin : ${G.richness.label} (réussite moyenne attendue autour de ${Math.round(G.richness.mean*100)} %).`, 'ev');
   if(G.financeMode)   addLog(`💰 Mode Finance activé : emprunts, stockage, hedging, EOR, accidents.`);
   if(m.tpMode)        addLog(`🎓 Mode TP : la vraie géologie sera révélée après chaque forage.`);
 
@@ -8383,6 +8410,7 @@ function _doStartGame(){
       body: `Vous êtes géologue explorateur. L'objectif : trouver des gisements de pétrole en étudiant le
         sous-sol AVANT de forer, pas en forant au hasard. Un forage coûte cher, une étude réduit le risque,
         mais aucune étude ne donne jamais une certitude.<br><br>
+        Toutes les cartes ne se valent pas : le journal de départ annonce le <b>potentiel régional</b> du bassin (pauvre, moyen ou riche). Un bassin pauvre a moins de bons blocs, il faut y être plus sélectif.<br><br>
         Une partie dure de 20 à 35 ans de jeu, que le temps fait défiler pendant que vous décidez. Vous pouvez
         le mettre en pause à tout moment.`,
     },
