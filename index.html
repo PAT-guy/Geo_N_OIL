@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.79</title>
+<title>GeoExplorer V4.80</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -670,6 +670,10 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
     <div id="menuBackRow"><button type="button" class="est-clear" id="menuSimpleBtn">← <span class="i18n" data-fr="Accueil simple" data-en="Simple home">Accueil simple</span></button></div>
 
     <div class="menu-section" id="tab-quick">
+      <div id="firstVisit" style="display:none;margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-size:12.5px;line-height:1.5;">
+        <b>🌱 <span class="i18n" data-fr="Première visite ?" data-en="First visit?">Première visite ?</span></b> <span class="i18n" data-fr="Essayez le mode Découverte : une petite carte, environ 10 minutes, pour comprendre pourquoi on étudie avant de forer." data-en="Try Discovery mode: a small map, about 10 minutes, to see why you study before drilling.">Essayez le mode Découverte : une petite carte, environ 10 minutes, pour comprendre pourquoi on étudie avant de forer.</span>
+        <div style="display:flex;gap:8px;margin-top:8px;"><button type="button" class="adv-reset" id="firstVisitGo" style="flex:1;min-height:44px;">Essayer la Découverte</button><button type="button" class="adv-reset" id="firstVisitLater" style="flex:1;min-height:44px;">Plus tard</button></div>
+      </div>
       <div class="q-lbl"><span class="i18n" data-fr="Votre niveau" data-en="Your level">Votre niveau</span></div>
       <div class="q-modes" id="quickModes">
         <button type="button" class="q-mode" data-mode="decouverte"><b>🌱 Découverte</b><span class="i18n" data-fr="Petite carte, règles allégées, environ 10 minutes. Pour comprendre la boucle." data-en="Small map, lighter rules, about 10 minutes. To grasp the loop.">Petite carte, règles allégées, environ 10 minutes. Pour comprendre la boucle.</span><i>12 M$ · 10 ans · 8×8</i></button>
@@ -3751,7 +3755,12 @@ function simpleLessonHtml(b, success){
   const t = (p===null || p===undefined)
     ? `Vous avez foré sans estimation : c'est un pari à l'aveugle. Une sismique 3D donne une probabilité de succès avant de dépenser le prix d'un forage.`
     : `${e.own ? 'Vous aviez annoncé' : 'Avant le forage, vos études donnaient'} environ <b>${Math.round(p*100)} %</b> de chances à ce bloc. ${success ? 'Ça a réussi.' : 'Ça n\'a pas réussi : un pari à '+Math.round(p*100)+' % échoue environ '+Math.round((1-p)*100)+' fois sur 100.'} Une estimation n'est pas une certitude, c'est sa moyenne sur beaucoup de forages qui compte.`;
-  return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><b>🌱 Leçon.</b> ${t} Ouvrez l'onglet Géologie : le log de ce puits montre ce que la sismique ne pouvait pas voir.</div>`;
+  // ce que le log du puits montre : réservoir (épaisseur, porosité) et couverture au-dessus
+  let logTxt = '';
+  { const hs = b.horizons || [], ri = hs.findIndex(h=>h.role==='reservoir');
+    if(ri>=0){ const r = hs[ri], th = Math.round(r.thicknessLocal ?? r.thickness), seal = hs.slice(0,ri).reverse().find(h=>h.role==='seal' || h.role==='source');
+      logTxt = ` Le log de ce puits montre : <b>${r.name}</b> de ${th} m, porosité ${Math.round(r.porosity)} %${seal ? ', sous <b>'+seal.name.toLowerCase()+'</b>' : ''}${b.isGas ? ', avec du gaz (croisement densité-neutron)' : ''}. C'est ce que la sismique ne pouvait pas voir.`; } }
+  return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><b>🌱 Leçon.</b> ${t}${logTxt || ' Ouvrez l\'onglet Géologie : le log de ce puits montre ce que la sismique ne pouvait pas voir.'}</div>`;
 }
 function showDrillReveal(b, geoOk, techOk, limitingFactor, calibHtml){
   drillRevealQueue.push({b, geoOk, techOk, limitingFactor, calibHtml});
@@ -6734,6 +6743,12 @@ function fitMap(){
   zoomIdx = idx; rerenderAllBlocks();
   document.getElementById('zoomLbl').textContent = Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';
 }
+// Petite carte sur téléphone : on ne regarde que la largeur (la hauteur de la zone de carte est réduite par le guide et les barres)
+function fitMapWidth(){
+  const wrap = document.getElementById('mapWrap'); if(!wrap || !blocks.length || wrap.clientWidth < 120) return;
+  const avail = wrap.clientWidth - 70; let idx = 0; CELL_SIZES.forEach((c,i)=>{ if(G.gridSize*c <= avail) idx = i; });
+  zoomIdx = idx; rerenderAllBlocks(); document.getElementById('zoomLbl').textContent = Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';
+}
 document.getElementById('zoomFit').addEventListener('click', fitMap);
 document.getElementById('zoomIn').addEventListener('click',()=>{ if(zoomIdx<CELL_SIZES.length-1){zoomIdx++;rerenderAllBlocks();document.getElementById('zoomLbl').textContent=Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';} });
 document.getElementById('zoomOut').addEventListener('click',()=>{ if(zoomIdx>0){zoomIdx--;rerenderAllBlocks();document.getElementById('zoomLbl').textContent=Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';} });
@@ -7038,6 +7053,11 @@ document.querySelectorAll('.menu-tab').forEach(tab=>{
 const QUICK_BASINS = [['random','🎲 Aléatoire (libre)'],['paris','Parisien · débutant'],['rift','Rift · intermédiaire'],['passive','Marge passive · intermédiaire'],['foreland','Avant-pays · intermédiaire'],['aquitaine','Aquitaine · intermédiaire'],['north_sea','Mer du Nord · avancé'],['gulf_coast','Gulf Coast · avancé']];
 (function initQuickHome(){
   const sel = document.getElementById('quickBasin'); if(!sel) return;
+  // bandeau de premier lancement : visible tant qu'aucune partie n'a été lancée et que le joueur ne l'a pas écarté
+  { const fv = document.getElementById('firstVisit'); let played = false; try { played = !!localStorage.getItem('geoexplorer_played'); } catch(e){}
+    if(fv && !played) fv.style.display = '';
+    document.getElementById('firstVisitGo')?.addEventListener('click', ()=>{ document.querySelector('#quickModes .q-mode[data-mode="decouverte"]')?.click(); if(fv) fv.style.display = 'none'; document.getElementById('startBtn')?.scrollIntoView({block:'center', behavior:'smooth'}); });
+    document.getElementById('firstVisitLater')?.addEventListener('click', ()=>{ try { localStorage.setItem('geoexplorer_played','1'); } catch(e){} if(fv) fv.style.display = 'none'; }); }
   sel.innerHTML = QUICK_BASINS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
   sel.addEventListener('change', ()=>{ document.querySelector(`#basinPicker button[data-val="${sel.value}"]`)?.click(); quickRefresh(); });
   document.querySelectorAll('#quickModes .q-mode').forEach(b=>b.addEventListener('click', ()=>{ document.querySelector(`.mode-card[data-mode="${b.dataset.mode}"]`)?.click(); quickRefresh(); }));
@@ -7403,7 +7423,7 @@ function startGame(){
     }, 30);
   } else {
     _doStartGame();
-    requestAnimationFrame(()=>{ if(G.gridSize>=20) fitMap(); });
+    requestAnimationFrame(()=>{ if(G.gridSize>=20) fitMap(); else if(G.gridSize<=8 && isMobileLayout()) fitMapWidth(); });   // petite carte sur téléphone : ajustée à l'écran, sans colonne coupée
   }
 }
 
@@ -7521,6 +7541,7 @@ function applyCostMultipliers(){
 
 function _doStartGame(){
   clearInterval(gameLoopId); gameLoopId=null;
+  try { localStorage.setItem('geoexplorer_played','1'); } catch(e){}
   const m = MODES[menuConfig.mode];
   Object.assign(G,{
     mode:           menuConfig.mode,
