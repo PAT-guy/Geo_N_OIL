@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.65</title>
+<title>GeoExplorer V4.66</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2138,6 +2138,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
 
   raw.forEach(b=>{
     let charge = 0.02; // charge résiduelle plancher (micro-suintements, bruit de fond)
+    let chargeFrom = null; // cuisine qui fournit cette charge (explication affichée après forage, sans effet sur la géologie)
     pullByKitchen.forEach(({k, pulls, totalCandidatePull})=>{
       const pull = pulls.get(b.id);
       if(!pull) return;
@@ -2149,9 +2150,10 @@ function generateGeology(gridSize, basinType, offshore, seed){
       const c = k.genStrength * pull * competitionPenalty;
       // Un piège profite de la MEILLEURE source qui le charge (pas la somme :
       // on ne compte pas deux fois le même volume physique d'hydrocarbures).
-      if(c > charge) charge = c;
+      if(c > charge){ charge = c; chargeFrom = k; }
     });
     b.srcFactor = clamp(charge, .02, .9);
+    b.chargeFrom = chargeFrom ? { x:chargeFrom.x, y:chargeFrom.y, dist:+Math.hypot(b.x-chargeFrom.x, b.y-chargeFrom.y).toFixed(1), self: chargeFrom.id===b.id } : null;
   });
 
   blocks = raw.map(b=>{
@@ -2181,7 +2183,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       gradient:b.gradient, exhumation:b.exhumation, paleoTemp:b.paleoTemp, srcTopDepth:b.srcTopDepth,
       trapFactor:b.trapFactor, resFactor:b.resFactor, sealFactor:b.sealFactor, srcFactor:b.srcFactor,
       genStrength:b.genStrength,
-      resThicknessLocal:b.resThicknessLocal, inSalt:b.inSalt, faultThrow:b.faultThrow, provinceIdx:b.provinceIdx, srcAbsent:b.srcAbsent,
+      resThicknessLocal:b.resThicknessLocal, inSalt:b.inSalt, faultThrow:b.faultThrow, provinceIdx:b.provinceIdx, srcAbsent:b.srcAbsent, chargeFrom:b.chargeFrom,
       isOffshore:b.isOffshore,
       studies: [],
       studyLevel: 0,
@@ -3879,7 +3881,7 @@ function blockKnowledge(b){
       {n:'Piège',      st:'conf', t:`Facteur réel : ${f(b.trapFactor)}.`},
       {n:'Réservoir',  st:'conf', t:`Facteur réel : ${f(b.resFactor)}.`},
       {n:'Couverture', st:'conf', t:`Facteur réel : ${f(b.sealFactor)}.`},
-      {n:'Roche-mère', st:'conf', t:`Charge : ${f(b.srcFactor)}${b.maturityClass ? ', '+b.maturityClass.toLowerCase() : ''}.`},
+      {n:'Roche-mère', st:'conf', t:`Charge : ${f(b.srcFactor)}${b.maturityClass ? ', '+b.maturityClass.toLowerCase() : ''}.` + (b.srcAbsent ? ' Pas de roche-mère profonde dans cette province.' : '') + (b.chargeFrom ? (b.chargeFrom.self ? ' Le bloc est sa propre cuisine.' : ` Alimenté par la cuisine du bloc (${b.chargeFrom.x},${b.chargeFrom.y}), à ${String(b.chargeFrom.dist).replace('.',',')} blocs.`) : ' Aucune cuisine à portée : charge de fond seulement.')},
     ];
   }
   const out = [];
