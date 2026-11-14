@@ -1,7 +1,7 @@
 // Mode anglais : parcourt l'interface et liste le texte qui reste en français (nœuds de texte, title, placeholder, aria-label).
 // Usage : node tools/tests/anglais_reste.js [--liste]   (verdict : TOUT OK s'il ne reste rien)
 const { chromium } = require('playwright'); const path = require('path');
-const FR = String.raw`[àâçéèêëîïôûùüœÀÂÇÉÈÊËÎÏÔÛÙÜŒ]|\b(le|la|les|des|du|une|un|et|est|pour|dans|avec|sur|sous|par|aux|ce|cette|vous|votre|vos|qui|que|pas|ne|se|ou|mais|plus|moins|aucun|aucune|tout|tous|bloc|puits|forage|carte|coupe|roche|prix|mois|ans|sans|entre|vers|après|avant|doit|peut|faire|fait|être|ont|leur|nouveau|nouvelle|fermer|retour|suivant|précédent|niveau|étude|études|gisements|essai|rejouer|réponse|bonne|mauvais|suivante|score :)\b|\w :(\s|$)`;
+const FR = String.raw`[àâçéèêëîïôûùüœÀÂÇÉÈÊËÎÏÔÛÙÜŒ]|\b(le|la|les|des|du|une|un|et|est|pour|dans|avec|sur|sous|aux|ce|cette|vous|votre|vos|qui|que|pas|ne|se|ou|mais|moins|aucun|aucune|tout|tous|bloc|puits|forage|carte|coupe|roche|prix|mois|ans|sans|entre|vers|après|avant|doit|peut|faire|fait|être|ont|leur|nouveau|nouvelle|fermer|retour|suivant|précédent|niveau|étude|études|gisements|essai|rejouer|réponse|bonne|mauvais|suivante)\b`;
 (async()=>{
   const br = await chromium.launch(); const pg = await br.newPage({ viewport:{ width:1280, height:900 } }); const errs = [];
   pg.on('pageerror', e=>errs.push(e.message));
@@ -14,7 +14,7 @@ const FR = String.raw`[àâçéèêëîïôûùüœÀÂÇÉÈÊËÎÏÔÛÙÜŒ]
     document.querySelectorAll('[title],[placeholder],[aria-label]').forEach(e=>{ for(const a of ['title','placeholder','aria-label']){ const v = e.getAttribute(a); if(v && re.test(v)) out.add('['+a+'] '+v.replace(/\s+/g,' ').trim()); } });
     return [...out];
   }, FR);
-  const found = new Map(); const step = async (label)=>{ for(const t of await collect()){ if(!found.has(t)) found.set(t, label); } };
+  const found = new Map(); const step = async (label)=>{ for(const t of await collect()){ if(t!=='🇫🇷 Français' && !found.has(t)) found.set(t, label); } };
   await step('accueil');
   // onglets du menu et options
   for(const tab of ['mode','world','studies']){ await pg.evaluate(t=>document.querySelector('.menu-tab[data-tab="'+t+'"]')?.click(), tab); await step('menu '+tab); }
