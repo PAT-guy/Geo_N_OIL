@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.77</title>
+<title>GeoExplorer V4.78</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -472,6 +472,10 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .pause-back-btn{margin-bottom:4px;}
 .glossary-term{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line);font-size:12px;line-height:1.6;}
 .glossary-term b{color:var(--amber);}
+.gl-tag{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:9px;margin-right:4px;vertical-align:1px;}
+.gl-loi{background:color-mix(in srgb,var(--green) 22%,var(--panel));color:var(--text);}
+.gl-approx{background:color-mix(in srgb,var(--amber) 24%,var(--panel));color:var(--text);}
+.gl-jeu{background:color-mix(in srgb,var(--muted) 24%,var(--panel));color:var(--text);}
 #endScreen{position:fixed;inset:0;z-index:998;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;padding:20px;}
 .end-icon{font-size:48px;margin-bottom:10px;}
 .end-title{font-family:var(--serif);font-weight:600;font-size:32px;margin-bottom:6px;}
@@ -6944,12 +6948,36 @@ const GLOSSARY_ENTRIES = [
   {term:'Porosité / perméabilité', def:'La porosité mesure le volume de vide pouvant stocker des fluides ; la perméabilité mesure la capacité de ces fluides à circuler. Un bon réservoir a besoin des deux.'},
   {term:'Gravimétrie', def:'Étude régionale bon marché qui révèle la structure générale (hauts/bas structuraux) de toute la concession en une seule campagne.'},
   {term:'Sismique 2D', def:'Profil le long d\'un transect A→B qui révèle la géométrie des horizons et les failles le long de ce profil.'},
-  {term:'Log de puits', def:'Diagraphies réalisées DANS un puits déjà foré : donnent la colonne stratigraphique précise, succès ou échec. Impossible sans forer réellement, c\'est le forage lui-même qui les fournit désormais.'},
+  {term:'Log de puits', def:'Diagraphies réalisées DANS un puits : donnent la colonne stratigraphique précise et les courbes (GR, résistivité, densité, neutron, sonique). Un forage les fournit toujours, succès ou échec. Un sondage stratigraphique, moins cher, ne les donne qu\'après une diagraphie payante lancée à part.'},
+  {term:'Sondage stratigraphique', def:'Forage carotté à environ 30 % du prix d\'un puits, qui ne peut jamais produire et ne renseigne pas sur les fluides. Il ramène des carottes ; le log et la lithologie demandent la diagraphie du sondage. Utile pour caler la sismique avant de forer cher.'},
+  {term:'Informateur', def:'Service payant du jeu : un briefing à 8 mois et un abonnement d\'alertes sur les événements de marché (chocs de prix, embargo, récession, tempête, taxe). Il ne voit qu\'une partie de ce qui se prépare et se trompe parfois : son bilan est affiché.'},
+  {term:'Abandon d\'un puits', def:'Bouchons de ciment et remise en état du site, payés à la fermeture ou à l\'épuisement : 12 % du coût de forage à terre, 18 % en mer.'},
   {term:'Sismique 3D (DHI)', def:'Cube sismique avec analyse d\'amplitude (AVO) recherchant des indicateurs directs d\'hydrocarbures (bright spots). La meilleure information possible sans forer, mais qui reste une estimation.'},
   {term:'Carotte', def:'Échantillon physique du réservoir analysé en laboratoire : porosité et perméabilité précises, la donnée la plus fiable mais aussi la plus coûteuse.'},
   {term:'Rock-Eval (pyrolyse)', def:'Analyse de laboratoire sur des échantillons de roche-mère : mesure le TOC (carbone organique total), l\'indice d\'hydrogène (HI) et le Tmax, pour évaluer directement le potentiel générateur et la maturité, indépendamment du calcul de paléo-enfouissement.'},
 ];
 
+// Réel ou simplifié : pour chaque mécanisme, loi physique, approximation ou réglage de jeu (honnêteté sur ce que le jeu enseigne)
+const REALITY_TAGS = { loi:'Loi physique', approx:'Approximation', jeu:'Réglage de jeu' };
+const REALITY_ENTRIES = [
+  {tag:'loi', term:'Saturation en eau (Archie)', def:'Loi d\'Archie avec a = 1, m = n = 2, utilisée telle quelle dans les logs et les calculs de saturation.'},
+  {tag:'loi', term:'Porosité-densité et croisement densité-neutron', def:'φ = (ρma − ρb) / (ρma − ρf). Un neutron nettement sous la porosité-densité signe le gaz.'},
+  {tag:'loi', term:'Rock-Eval', def:'Tmax sous 435 °C : immature ; de 435 à 455 °C : fenêtre à huile ; au-dessus : gaz. Le HI part d\'une valeur propre au type de kérogène (I lacustre, II marin, III charbon) puis baisse avec la maturité.'},
+  {tag:'loi', term:'Console de forage', def:'Gradient de fracturation d\'Eaton, résistance de roche déduite du sonique (corrélation de McNally), retard de circulation (fond-en-haut), venues, pertes et coincements : des mécanismes réels.'},
+  {tag:'loi', term:'Sismique : impédance et réflexion', def:'Z = ρ·v et R = (Z2 − Z1) / (Z2 + Z1) fixent la polarité (bleu : hausse, rouge : baisse) et la force des réflecteurs.'},
+  {tag:'loi', term:'Déclin de production', def:'Courbe de déclin hyperbolique, de type Arps, pour chaque puits.'},
+  {tag:'approx', term:'Maturité de la roche-mère', def:'Elle dépend de la température au plus fort de l\'enfouissement, sans histoire thermique ni cinétique (pas de réflectance de la vitrinite calculée). Le coefficient de génération du gaz sec est plausible, pas mesuré.'},
+  {tag:'approx', term:'Migration', def:'La charge décroît avec la distance à la cuisine : ni couches porteuses, ni flottabilité, ni points de fuite. La charge d\'un réservoir par une roche-mère superficielle, au contact d\'une faille, est une règle qualitative.'},
+  {tag:'approx', term:'Coupe sismique', def:'Des traits colorés à la place d\'ondelettes : pas de convolution, pas de domaine temps réel, un seul niveau de bruit simplifié.'},
+  {tag:'approx', term:'Géosteering du drain', def:'Capteurs GR à 12 m et Rt à 6 m derrière l\'outil, inclinaison limitée à 2° par 10 m : des ordres de grandeur réalistes sur une trajectoire simplifiée en deux dimensions.'},
+  {tag:'approx', term:'Coût d\'abandon', def:'12 % (terre) et 18 % (mer) du coût de forage : un ordre de grandeur. Offshore, l\'abandon d\'un champ peut dépasser le coût de son forage.'},
+  {tag:'approx', term:'Seuils de lecture des logs', def:'Les 9 et 11 Ω·m du jeu valent dans le jeu. Sur le terrain, le seuil dépend de l\'eau de formation (Rw), de la porosité et de la lithologie.'},
+  {tag:'jeu', term:'Probabilités de succès', def:'Étalonnées pour l\'équilibre du jeu (moyenne autour de 24 %). La richesse d\'une carte est relative au générateur du jeu, pas à de vrais bassins.'},
+  {tag:'jeu', term:'Événements de marché', def:'Embargo, récession, tempête, taxe exceptionnelle : des catégories réalistes, mais fréquences et ampleurs inventées.'},
+  {tag:'jeu', term:'Informateur', def:'Détection de 75 à 80 % et fausses alertes : des règles de jeu pour créer un pari, pas des statistiques réelles.'},
+  {tag:'jeu', term:'Incidents du drain', def:'Les causes (argile, coude serré, outil usé, faille) sont réalistes ; les probabilités sont réglées pour le jeu.'},
+  {tag:'jeu', term:'Sondage et diagraphie payés à part', def:'Sur un chantier réel, la diagraphie fait partie du budget du forage. Elle est séparée ici pour en faire un choix.'},
+];
 function renderGlossary(){
   const el = document.getElementById('glossaryContent');
   if(el.dataset.rendered) return; // contenu statique, pas besoin de le reconstruire à chaque ouverture
@@ -6960,6 +6988,9 @@ function renderGlossary(){
     charge jugés suffisamment favorables. Aucune étude ne donne une certitude absolue, seulement une estimation.
   </div>`;
   html += GLOSSARY_ENTRIES.map(e=>`<div class="glossary-term"><b>${e.term}</b><br>${e.def}</div>`).join('');
+  html += `<div id="realitySection" style="margin-top:18px;"><div style="font-weight:700;font-size:14px;margin-bottom:6px;">Réel ou simplifié ?</div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:10px;">Ce jeu enseigne des principes de géologie pétrolière, mais tous ses chiffres ne sont pas des mesures. Chaque mécanisme est marqué : <span class="gl-tag gl-loi">Loi physique</span> appliquée telle quelle, <span class="gl-tag gl-approx">Approximation</span> d'un phénomène réel, ou <span class="gl-tag gl-jeu">Réglage de jeu</span> inventé pour l'équilibre.</div>`
+    + REALITY_ENTRIES.map(e=>`<div class="glossary-term"><span class="gl-tag gl-${e.tag}">${REALITY_TAGS[e.tag]}</span> <b>${e.term}</b><br>${e.def}</div>`).join('') + `</div>`;
   el.innerHTML = html;
 }
 
