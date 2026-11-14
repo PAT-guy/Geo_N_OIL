@@ -1,0 +1,3 @@
+# captures d'écran produites à la racine par les tests (tools/tests)
+/*.png
+!/alertes_prix.png
