@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.81</title>
+<title>GeoExplorer V4.82</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2542,7 +2542,8 @@ const STUDIES = {
 function performStudy(blockId, studyKey){
   const st = STUDIES[studyKey];
   if(!st) return;
-  const rng = makeRng((Math.random()*1e9)|0);
+  // Les études sont déterministes pour une même seed : le bruit de mesure dépend de la seed, de l'étude et du bloc (ou du profil), pas du hasard. Seul le tirage des puits reste aléatoire.
+  const rng = makeRng(G.seedNum!=null ? seedToInt(`${G.seedNum}|${studyKey}|${blockId??''}|${G.sectionA??''}>${G.sectionB??''}`) : (Math.random()*1e9)|0);
 
   // GRAVIMÉTRIE RÉGIONALE : couvre toute la carte en une opération
   if(st.regional){
@@ -2608,6 +2609,7 @@ function performStudy(blockId, studyKey){
   if(selectedBlock===blockId){ renderGeoPanel(b); renderStudiesPanel(b); }
   if(G.sectionA!==null && G.sectionB!==null) renderSection();
   addLog(TR(`${st.name} sur bloc (${b.x},${b.y}) : ${formatM(cost)}`,`${st.name} on block (${b.x},${b.y}): ${formatM(cost)}`), 'ev');
+  if(studyKey==='core' && b.strati && !b.well && !b.dryHole && !stratiHasLog(b)) addLog(TR(`🧫 La carotte seule ne change pas la coupe : la lithologie n'apparaît qu'après la diagraphie du sondage (${G.mode==='sandbox'?'gratuite':formatM(stratiLogCost(b))}).`,`🧫 The core alone does not change the section: lithology only appears after the survey hole log (${G.mode==='sandbox'?'free':formatM(stratiLogCost(b))}).`), 'ev');
   updateHud();
 }
 
@@ -5264,6 +5266,7 @@ function labResolveStrati(d){
   const html = TR(`Le sondage a traversé la colonne et ramené des carottes. Il ne peut pas produire et ne dit rien sur la présence d'hydrocarbures. La diagraphie du sondage (étude payante) donne le log et la lithologie ; la carotte et le Rock-Eval restent possibles tout de suite.`,`The survey hole went through the column and brought back cores. It cannot produce and says nothing about the presence of hydrocarbons. The survey hole log (paid study) gives the log and lithology; core analysis and Rock-Eval remain possible right away.`) + (LABOPT.cal && LABOPT.mute && !labCalOk(b) ? TR(` Calez-le sur la sismique pour étendre la lithologie le long du profil.`,` Tie it to the seismic to extend the lithology along the profile.`) : '') + TR(` Le bloc reste forable. Onglet Études : carotte (cale le puits et double la portée de sa lithologie sur la coupe) et Rock-Eval (géochimie de la roche-mère).`,` The block can still be drilled. Studies tab: core (ties the well and doubles the reach of its lithology on the section) and Rock-Eval (source rock geochemistry).`);
   renderBlock(b); updateHud();
   if(selectedBlock===d.blockId){ renderGeoPanel(b); renderStudiesPanel(b); }
+  if(G.sectionA!==null && G.sectionB!==null && typeof renderSection==='function') renderSection();
   showDrillReveal(b, false, true, 'strati', html);
 }
 
@@ -7614,6 +7617,7 @@ function _doStartGame(){
   const seedShown = menuConfig.seed ? String(menuConfig.seed) : String(10000 + Math.floor(Math.random()*89999));
   G.seedShown = seedShown;
   const seedNum = seedToInt(seedShown);
+  G.seedNum = seedNum;
   generateGeology(menuConfig.gridSize, menuConfig.basinType, menuConfig.offshore, seedNum);
   G.pcalW = PCAL_W;
   { const ri = mapRichness(); G.richness = ri; }
