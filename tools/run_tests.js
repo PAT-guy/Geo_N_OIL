@@ -5,7 +5,7 @@
 //  - un test « d'observation » (JSON sans verdict) échoue si son code de sortie est non nul, s'il imprime ECHEC, ou si sa liste d'erreurs n'est pas vide ;
 //  - les mesures (MESURES) tournent mais ne comptent pas dans le verdict : elles servent à regarder des chiffres.
 const { spawnSync } = require('child_process'); const fs = require('fs'); const path = require('path');
-const DIR = path.join(__dirname, 'tests'), MESURES = new Set(['mesure_gisements','sim_lab','rendement_puits','diag_guide']);
+const DIR = path.join(__dirname, 'tests'), MESURES = new Set(['sim_equilibrage','mesure_gisements','sim_lab','rendement_puits','diag_guide']);
 const arg = n => { const i = process.argv.indexOf(n); return i>=0 ? process.argv[i+1] : null; };
 const only = arg('--only'), skip = arg('--skip');
 let files = fs.readdirSync(DIR).filter(f=>f.endsWith('.js') && !f.startsWith('_')).sort();
