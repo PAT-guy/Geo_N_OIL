@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.84</title>
+<title>GeoExplorer V4.85</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2153,6 +2153,16 @@ function generateGeology(gridSize, basinType, offshore, seed){
   //     volume total d'hydrocarbures généré (pas de compétition entre
   //     pièges qui se disputent la même source).
   const KITCHEN_MIN_STRENGTH = ADV.kitchenThreshold ?? 0.15; // seuil sous lequel un point n'est pas une kitchen active
+  // Garantie de jouabilité : toute carte a au moins une cuisine mature (deux, ou 3 % des blocs si plus). Sans elle (bassin parisien surtout,
+  // où la roche-mère est peu enfouie), aucun bloc ne serait chargé et la carte ne se gagnerait pas. Seules les cartes sans cuisine suffisante
+  // sont touchées : les blocs de meilleur faciès de roche-mère et leurs voisins entrent dans la fenêtre à huile (soulèvement local moindre).
+  { const need = Math.max(2, Math.ceil(raw.length*0.03)); let have = raw.filter(b => b.genStrength >= KITCHEN_MIN_STRENGTH).length;
+    if(have < need){
+      const cands = raw.filter(b => !b.srcAbsent && b.genStrength < KITCHEN_MIN_STRENGTH && b.maturity>0)
+                       .sort((u,w)=> (w.genStrength/w.maturity) - (u.genStrength/u.maturity) || u.id - w.id);
+      const heat = b => { const pot = Math.max(.3, b.genStrength / b.maturity); b.paleoTemp = Math.max(b.paleoTemp, 85); b.maturity = .75; b.maturityClass = 'Fenêtre à huile'; b.isGas = false; b.genStrength = Math.max(.2, pot*.75); };
+      for(const c of cands){ if(have >= need) break; heat(c); have++; raw.forEach(o=>{ if(o!==c && !o.srcAbsent && o.provinceIdx===c.provinceIdx && o.genStrength < KITCHEN_MIN_STRENGTH && Math.hypot(o.x-c.x,o.y-c.y) <= 1.5){ heat(o); have++; } }); }
+    } }
   const kitchens = raw.filter(b => b.genStrength >= KITCHEN_MIN_STRENGTH);
   const migrationRange = Math.min(10, Math.max(2.5, gridSize*0.4)) * (ADV.migrationRangeMult ?? 1); // portée de migration, en cases de grille
   const TRAP_CANDIDATE_MIN = 0.25; // trapFactor mini pour compter comme concurrent au partage de charge
@@ -4547,7 +4557,7 @@ function wlGrid(b, zoom){
 }
 
 function wellLogHtml(b){
-  if(!b.well && !b.dryHole) return '';
+  if(!b.well && !b.dryHole && !(b.strati && stratiHasLog(b))) return '';
   const g = wlGrid(b, wlZoom);
   if(!g) return '';
   const VBW=382, left=38, strip=10, tw=78, gap=4, top=40, plotH=560;
@@ -5030,6 +5040,7 @@ function selectBlockFromSection(id){
   renderGeoPanel(selectedBlock!==null ? b : null);
   renderStudiesPanel(selectedBlock!==null ? b : null);
   renderSection(); // le trait vertical du bloc sélectionné suit
+  renderGuide();
   if(typeof bigView!=='undefined' && bigView.open) bvRender();
 }
 
@@ -6391,6 +6402,8 @@ function guideCompute(){
                           .sort((a,z)=>z.estimate.prob-a.estimate.prob);
   // classement par gain net espéré (le meilleur en premier) ; seuls les gains positifs sont conseillés
   const ranked = drillable.map(b=>({b, e:guideEV(b)})).filter(x=>x.e).sort((a,z)=>z.e.ev-a.e.ev);
+  // le bloc sélectionné par le joueur passe en tête s'il est rentable : le guide travaille sur lui
+  { const si = ranked.findIndex(x=>x.b.id===selectedBlock && x.e.ev>0); if(si>0) ranked.unshift(ranked.splice(si,1)[0]); }
   // Plafond d'études atteint (et au moins un bloc déjà étudié en 3D) : on ne prospecte plus, on décide parmi les blocs étudiés
   const initBudget = MODES[G.mode].budget || 0;
   const studySpent = guideStudySpent(), studyCap = GUIDE_STUDY_CAP*initBudget;
@@ -6410,8 +6423,9 @@ function guideCompute(){
     const found = blocks.filter(b=>b.well);
     if(found.length){
       const near = b => Math.min(...found.map(w=>Math.hypot(w.x-b.x, w.y-b.y)));
-      const nb = blocks.filter(b=>free(b) && !b.inSalt && !b.studies.some(st=>st.type==='seismic3d') && near(b) <= 2.5)
+      const nb0 = blocks.filter(b=>free(b) && !b.inSalt && !b.studies.some(st=>st.type==='seismic3d') && near(b) <= 2.5)
                        .sort((a,z)=>near(a)-near(z) || (z.estimate?.structPos??0)-(a.estimate?.structPos??0))[0];
+      const nb = nb0 && selectedBlock!=null ? (blocks.find(b=>b.id===selectedBlock && free(b) && !b.inSalt && !b.studies.some(st=>st.type==='seismic3d') && near(b) <= 2.5) || nb0) : nb0;
       if(nb){
         const c = (STUDIES.seismic2d.cost*(nb.isOffshore?STUDIES.seismic2d.offMult:1)) + (STUDIES.seismic3d.cost*(nb.isOffshore?STUDIES.seismic3d.offMult:1));
         const boost = Math.round((discoveryBoost(nb)-1)*100);
@@ -6441,6 +6455,7 @@ function guideCompute(){
   const promising = ranked.some(x=>x.e.ev > 0);
   const cands = prof.map(o=>o.b).filter(b=>free(b) && b.estimate?.depth!==undefined && !b.studies.some(st=>st.type==='seismic3d'))
                     .sort((a,z)=>a.estimate.depth-z.estimate.depth);
+  { const si = cands.findIndex(b=>b.id===selectedBlock); if(si>0) cands.unshift(cands.splice(si,1)[0]); }
   if(cands.length && !promising && n3d < 4 && !capped){
     const b = cands[0];
     const c = STUDIES.seismic3d.cost*(b.isOffshore?STUDIES.seismic3d.offMult:1);
@@ -6691,6 +6706,7 @@ function onBlockClick(id){
       rerenderAllBlocks();
       renderGeoPanel(selectedBlock!==null?b:null);
       renderStudiesPanel(selectedBlock!==null?b:null);
+      renderGuide(); // le guide travaille sur le bloc sélectionné
       if(isMobileLayout()) renderMobileSheet();
       else if(selectedBlock!==null) showMobileScreen('geo');
       break;
@@ -8329,7 +8345,7 @@ function _doStartGame(){
               facts:[['Interface',TR(`${x.A.name} sur ${x.B.name}`,`${x.A.name} over ${x.B.name}`)],[TR('Primaire','Primary'),`R ≈ ${sgn(R)}`],[TR('Surface libre','Free surface'),TR('coefficient −1','coefficient −1')]],
               ask:TR('Quelle amplitude et quelle polarité pour le premier multiple de surface ?','What amplitude and polarity for the first surface multiple?'),
               q:TR(`Le primaire de l'interface ${x.A.name} sur ${x.B.name} a un coefficient R ≈ ${sgn(R)}. La surface libre réfléchit avec un coefficient −1. Quelle amplitude et quelle polarité pour le premier multiple de surface ?`,`The primary from the ${x.A.name} over ${x.B.name} interface has a coefficient R ≈ ${sgn(R)}. The free surface reflects with a coefficient of −1. What amplitude and polarity for the first surface multiple?`),
-              choices:[`−${f3(R2)}`, `+${f3(R2)}`, `−${qzFr(Math.abs(R))}`, `−${f3(Math.round(2*R*R*1000)/1000)}`], correct:0,
+              choices:[`−${f3(R2)}`, `+${f3(R2)}`, `−${qzFr(Math.abs(R))}`, `+${qzFr(Math.abs(R))}`], correct:0,
               explain:TR(`Le multiple de surface a traversé l'interface deux fois et s'est réfléchi une fois sur la surface libre : R × (−1) × R = −R² ≈ −${f3(R2)}. Il est toujours de polarité négative, quel que soit le signe du primaire, et bien plus faible (R² contre R). Un événement faible, de polarité inverse, à un multiple exact du temps d'un fort réflecteur est un multiple, pas un horizon.`,`The surface multiple crossed the interface twice and reflected once off the free surface: R × (−1) × R = −R² ≈ −${f3(R2)}. It always has negative polarity, whatever the sign of the primary, and is much weaker (R² against R). A weak event of reversed polarity at an exact multiple of a strong reflector's time is a multiple, not a horizon.`) };
           } else if(kind==='pullup'){
             // Piège : un corps rapide (sel, anhydrite, calcaire compact) raccourcit les temps de trajet : un réflecteur plat en dessous paraît plus haut (faux haut structural).
