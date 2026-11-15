@@ -1,0 +1,22 @@
+// Même seed : la gravimétrie, la sismique 3D et la carotte donnent exactement les mêmes résultats d'une partie à l'autre ; une autre seed donne autre chose. Carotte sur sondage sans log : message explicite.
+const { chromium } = require('playwright'); const path = require('path');
+(async()=>{ const br=await chromium.launch(); let ko=0; const ok=(c,m)=>{ if(!c){ko++; console.log('ECHEC',m);} else console.log('ok',m); };
+  const run = async (seed) => { const pg=await br.newPage(); const errs=[]; pg.on('pageerror',e=>errs.push(e.message)); await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}});
+    await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(400);
+    const r = await pg.evaluate(async (sd)=>{ document.getElementById('geoSeed').value=sd; menuConfig.daily=null; labOptLaunch(); await new Promise(r=>setTimeout(r,900));
+      G.budget=90e6; G.month=1; performStudy(null,'gravity');
+      const grav = blocks.map(b=>{ const g=b.studies.find(s=>s.type==='gravity'); return g? +g.result.structPos.toFixed(6) : 'x'; }).join(',');
+      const b = blocks.find(x=>!x.inSalt && x.topOfReservoir<2200); b.studyLevel=1; const nb=blocks.find(x=>x.id!==b.id && Math.hypot(x.x-b.x,x.y-b.y)<=1.5); G.sectionA=b.id; G.sectionB=nb.id; performStudy(null,'seismic2d'); performStudy(b.id,'seismic3d');
+      const s3 = JSON.stringify(b.studies.find(s=>s.type==='seismic3d').result).length+':'+(b.estimate.prob||0).toFixed(6);
+      const logs0 = document.getElementById('logPanel')?.innerText||'';
+      launchStrati(b.id); for(let i=0;i<30&&G.drilling.some(d=>d.blockId===b.id);i++) monthTick(); performStudy(b.id,'core');
+      const msg = [...document.querySelectorAll('#logEntries *')].some(e=>/carotte seule/.test(e.textContent));
+      return { grav, s3, msg }; }, seed);
+    await pg.close(); return { r, errs }; };
+  const A = await run('4242'), B = await run('4242'), C = await run('777');
+  ok(A.r.grav===B.r.grav, 'gravimétrie identique sur une même seed');
+  ok(A.r.s3===B.r.s3, 'sismique 3D identique sur une même seed ('+A.r.s3+')');
+  ok(A.r.grav!==C.r.grav, 'une autre seed donne une autre gravimétrie');
+  ok(A.r.msg, 'carotte sur sondage sans log : message sur la diagraphie');
+  ok(A.errs.length+B.errs.length+C.errs.length===0, 'aucune erreur JS '+A.errs.join('|'));
+  await br.close(); console.log(ko? 'ECHECS: '+ko : 'TOUT OK'); process.exit(ko?1:0); })();
