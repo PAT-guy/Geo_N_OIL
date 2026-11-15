@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.82</title>
+<title>GeoExplorer V4.83</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -938,6 +938,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
     </div>
   </div>
   <div class="bv-body" id="bvBody"><div id="bvStage"></div></div>
+  <div class="sec-actions" id="bvActions" style="display:none;"></div>
   <div class="bv-cap" id="bvCap"></div>
 </div>
 
@@ -1834,6 +1835,8 @@ function makeRng(seed){
 // gardé tel quel ; tout autre texte est haché (FNV-1a), ce qui distingue
 // "ab" de "ba" et "12abc" de "12" (l'ancienne somme des codes de
 // caractères et parseInt les confondaient).
+// Flux aléatoire déterministe : même seed, même étiquette et même clé donnent la même suite de tirages (marché, accidents, résultat d'un forage). Sans seed connue (vieille sauvegarde), tirage libre.
+function SR(tag, key=''){ return (typeof G!=='undefined' && G.seedNum!=null) ? makeRng(seedToInt(`${G.seedNum}|${tag}|${key}`)) : Math.random; }
 function seedToInt(seed){
   const str = String(seed).trim();
   if(/^\d+$/.test(str)) return parseInt(str, 10) >>> 0;
@@ -2758,15 +2761,15 @@ function projectWell(q0, price, offshore, gas, cost, months){
   return { payback, cum };
 }
 const EQUIPMENT = {
-  leger:    {label:TR('Matériel léger','Light equipment'),    costM:600, reliability:.78, maxDepth:2500},
-  standard: {label:TR('Matériel standard','Standard equipment'), costM:900, reliability:.90, maxDepth:4200},
-  renforce: {label:TR('Matériel renforcé','Heavy-duty equipment'), costM:1350,reliability:.97, maxDepth:5800},
+  leger:    {label:TR('Matériel léger','Light equipment'),    costM:600, reliability:.89, maxDepth:2500},
+  standard: {label:TR('Matériel standard','Standard equipment'), costM:900, reliability:.95, maxDepth:4200},
+  renforce: {label:TR('Matériel renforcé','Heavy-duty equipment'), costM:1350,reliability:.985, maxDepth:5800},
 };
 // V4.50 : la fiabilité d'un matériel dépend de sa charge, c'est-à-dire de la part de sa limite de profondeur utilisée.
 // `reliability` est la valeur à mi-limite ; elle monte pour un puits peu profond et baisse près de la limite
-// (fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)), bornée à 80-110 % de la base, puis à 50-99 %).
+// (fiabilité = base × (1 + 0,15 × (0,5 − profondeur / limite)), bornée à 80-110 % de la base, puis à 50-99 %).
 // Règle de jeu assumée : plus un puits sollicite son matériel, plus le risque d'incident technique augmente.
-const EQ_LOAD_SLOPE = 0.3;
+const EQ_LOAD_SLOPE = 0.15;
 function eqLoadFactor(eq, depth){ return clamp(1 + EQ_LOAD_SLOPE*(0.5 - depth/eq.maxDepth), 0.8, 1.1); }
 function eqReliability(eq, depth){ return clamp(eq.reliability*eqLoadFactor(eq, depth), 0.5, 0.99); }
 const METHODS = {
@@ -2890,7 +2893,8 @@ function resolveDrilling(d){
   const b = blocks[d.blockId];
   b.el?.classList.remove('drilling');
   const eq = EQUIPMENT[d.equip], me = METHODS[d.method];
-  let geoOk  = Math.random() < clamp(b.trueProbability*discoveryBoost(b), 0, 0.95);
+  const rd = SR('drill', `${d.blockId}|${d.method}`);
+  let geoOk  = rd() < clamp(b.trueProbability*discoveryBoost(b), 0, 0.95);
   const labResIdx = STRAT.findIndex(l=>l.role==='reservoir');
   const labMissed = G.labPick!=null && G.labPick!==labResIdx;
   if(labMissed) geoOk = false;
@@ -2898,7 +2902,7 @@ function resolveDrilling(d){
   // trou foré, on règle l'écart avec la profondeur réelle (dépassement ou
   // économie), et un matériel trop faible pour la vraie profondeur échoue.
   const trueDepth = (G.labPick!=null && b.horizons[G.labPick]) ? b.horizons[G.labPick].top : b.topOfReservoir;
-  const techRel = eqReliability(eq, trueDepth), techRoll = Math.random() < techRel;
+  const techRel = eqReliability(eq, trueDepth), techRoll = rd() < techRel;
   const settleDelta = (trueDepth - d.depth) * eq.costM * me.costMult * siteCost(b, d.cf ?? 1);
   if(Math.abs(settleDelta) > 1000){
     G.budget -= settleDelta; d.cost += settleDelta;
@@ -2960,8 +2964,9 @@ function resolveSidetrack(d){
   const info = getSecondReservoirInfo(b);
   const w = b.well;
   if(w) w.sidetrackDone = true;
-  const techOk = Math.random() < EQUIPMENT.standard.reliability;
-  const geoOk  = info && Math.random() < info.trueProbability2;
+  const rs = SR('side', b.id);
+  const techOk = rs() < EQUIPMENT.standard.reliability;
+  const geoOk  = info && rs() < info.trueProbability2;
   if(info && w && geoOk && techOk){
     const addedProd = (info.trueQuality2/100) * (info.horizon.thicknessLocal||20) * PROD_BASE_SIDETRACK * prodSite(b);
     if(!w.comps) w.comps = [{ q0: w.production, t0: w.monthsActive||0 }];
@@ -3149,9 +3154,10 @@ function monthTick(){
   // Accidents rares (uniquement en mode finance, ~0.4% par mois par puits actif)
   if(G.financeMode){
     G.wells.filter(w=>w.status==='producing').forEach(w=>{
-      if(Math.random()<0.004){
+      const ri = SR('inc', `${G.month}|${w.blockId}`);
+      if(ri()<0.004){
         const types = ['blowout','greve','incident_env'];
-        const type = types[Math.floor(Math.random()*types.length)];
+        const type = types[Math.floor(ri()*types.length)];
         triggerAccident(w, type);
       }
     });
@@ -3189,13 +3195,13 @@ document.getElementById('alertOkBtn')?.addEventListener('click', ()=>{
 });
 
 function triggerAccident(w, type){
-  const b = blocks[w.blockId];
+  const b = blocks[w.blockId], ra = SR('acc', `${G.month}|${w.blockId}|${type}`);
   // Le jeu s'arrête et une fenêtre explique l'événement : le joueur reprend lui-même.
   if(type==='blowout'){
-    const fine = 200000 + Math.random()*800000;
+    const fine = 200000 + ra()*800000;
     G.budget -= fine;
     w.status = 'blowout';
-    w.blowoutMonthsLeft = 2 + Math.floor(Math.random()*3);
+    w.blowoutMonthsLeft = 2 + Math.floor(ra()*3);
     addLog(TR(`💥 BLOWOUT : puits (${b.x},${b.y}) ! Fermeture ${w.blowoutMonthsLeft} mois. Amende env. : ${formatM(fine)}.`,`💥 BLOWOUT: well (${b.x},${b.y})! Shut in for ${w.blowoutMonthsLeft} months. Fine approx.: ${formatM(fine)}.`), 'bad');
     showGameAlert('💥', TR('ÉRUPTION INCONTRÔLÉE','UNCONTROLLED BLOWOUT'), `${TR(`${TR(`Puits (`,`Well (`)}`,`Well (`)}${b.x},${b.y}${TR(`${TR(`) : fermé `,`): shut in for `)}`,`): shut in for `)}${w.blowoutMonthsLeft}${TR(`${TR(` mois, sans production. Amende : `,` months, no production. Fine: `)}`,` months, no production. Fine: `)}<b>${formatM(fine)}</b>${TR(`${TR(`. Les coûts fixes continuent.`,`. Fixed costs continue.`)}`,`. Fixed costs continue.`)}`);
   } else if(type==='greve'){
@@ -3203,7 +3209,7 @@ function triggerAccident(w, type){
     addLog(TR(`🪧 Grève : production arrêtée 2 mois. Les coûts fixes continuent.`,`🪧 Strike: production stopped for 2 months. Fixed costs continue.`), 'bad');
     showGameAlert('🪧', TR('GRÈVE','STRIKE'), TR(`La production de tous les puits est arrêtée pendant 2 mois. Les coûts fixes continuent d'être payés.`,`Production from all wells is stopped for 2 months. Fixed costs are still paid.`));
   } else {
-    const fine = 50000 + Math.random()*200000;
+    const fine = 50000 + ra()*200000;
     G.budget -= fine;
     addLog(TR(`⚠ Incident environnemental : puits (${b.x},${b.y}). Amende : ${formatM(fine)}.`,`⚠ Environmental incident: well (${b.x},${b.y}). Fine: ${formatM(fine)}.`), 'bad');
     showGameAlert('⚠', TR('INCIDENT ENVIRONNEMENTAL','ENVIRONMENTAL INCIDENT'), `${TR(`${TR(`Puits (`,`Well (`)}`,`Well (`)}${b.x},${b.y}${TR(`${TR(`) : fuite maîtrisée. Amende : `,`): leak contained. Fine: `)}`,`): leak contained. Fine: `)}<b>${formatM(fine)}</b>${TR(`${TR(`. La production n'est pas interrompue.`,`. Production is not interrupted.`)}`,`. Production is not interrupted.`)}`);
@@ -3626,13 +3632,14 @@ function stepPrice(){
   // embargo et récession (prix, tendance qui dure), tempête (plateformes en mer arrêtées) et taxe exceptionnelle (revenus rognés), ces deux
   // derniers seulement avec le mode Finance, qui porte déjà les accidents.
   G.marketEvents = G.marketEvents || [];
-  const plan = ev => { ev.at = G.month + 2 + Math.floor(Math.random()*7); G.marketEvents.push(ev); };
-  if(!G.simple && Math.random()<.05) plan({ kind:'trend', target:(Math.random()-.5)*.7 });
-  if(!G.simple && Math.random()<.012) plan({ kind:'shock', size:(Math.random()-.5)*30 });
-  if(!G.simple && Math.random()<.004) plan({ kind:'embargo', size:8 + Math.random()*6 });
-  if(!G.simple && Math.random()<.004) plan({ kind:'recession', size:7 + Math.random()*5 });
-  if(G.financeMode && Math.random()<.005) plan({ kind:'storm', dur:2 + Math.floor(Math.random()*3) });
-  if(G.financeMode && Math.random()<.003) plan({ kind:'tax', dur:12 });
+  const mr = SR('mkt', G.month);
+  const plan = ev => { ev.at = G.month + 2 + Math.floor(mr()*7); G.marketEvents.push(ev); };
+  if(!G.simple && mr()<.05) plan({ kind:'trend', target:(mr()-.5)*.7 });
+  if(!G.simple && mr()<.012) plan({ kind:'shock', size:(mr()-.5)*30 });
+  if(!G.simple && mr()<.004) plan({ kind:'embargo', size:8 + mr()*6 });
+  if(!G.simple && mr()<.004) plan({ kind:'recession', size:7 + mr()*5 });
+  if(G.financeMode && mr()<.005) plan({ kind:'storm', dur:2 + Math.floor(mr()*3) });
+  if(G.financeMode && mr()<.003) plan({ kind:'tax', dur:12 });
   let shock=0;
   G.marketEvents = G.marketEvents.filter(ev=>{
     if(ev.at > G.month) return true;
@@ -3646,7 +3653,7 @@ function stepPrice(){
     return false;
   });
   G.priceTrend = (G.priceTrend||0)*.9 + G.priceTrendTarget*.1;
-  const noise = (Math.random()-.5)*2.5;
+  const noise = (SR('px', G.month)()-.5)*2.5;
   const prevPrice = G.price;
   // Rappel léger vers 80 $ (V4.45) : évite les longues périodes sous 40 $ (5,3 % des parties de 25 ans, 1,4 % avec ce rappel) sans supprimer la volatilité.
   G.price = clamp(G.price+G.priceTrend+noise+shock+PRICE_REVERT*(80-G.price), 20, 140);
@@ -4172,7 +4179,7 @@ function blockStudiesHtml(b){
   const has = k => b.studies.some(st=>st.type===k);
   const cost = k => sbx ? 0 : STUDIES[k].cost*((k==='gravity' ? G.offshore : b.isOffshore) ? STUDIES[k].offMult : 1);
   const price = c => sbx ? 'Gratuit' : formatM(c);
-  const items = [
+  const items0 = [
     {k:'gravity',   n:TR('Gravimétrie régionale','Regional gravity'), done:gravDone, locked:null,
       act:`performStudy(null,'gravity')`, label:price(cost('gravity')), c:cost('gravity')},
     {k:'seismic2d', n:TR('Sismique 2D (profil A→B)','2D seismic (profile A→B)'), done:has('seismic2d'), locked:!gravDone ? TR('Après la gravimétrie','After gravity') : drilled ? TR('Avant un forage','Before drilling') : null,
@@ -4184,6 +4191,8 @@ function blockStudiesHtml(b){
     {k:'rockeval',  n:TR('Géochimie Rock-Eval','Rock-Eval geochemistry'), done:has('rockeval'), locked:!drilled ? TR('Après un forage','After drilling') : null,
       act:`performStudy(${b.id},'rockeval')`, label:price(cost('rockeval')), c:cost('rockeval')},
   ];
+  // Découverte : seulement l'essentiel (gravimétrie, coupe, sismiques) ; carotte et Rock-Eval viennent avec les autres niveaux
+  const items = G.simple ? items0.filter(i=>i.k!=='core' && i.k!=='rockeval') : items0;
   const rec = items.find(i=>!i.done && !i.locked);
   const afford = i => i.nopay || sbx || G.budget >= i.c;
   const ico = id => `<svg class="ico sr-ico"><use href="#i-${id}"/></svg>`;
@@ -4367,11 +4376,13 @@ function closeBigView(){
   bigView.open = false;
   document.getElementById('bigView').classList.remove('open');
   document.getElementById('bvStage').replaceChildren();
+  { const bva = document.getElementById('bvActions'); if(bva) bva.style.display = 'none'; }
 }
 function bvRender(){
   const v = bigView, body = document.getElementById('bvBody'), stage = document.getElementById('bvStage');
   const cap = document.getElementById('bvCap'), title = document.getElementById('bvTitle');
   document.getElementById('bvLayer').textContent = '';
+  { const bva = document.getElementById('bvActions'); if(bva && v.kind!=='section') bva.style.display = 'none'; }
   const mobile = typeof isMobileLayout==='function' && isMobileLayout();
   const canRot = v.kind==='section' && mobile;
   if(!canRot) v.rot = false;
@@ -4684,14 +4695,14 @@ function renderStudiesPanel(b){
   </div>`;
 
   // SONDAGE STRATIGRAPHIQUE (carte à part, toujours proposée)
-  if(b.studyLevel>=1&&!b.well&&!b.dryHole&&!G.drilling.some(d=>d.blockId===b.id)) html+=stratiCardHtml(b);
+  if(!G.simple && b.studyLevel>=1&&!b.well&&!b.dryHole&&!G.drilling.some(d=>d.blockId===b.id)) html+=stratiCardHtml(b);
 
   // FORAGE
   if(b.studyLevel>=1&&!b.well&&!b.dryHole&&!G.drilling.some(d=>d.blockId===b.id)){
     html+=`<div class="ps-section" style="margin-top:12px;">${TR(`Forage`,`Drilling`)}</div>
     <div class="drill-card">
       <select class="drill-select" id="drillMethod" onchange="updateDrillSummary(${b.id})">
-        ${Object.entries(METHODS).filter(([k])=>k!=='strati').map(([k,m])=>`<option value="${k}" ${k==='vertical'?'selected':''}>${m.label}</option>`).join('')}
+        ${Object.entries(METHODS).filter(([k])=>k!=='strati' && !(G.simple && k==='horizontal')).map(([k,m])=>`<option value="${k}" ${k==='vertical'?'selected':''}>${m.label}</option>`).join('')}
       </select>
       <select class="drill-select" id="drillEquip" onchange="updateDrillSummary(${b.id})">
         ${Object.entries(EQUIPMENT).map(([k,e])=>`<option value="${k}" ${k==='standard'?'selected':''}>${e.label} (max ${e.maxDepth}${TR(` m, fiab. `,` m, rel. `)}${(e.reliability*100).toFixed(0)}${TR(` % à mi-limite)`,` % at mid-limit)`)}</option>`).join('')}
@@ -5204,16 +5215,17 @@ function stratiLog(id){
   if(typeof renderSection==='function') renderSection(); if(typeof renderGuide==='function') renderGuide();
 }
 // Boutons de travaux sous la coupe : le bloc sélectionné peut être étudié, sondé ou foré sans quitter la coupe
-function secDrill(id){
-  const b = blocks[id], p = drillPlan(b, 'vertical');
+function secDrill(id, method){
+  method = method || 'vertical';
+  const b = blocks[id], p = drillPlan(b, method);
   if(!p || !p.equip){ toast(TR('Aucun matériel n\'atteint la profondeur estimée de ce bloc.','No equipment reaches the estimated depth of this block.')); return; }
-  drillBlock(id, 'vertical', p.equip, b.playerEst);
+  drillBlock(id, method, p.equip, b.playerEst);
   renderStudiesPanel(b); secActionsRender();
 }
 function secActionsRender(){
   const el = document.getElementById('sectionActions'); if(!el) return;
   const b = selectedBlock!==null ? blocks[selectedBlock] : null;
-  if(!b || G.sectionA===null || G.sectionB===null || !getProfileBlocks(G.sectionA, G.sectionB).some(o=>o.b.id===b.id)){ el.style.display='none'; el.innerHTML=''; return; }
+  if(!b || G.sectionA===null || G.sectionB===null || !getProfileBlocks(G.sectionA, G.sectionB).some(o=>o.b.id===b.id)){ el.style.display='none'; el.innerHTML=''; const bv0 = document.getElementById('bvActions'); if(bv0){ bv0.style.display = (typeof bigView!=='undefined' && bigView.open && bigView.kind==='section') ? 'flex' : 'none'; bv0.innerHTML = `<span>${TR('Touchez un point sous la coupe pour choisir un bloc.','Tap a dot under the section to pick a block.')}</span>`; } return; }
   const inProg = G.drilling.find(d=>d.blockId===b.id), money = c => G.mode==='sandbox' || G.budget>=c;
   const fmt = c => G.mode==='sandbox' ? 'gratuit' : formatM(c);
   let h = `<span class="sa-lbl">${TR(`${TR(`Bloc (`,`Block (`)}`,`Block (`)}${b.x}, ${b.y})</span>`;
@@ -5225,14 +5237,24 @@ function secActionsRender(){
     h += `<span>${TR(`Étudiez ce bloc avant de forer.`,`Study this block before drilling.`)}</span><button onclick="performStudy(${b.id},'seismic3d')" ${money(c)?'':'disabled'}>${TR(`📡 Sismique 3D · `,`📡 3D seismic · `)}${fmt(c)}</button>`;
   } else {
     const sp = b.strati ? null : stratiPlan(b), dp = drillPlan(b, 'vertical');
-    if(!b.strati) h += sp && sp.equip ? `<button onclick="launchStrati(${b.id})" ${money(sp.cost)?'':'disabled'}>${TR(`🧪 Sondage · `,`🧪 Survey hole · `)}${fmt(sp.cost)}</button>` : '';
+    if(!G.simple) { if(!b.strati) h += sp && sp.equip ? `<button onclick="launchStrati(${b.id})" ${money(sp.cost)?'':'disabled'}>${TR(`🧪 Sondage · `,`🧪 Survey hole · `)}${fmt(sp.cost)}</button>` : '';
     else if(!stratiHasLog(b)) h += `<button onclick="stratiLog(${b.id}); secActionsRender();" ${money(stratiLogCost(b))?'':'disabled'}>${TR(`📈 Diagraphie du sondage · `,`📈 Survey hole log · `)}${fmt(stratiLogCost(b))}</button>`;
-    else h += `<span>${TR(`Sondage diagraphié`,`Survey hole logged`)}</span>`;
+    else h += `<span>${TR(`Sondage diagraphié`,`Survey hole logged`)}</span>`; }
     h += dp && dp.equip ? `<button class="go" onclick="secDrill(${b.id})" ${money(dp.cost)?'':'disabled'}>${TR(`⛏ Forer · `,`⛏ Drill · `)}${fmt(dp.cost)}</button>` : `<span style="color:var(--red)">${TR(`Aucun matériel n'atteint la profondeur estimée.`,`No equipment reaches the estimated depth.`)}</span>`;
+    { const dh = G.simple ? null : drillPlan(b, 'horizontal');
+      if(dh && dh.equip) h += `<button class="go" onclick="secDrill(${b.id},'horizontal')" ${money(dh.cost)?'':'disabled'}>${TR(`↔ Forer horizontal · `,`↔ Drill horizontal · `)}${fmt(dh.cost)}</button>`; }
     h += `<button onclick="switchTabOrScreenStudies()">${TR(`Plus d'options`,`More options`)}</button>`;
   }
+  // carotte : possible dès qu'il y a un échantillon physique (puits, puits sec ou sondage)
+  if(!G.simple && (b.well || b.dryHole || b.strati) && !inProg && !b.studies.some(s=>s.type==='core')){
+    const cc = STUDIES.core.cost*(b.isOffshore?STUDIES.core.offMult:1);
+    h += `<button onclick="performStudy(${b.id},'core'); secActionsRender();" ${money(cc)?'':'disabled'}>${TR(`🧫 Carotte · `,`🧫 Core · `)}${fmt(cc)}</button>`;
+  }
   el.innerHTML = h; el.style.display = 'flex';
+  const bv = document.getElementById('bvActions');
+  if(bv){ bv.innerHTML = h.replace(/onclick="([^"]*)"/g, 'onclick="$1;bvRefresh()"'); bv.style.display = (typeof bigView!=='undefined' && bigView.open && bigView.kind==='section') ? 'flex' : 'none'; }
 }
+function bvRefresh(){ if(typeof bigView!=='undefined' && bigView.open) bvRender(); }
 function switchTabOrScreenStudies(){ if(isMobileLayout()) showMobileScreen('studies'); else switchTab('studies'); }
 function stratiCardHtml(b){
   const done = stratiHasLog(b), p = b.strati ? null : stratiPlan(b);
@@ -7427,6 +7449,8 @@ document.getElementById('dailyBtn')?.addEventListener('click',()=>{
 document.getElementById('startBtn').addEventListener('click',()=>{
   // un départ normal après avoir cliqué sur le défi du jour rend ses réglages au joueur
   if(menuConfig.daily && menuConfig._prev){ const p = menuConfig._prev, inp = document.getElementById('geoSeed'); Object.assign(menuConfig, p); if(inp) inp.value = p.seedField; menuConfig.daily = null; menuConfig._prev = null; }
+  // Découverte : on ne propose que l'essentiel, donc pas d'écran d'options avancées ; à terre, sans bouton « vérité »
+  if(menuConfig.mode==='decouverte'){ menuConfig.offshore = false; labOptMode = 'start'; labOptDraft = { ...LAB_DEFAULT_OPT, ...LAB_PRESETS.decouverte.o, cheat:false, locked:false, finance:false }; labOptValidate(); return; }
   labOptOpen('start');
 });
 function labOptLaunch(){
@@ -8378,8 +8402,8 @@ function _doStartGame(){
             const tbl = rows.map(r=>{ const pw = p*r.rel; return r.ok ? `<tr${r.id===good?' class="best"':''}><td>${r.e.label.replace(TR('Matériel ','Equipment '),'')}</td><td>${Math.round(pw*100)} %</td><td>${qzM(gain-r.cost)}</td><td>${qzM(-r.cost)}</td><td><b>${qzM(r.ev)}</b></td></tr>` : `<tr class="off"><td>${r.e.label.replace(TR('Matériel ','Equipment '),'')}</td><td colspan="4">${TR(`exclu : limite `,`excluded: limit `)}${r.e.maxDepth} m &lt; ${depth} m</td></tr>`; }).join('')
               + `<tr${none?' class="best"':''}><td>${TR(`Ne pas forer`,`Do not drill`)}</td><td>-</td><td>0</td><td>0</td><td><b>0</b></td></tr>`;
             out.push({ gen:true, kind:'ev', meta:{depth,p,gain,price,prod0,cf:CF,none, rows:rows.map(r=>({id:r.id,ok:r.ok,rel:r.rel,cost:r.cost,ev:r.ev}))},
-              chip:TR('Gain net espéré','Expected net gain'), facts:[[TR('Réservoir à','Reservoir at'),`${depth} m`],[TR('Probabilité de succès','Probability of success'),`${Math.round(p*100)} %`],[TR('Production initiale','Initial production'),TR(`${prod0} bbl/mois`,`${prod0} bbl/month`)],[TR('Prix du brut','Crude price'),`${price} $/bbl`],[TR('Gain si succès (10 ans)','Gain if successful (10 years)'),qzM(gain)],[TR('Coût au mètre','Cost per metre'),`600 / 900 / 1 350 $ × ${String(CF).replace('.',DEC)}`]], ask:TR('Quel choix maximise le gain net espéré, p × fiabilité × gain − coût ?','Which choice maximises the expected net gain, p × reliability × gain − cost?'), note:TR('Fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)). Bases : 78 % (léger), 90 % (standard), 97 % (renforcé).','Reliability = base × (1 + 0.3 × (0.5 − depth / limit)). Bases: 78 % (light), 90 % (standard), 97 % (reinforced).'),
-              q:`${TR(`Bloc à terre dont le réservoir est à `,`Onshore block whose reservoir is at `)}${depth}${TR(` m, probabilité de succès géologique estimée à `,` m, geological probability of success estimated at `)}${Math.round(p*100)}${TR(` %. Production initiale attendue : `,` %. Expected initial production: `)}${prod0}${TR(` barils par mois. Au brut à `,` barrels per month. At crude `)}${price}${TR(` $, un succès rapporterait `,` $, a success would bring in `)}${qzM(gain)}${TR(` net sur 10 ans (règles de production du jeu). Coût = coût au mètre × profondeur × `,` net over 10 years (game production rules). Cost = cost per metre × depth × `)}${String(CF).replace('.',DEC)}${TR(` (niveau de coût du jeu). Fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)), bases 78 % (léger), 90 % (standard), 97 % (renforcé). Quel choix maximise le gain net espéré (p × fiabilité × gain − coût) ?`,` (game cost level). Reliability = base × (1 + 0.3 × (0.5 − depth / limit)), bases 78 % (light), 90 % (standard), 97 % (reinforced). Which choice maximises the expected net gain (p × reliability × gain − cost)?`)}`,
+              chip:TR('Gain net espéré','Expected net gain'), facts:[[TR('Réservoir à','Reservoir at'),`${depth} m`],[TR('Probabilité de succès','Probability of success'),`${Math.round(p*100)} %`],[TR('Production initiale','Initial production'),TR(`${prod0} bbl/mois`,`${prod0} bbl/month`)],[TR('Prix du brut','Crude price'),`${price} $/bbl`],[TR('Gain si succès (10 ans)','Gain if successful (10 years)'),qzM(gain)],[TR('Coût au mètre','Cost per metre'),`600 / 900 / 1 350 $ × ${String(CF).replace('.',DEC)}`]], ask:TR('Quel choix maximise le gain net espéré, p × fiabilité × gain − coût ?','Which choice maximises the expected net gain, p × reliability × gain − cost?'), note:TR('Fiabilité = base × (1 + 0,15 × (0,5 − profondeur / limite)). Bases : 89 % (léger), 95 % (standard), 98,5 % (renforcé).','Reliability = base × (1 + 0.15 × (0.5 − depth / limit)). Bases: 89 % (light), 95 % (standard), 98.5 % (reinforced).'),
+              q:`${TR(`Bloc à terre dont le réservoir est à `,`Onshore block whose reservoir is at `)}${depth}${TR(` m, probabilité de succès géologique estimée à `,` m, geological probability of success estimated at `)}${Math.round(p*100)}${TR(` %. Production initiale attendue : `,` %. Expected initial production: `)}${prod0}${TR(` barils par mois. Au brut à `,` barrels per month. At crude `)}${price}${TR(` $, un succès rapporterait `,` $, a success would bring in `)}${qzM(gain)}${TR(` net sur 10 ans (règles de production du jeu). Coût = coût au mètre × profondeur × `,` net over 10 years (game production rules). Cost = cost per metre × depth × `)}${String(CF).replace('.',DEC)}${TR(` (niveau de coût du jeu). Fiabilité = base × (1 + 0,15 × (0,5 − profondeur / limite)), bases 89 % (léger), 95 % (standard), 98,5 % (renforcé). Quel choix maximise le gain net espéré (p × fiabilité × gain − coût) ?`,` (game cost level). Reliability = base × (1 + 0.15 × (0.5 − depth / limit)), bases 89 % (light), 95 % (standard), 98.5 % (reinforced). Which choice maximises the expected net gain (p × reliability × gain − cost)?`)}`,
               choices:opts.map(o=>o.t), correct:opts.findIndex(o=>o.k===good),
               explainHtml: `<div>${none ? TR('Aucun matériel n\'a un gain net espéré positif : il vaut mieux ne pas forer.','No equipment has a positive expected net gain: it is better not to drill.') : (top.id===valid[0].id ? TR('Ici le matériel le moins cher l\'emporte : la fiabilité qu\'il perd coûte moins que le surcoût des autres.','Here the cheapest equipment wins: the reliability it loses costs less than the extra cost of the others.') : TR('Le matériel le moins cher n\'est pas toujours le meilleur : un surcoût peut être payé par une fiabilité plus haute.','The cheapest equipment is not always the best: an extra cost can be paid back by higher reliability.'))}${TR(` Voici les issues, calculées exactement pour chaque choix :`,` Here are the outcomes, computed exactly for each choice:`)}</div>
                 <table class="qz-tbl"><tr><th>${TR(`Choix`,`Choice`)}</th><th>${TR(`Chance de réussir`,`Chance of success`)}</th><th>${TR(`Si réussi`,`If successful`)}</th><th>${TR(`Si raté`,`If it fails`)}</th><th>${TR(`Gain net moyen`,`Average net gain`)}</th></tr>${tbl}</table>
@@ -8397,7 +8421,7 @@ function _doStartGame(){
           if(new Set(trio.map(t=>t.id+t.depth)).size<3) continue;
           const rs = trio.map(t=>t.rel), mn = Math.min(...rs), sorted=[...rs].sort((a,c)=>a-c); if(sorted[1]-sorted[0] < 0.025) continue;
           const names = ['A','B','C'];
-          out.push({ gen:true, kind:'fiab', chip:TR('Fiabilité du matériel','Equipment reliability'), facts:trio.map((t,i)=>[TR('Puits ','Well ')+names[i], TR(`${t.e.label.replace('Matériel ','').replace(/ equipment$/i,'').replace(/^./,c=>c.toUpperCase())} à ${t.depth} m (limite ${t.e.maxDepth} m, base ${Math.round(t.e.reliability*100)} %)`,`${t.e.label.replace('Matériel ','').replace(/ equipment$/i,'').replace(/^./,c=>c.toUpperCase())} at ${t.depth} m (limit ${t.e.maxDepth} m, base ${Math.round(t.e.reliability*100)} %)`)]), ask:TR('Lequel risque le plus un échec technique ?','Which one is most at risk of a technical failure?'), note:TR('Fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)).','Reliability = base × (1 + 0.3 × (0.5 − depth / limit)).'), meta:{trio:trio.map(t=>({id:t.id,depth:t.depth,rel:t.rel}))}, q:`${TR(`Trois puits. A : `,`Three wells. A: `)}${trio[0].e.label.toLowerCase()}${TR(` (limite `,` (limit `)}${trio[0].e.maxDepth} m, base ${Math.round(trio[0].e.reliability*100)} %) à ${trio[0].depth} m. B : ${trio[1].e.label.toLowerCase()}${TR(` (limite `,` (limit `)}${trio[1].e.maxDepth} m, base ${Math.round(trio[1].e.reliability*100)} %) à ${trio[1].depth} m. C : ${trio[2].e.label.toLowerCase()}${TR(` (limite `,` (limit `)}${trio[2].e.maxDepth} m, base ${Math.round(trio[2].e.reliability*100)} %) à ${trio[2].depth}${TR(` m. Lequel risque le plus un échec technique ? (fiabilité = base × (1 + 0,3 × (0,5 − profondeur / limite)))`,` m. Which one is most at risk of a technical failure? (reliability = base × (1 + 0.3 × (0.5 − depth / limit)))`)}`,
+          out.push({ gen:true, kind:'fiab', chip:TR('Fiabilité du matériel','Equipment reliability'), facts:trio.map((t,i)=>[TR('Puits ','Well ')+names[i], TR(`${t.e.label.replace('Matériel ','').replace(/ equipment$/i,'').replace(/^./,c=>c.toUpperCase())} à ${t.depth} m (limite ${t.e.maxDepth} m, base ${Math.round(t.e.reliability*100)} %)`,`${t.e.label.replace('Matériel ','').replace(/ equipment$/i,'').replace(/^./,c=>c.toUpperCase())} at ${t.depth} m (limit ${t.e.maxDepth} m, base ${Math.round(t.e.reliability*100)} %)`)]), ask:TR('Lequel risque le plus un échec technique ?','Which one is most at risk of a technical failure?'), note:TR('Fiabilité = base × (1 + 0,15 × (0,5 − profondeur / limite)).','Reliability = base × (1 + 0.15 × (0.5 − depth / limit)).'), meta:{trio:trio.map(t=>({id:t.id,depth:t.depth,rel:t.rel}))}, q:`${TR(`Trois puits. A : `,`Three wells. A: `)}${trio[0].e.label.toLowerCase()}${TR(` (limite `,` (limit `)}${trio[0].e.maxDepth} m, base ${Math.round(trio[0].e.reliability*100)} %) à ${trio[0].depth} m. B : ${trio[1].e.label.toLowerCase()}${TR(` (limite `,` (limit `)}${trio[1].e.maxDepth} m, base ${Math.round(trio[1].e.reliability*100)} %) à ${trio[1].depth} m. C : ${trio[2].e.label.toLowerCase()}${TR(` (limite `,` (limit `)}${trio[2].e.maxDepth} m, base ${Math.round(trio[2].e.reliability*100)} %) à ${trio[2].depth}${TR(` m. Lequel risque le plus un échec technique ? (fiabilité = base × (1 + 0,15 × (0,5 − profondeur / limite)))`,` m. Which one is most at risk of a technical failure? (reliability = base × (1 + 0.15 × (0.5 − depth / limit)))`)}`,
             choices:[TR('Puits A','Well A'),TR('Puits B','Well B'),TR('Puits C','Well C')], correct: rs.indexOf(mn),
             explain: trio.map((t,i)=>TR(`${names[i]} : ${t.depth} / ${t.e.maxDepth} = ${Math.round(t.depth/t.e.maxDepth*100)} % de la limite, fiabilité ${Math.round(t.rel*100)} %`,`${names[i]}: ${t.depth} / ${t.e.maxDepth} = ${Math.round(t.depth/t.e.maxDepth*100)} % of the limit, reliability ${Math.round(t.rel*100)} %`)).join(' ; ')+TR('. Ce qui compte est la part de la limite utilisée, pas la profondeur absolue : un puits profond avec un matériel renforcé peut être plus sûr qu\'un puits moyen avec un matériel léger.','. What matters is the share of the limit used, not the absolute depth: a deep well with reinforced equipment can be safer than a medium-depth well with light equipment.') });
           break;

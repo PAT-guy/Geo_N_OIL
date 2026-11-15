@@ -12,8 +12,8 @@ const { chromium } = require('playwright'); const path = require('path');
   await pg.click('#startBtn'); await pg.click('#labOptGo'); await pg.waitForTimeout(500);
   const g = await pg.evaluate(()=>{ setSpeed(0); G.budget = 1e9; G.labPick = null; const res=[]; const realRandom=Math.random;
     const run = (equip, depth, x, bidx)=>{ const b=blocks.filter(z=>!z.inSalt&&!z.well&&!z.dryHole)[bidx]; b.topOfReservoir=depth; b.horizons.forEach(h=>{ if(h.role==='reservoir') h.top = depth; }); b.trueProbability=0.9;
-      const q=[0.0001, x]; Math.random = ()=> q.length ? q.shift() : realRandom();
-      try { resolveDrilling({blockId:b.id, method:'vertical', equip, depth, cost:1e6, cf:1, startMonth:0, endMonth:0}); } finally { Math.random = realRandom; }
+      const q=[0.0001, x]; const realSR = window.SR; window.SR = ()=> (()=> q.length ? q.shift() : realRandom());
+      try { resolveDrilling({blockId:b.id, method:'vertical', equip, depth, cost:1e6, cf:1, startMonth:0, endMonth:0}); } finally { window.SR = realSR; }
       return { well: !!b.well, dry: !!b.dryHole, tech: b.dryHoleInfo && b.dryHoleInfo.techFail, detail: b.dryHoleInfo && b.dryHoleInfo.techDetail }; };
     const cases = [['standard',3800,0],['standard',1500,1],['leger',2400,2],['renforce',5000,3]];
     cases.forEach(([eq,d,i])=>{ const rel=eqReliability(EQUIPMENT[eq], d); const a=run(eq,d,rel-0.002,i*2), c=run(eq,d,rel+0.002,i*2+1); res.push({eq,d,rel,reussi:a.well, echoue:c.dry&&c.tech, relNote:c.detail&&c.detail.rel, depthNote:c.detail&&c.detail.depth}); });

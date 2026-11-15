@@ -1,0 +1,32 @@
+// Coupe en grand : barre d'actions (sondage, diagraphie, carotte, forage vertical et horizontal) ; Découverte allégée : pas d'écran d'options, à terre, sans sondage/carotte/Rock-Eval/horizontal.
+const { chromium } = require('playwright'); const path = require('path');
+(async()=>{ const br=await chromium.launch(); let ko=0; const ok=(c,m)=>{ if(!c){ko++; console.log('ECHEC',m);} else console.log('ok',m); };
+  const pg=await br.newPage({viewport:{width:1280,height:800}}); const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
+  await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1'); localStorage.setItem('geoexplorer_played','1')}catch(e){}});
+  await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(400);
+  const T = await pg.evaluate(async ()=>{ const o={}; document.getElementById('geoSeed').value='4242'; menuConfig.daily=null; labOptLaunch(); await new Promise(r=>setTimeout(r,900));
+    G.budget=90e6; G.month=1; performStudy(null,'gravity');
+    const b = blocks.find(x=>!x.inSalt && x.topOfReservoir<2200); const nb = blocks.find(x=>x.id!==b.id && Math.hypot(x.x-b.x,x.y-b.y)<=1.5);
+    b.studyLevel=1; G.sectionA=b.id; G.sectionB=nb.id; performStudy(null,'seismic2d'); selectedBlock=b.id; renderSection();
+    openBigView('section'); await new Promise(r=>setTimeout(r,200));
+    const bar = document.getElementById('bvActions'); o.visible = bar && getComputedStyle(bar).display!=='none';
+    o.horiz = /horizontal/i.test(bar.textContent); o.vert = /Forer|Drill/.test(bar.textContent); o.strati = /Sondage|Survey/.test(bar.textContent);
+    bar.querySelectorAll('button').forEach(x=>{ if(/Sondage|Survey/.test(x.textContent)) x.click(); }); o.launched = G.drilling.some(d=>d.blockId===b.id && d.method==='strati');
+    for(let i=0;i<30&&G.drilling.some(d=>d.blockId===b.id);i++) monthTick(); renderSection(); await new Promise(r=>setTimeout(r,100));
+    o.core = /Carotte|Core/.test(document.getElementById('bvActions').textContent);
+    return o; });
+  ok(T.visible && T.horiz && T.vert && T.strati, 'grande vue : barre avec forage vertical, horizontal et sondage '+JSON.stringify(T));
+  ok(T.launched, 'le sondage se lance depuis la grande vue');
+  ok(T.core, 'la carotte est proposée après le sondage');
+  // Découverte
+  const pg2=await br.newPage({viewport:{width:1280,height:800}}); pg2.on('pageerror',e=>errs.push(e.message));
+  await pg2.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1'); localStorage.setItem('geoexplorer_played','1')}catch(e){}});
+  await pg2.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg2.waitForTimeout(400);
+  await pg2.click('#quickModes .q-mode[data-mode="decouverte"]'); await pg2.click('#startBtn'); await pg2.waitForTimeout(1200);
+  const D = await pg2.evaluate(()=>{ const o={}; o.modal = !!document.querySelector('#labOptModal.open'); o.simple=G.simple; o.off = blocks.some(b=>b.isOffshore); o.cheat = !!LABOPT.cheat;
+    const b=blocks.find(x=>!x.inSalt); b.studyLevel=1; G.sectionA=b.id; G.sectionB=blocks.find(x=>x.id!==b.id&&Math.hypot(x.x-b.x,x.y-b.y)<=1.5).id; selectedBlock=b.id; renderStudiesPanel(b); const html=document.getElementById('studiesContent').innerHTML;
+    o.strati=/stratiCard/.test(html); o.core=/'core'\)/.test(html); o.rock=/rockeval/.test(html); o.horiz=/value="horizontal"/.test(html); secActionsRender(); const t=document.getElementById('sectionActions').textContent; o.barExtra=/Sondage|Carotte|horizontal/i.test(t); return o; });
+  ok(!D.modal && D.simple && !D.off && !D.cheat, 'Découverte : pas d\'écran d\'options, à terre, sans bouton vérité '+JSON.stringify(D));
+  ok(!D.strati && !D.core && !D.rock && !D.horiz && !D.barExtra, 'Découverte : sondage, carotte, Rock-Eval et horizontal absents '+JSON.stringify(D));
+  ok(errs.length===0, 'aucune erreur JS '+errs.join('|'));
+  await br.close(); console.log(ko? 'ECHECS: '+ko : 'TOUT OK'); process.exit(ko?1:0); })();
