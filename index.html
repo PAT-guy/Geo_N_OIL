@@ -4945,6 +4945,21 @@ function interpolateLayerData(profileBlocks, idx){
 // Analyse le profil des tops estimés pour identifier la géométrie,
 // et affiche une annotation pédagogique sous la coupe.
 // =====================================================================
+
+// Maturité de la roche-mère indiquée sous la coupe : profondeur actuelle, soulèvement du bassin (la roche a été plus enfouie par le passé) et fenêtre atteinte.
+// Visible dès qu'une sismique 2D ou un log couvre un bloc du profil ; l'estimation est arrondie (±10 °C), seul le Rock-Eval la confirme.
+function srcMaturityNote(profileBlocks){
+  const o = (profileBlocks||[]).map(p=>p.b).find(b=>b && b.paleoTemp!==undefined && (b.well || b.dryHole || b.studies.some(st=>st.type==='seismic2d' || st.type==='welllog')));
+  if(!o) return '';
+  const fx = v => String(v).replace('.',DEC);
+  if(o.srcAbsent) return `<div style="color:var(--muted);margin-top:6px;">🌡 ${TR('Pas de roche-mère profonde sur ce profil.','No deep source rock on this profile.')}</div>`;
+  const now = Math.round(o.srcTopDepth/50)*50, tmax = Math.round(o.paleoTemp/10)*10, deep = Math.round(Math.max(now, (o.paleoTemp-14)/o.gradient*1000)/50)*50;
+  const up = o.exhumation > 1.3;
+  const win = o.paleoTemp < 60 ? TR('trop froide : <b>immature</b>, elle n\'a pas généré','too cold: <b>immature</b>, it has not generated') : o.paleoTemp <= 150 ? TR('dans la fenêtre à huile (60 à 150 °C) : <b>mature</b>','in the oil window (60 to 150 °C): <b>mature</b>') : TR('au-delà de 150 °C : <b>surmature</b>, elle ne donne plus que du gaz','beyond 150 °C: <b>overmature</b>, it now only gives gas');
+  const upTxt = up ? TR(`Le bassin a été <b>soulevé et érodé</b> (×${fx(Math.round(o.exhumation*10)/10)}) : la roche-mère est <b>remontée</b>, elle a été enfouie jusqu'à environ ${deep} m par le passé. `,`The basin was <b>uplifted and eroded</b> (×${fx(Math.round(o.exhumation*10)/10)}): the source rock has been <b>brought back up</b>, it was buried down to about ${deep} m in the past. `)
+                 : TR(`Pas de soulèvement notable : la profondeur actuelle (~${now} m) est proche de l'enfouissement maximal. `,`No notable uplift: the present depth (~${now} m) is close to the maximum burial. `);
+  return `<div style="margin-top:6px;color:var(--text);">🌡 <b>${TR('Roche-mère','Source rock')}</b> ${TR(`vers ${now} m aujourd'hui. `,`at about ${now} m today. `)}${upTxt}${TR(`Température maximale estimée ≈ ${tmax} °C (±10) : `,`Estimated maximum temperature ≈ ${tmax} °C (±10): `)}${win}. <span style="color:var(--muted);">${TR('À confirmer par Rock-Eval.','To be confirmed by Rock-Eval.')}</span></div>`;
+}
 function interpretSection(blockData, profileBlocks){
   const panel = document.getElementById('sectionInterpret');
   if(!panel) return;
@@ -5024,6 +5039,7 @@ function interpretSection(blockData, profileBlocks){
       : réservoir entre `,`
       : reservoir between `)}${Math.round(minTop)}m et ${Math.round(maxTop)}${TR(`m sur ce profil.`,`m on this profile.`)}</div>
     ${details.map(d=>`<div style="color:var(--muted); margin-top:3px;">${d}</div>`).join('')}
+    ${srcMaturityNote(profileBlocks)}
   `;
 }
 
@@ -6191,7 +6207,7 @@ function renderSection(){
   // Analyse le profil des données estimées pour identifier la géométrie
   if(LAB_ON || (!LAB.truth && (LABOPT.pick || LABOPT.cal))){
     const ip = document.getElementById('sectionInterpret');
-    if(ip){ ip.style.display = 'block'; ip.innerHTML = `<div class="lab-ihead">${TR(`Traitement et interprétation`,`Processing and interpretation`)}</div>` + labHorizonTable(dispData, labLv) + `<div class="lab-status">${labProcHtml()}${labWellList(dispData, labLv)}</div>${labTipHtml()}${labHelpHtml()}`; }
+    if(ip){ ip.style.display = 'block'; ip.innerHTML = `<div class="lab-ihead">${TR(`Traitement et interprétation`,`Processing and interpretation`)}</div>` + labHorizonTable(dispData, labLv) + `<div class="lab-status">${labProcHtml()}${labWellList(dispData, labLv)}</div>${srcMaturityNote(profileBlocks)}${labTipHtml()}${labHelpHtml()}`; }
   } else interpretSection(blockData, profileBlocks);
 
   // ── Légende ── énumère les lithologies RÉELLEMENT présentes sur ce profil,

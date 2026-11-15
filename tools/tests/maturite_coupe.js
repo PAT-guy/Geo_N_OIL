@@ -1,0 +1,20 @@
+// Maturité de la roche-mère indiquée sous la coupe, avec le soulèvement du bassin (roche remontée), en français et en anglais ; absente sans sismique 2D.
+const { chromium } = require('playwright'); const path = require('path');
+(async()=>{ const br=await chromium.launch(); let ko=0; const ok=(c,m)=>{ if(!c){ko++; console.log('ECHEC',m);} else console.log('ok',m); };
+  const run = async (lang, basin) => { const pg=await br.newPage({viewport:{width:1280,height:900}}); const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
+    await pg.addInitScript((l)=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1');localStorage.setItem('geoexplorer_lang',l)}catch(e){}}, lang);
+    await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(400);
+    const r = await pg.evaluate(async (bt)=>{ menuConfig.basinType=bt; document.getElementById('geoSeed').value='4242'; menuConfig.daily=null; labOptLaunch(); await new Promise(r=>setTimeout(r,900));
+      G.budget=90e6; G.month=1; performStudy(null,'gravity');
+      const b = blocks.find(x=>!x.inSalt && !x.srcAbsent); const nb = blocks.find(x=>x.id!==b.id && Math.hypot(x.x-b.x,x.y-b.y)<=1.5);
+      G.sectionA=b.id; G.sectionB=nb.id; renderSection(); const before=(document.getElementById('sectionInterpret')||{}).innerHTML||'';
+      performStudy(null,'seismic2d'); renderSection(); const after=document.getElementById('sectionInterpret').innerHTML;
+      return { before:/🌡/.test(before), after, exhum:b.exhumation }; }, basin);
+    await pg.close(); return {r, errs}; };
+  const F = await run('fr','paris'), E = await run('en','paris'), G2 = await run('fr','gulf_coast');
+  ok(!F.r.before && /🌡/.test(F.r.after), 'maturité absente avant la sismique 2D, indiquée après');
+  ok(/soulevé et érodé/.test(F.r.after) && /remontée/.test(F.r.after) && /(immature|mature|surmature)/.test(F.r.after), 'bassin parisien : soulèvement et maturité indiqués en français');
+  ok(/uplifted and eroded/.test(E.r.after) && /brought back up/.test(E.r.after), 'même note en anglais');
+  ok(/Pas de soulèvement notable|soulevé/.test(G2.r.after), 'bassin sans soulèvement : note adaptée ('+G2.r.exhum+')');
+  ok(F.errs.length+E.errs.length+G2.errs.length===0, 'aucune erreur JS '+F.errs.concat(E.errs,G2.errs).join('|'));
+  await br.close(); console.log(ko? 'ECHECS: '+ko : 'TOUT OK'); process.exit(ko?1:0); })();
