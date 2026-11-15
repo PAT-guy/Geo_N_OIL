@@ -36,8 +36,11 @@ const { chromium } = require('playwright'); const path = require('path');
     if(x.kind==='calage'){ good=0; txt = x.q.includes(m.z+' m') && x.q.includes(m.t+' ms') && Math.abs(m.V-2000*m.z/m.t)<=5 && x.choices[0]===m.V+' m/s'; }
     if(x.kind==='multiple'){ good=0; txt = m.R>0 && x.q.includes(m.t0+' ms') && x.choices[0]===(2*m.t0)+' ms'; }
     if(x.kind==='resol'){ good=0; txt = x.q.includes(m.f+' Hz') && x.q.includes(m.V+' m/s') && x.choices[0]==='environ '+Math.round(m.V/(4*m.f))+' m'; }
+    if(x.kind==='tache'){ good=2; txt = m.Rs[0]<-0.04 && m.Rs[1]<-0.04 && m.Rs[2]>0.04; }
+    if(x.kind==='multamp'){ good=0; txt = Math.abs(m.R2-m.R*m.R)<0.0006 && x.choices[0]==='−'+String(m.R2).replace('.',',') && m.R2>=0.02; }
+    if(x.kind==='pullup'){ good=0; txt = Math.abs(m.dt-2*m.h*(1/m.Vs-1/m.Va)*1000)<=3 && x.q.includes(m.h+' m'); }
     if(good!==x.correct || !txt || new Set(x.choices).size!==x.choices.length) sf++; });
-  ok(sq.all.length===240 && Object.values(kc).every(n=>n===40) && Object.keys(kc).length===6, 'sismique : 6 types de questions générées, un de chaque par manche '+JSON.stringify(kc));
+  ok(sq.all.length===240 && Object.keys(kc).length===9 && ['tache','multamp','pullup'].every(k=>kc[k]>=15) && (kc.tache+kc.multamp+kc.pullup)>=70, 'sismique : 6 questions générées par manche (4 de base + 2 pièges : tache brillante, multiple, pull-up), 9 types au total '+JSON.stringify(kc));
   ok(sf===0, 'sismique : réponse recalculée = bonne réponse, valeurs affichées cohérentes, choix distincts ('+sf+' erreurs)');
   ok(sq.m.every(([n,g])=>n===8&&g===6), 'sismique : manche de 8 questions, 6 générées + 2 de la liste fixe');
   // lithofaciès : la mesure affichée désigne nettement la bonne roche parmi les choix (prototype le plus proche, 1,5 fois plus près que le suivant)
