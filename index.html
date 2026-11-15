@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.86</title>
+<title>GeoExplorer V4.87</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2359,6 +2359,8 @@ function gauss(rng){
   const u = Math.max(1e-9, rng()), v = rng();
   return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
 }
+// Estimation de la probabilité par la sismique 3D : a priori régional (moyenne −1,6 en cotes, écart-type 1,44, mesurés sur les cartes du jeu).
+const SEIS3D_MU = -1.6, SEIS3D_TAU2 = 2.07;
 const STUDIES = {
   gravity: {
     name:TRN('Levé gravimétrique régional','Regional gravity survey'),
@@ -2473,14 +2475,20 @@ const STUDIES = {
         dhiMisleading = true;
         logit += (rng()<0.6 ? 1 : -1) * (1.0 + rng()*0.8);
       }
-      const probEst = clamp(1/(1+Math.exp(-logit)), 0.005, 0.95);
-      // Incertitude annoncée : l'erreur nominale seulement (celle du bruit),
-      // volontairement sans le risque de faux signal.
-      const probErr = clamp(probEst*(Math.exp(0.35*um)-1), 0.01, 0.25);
-      const amp = probEst > 0.25 ? TR('forte anomalie d\'amplitude','strong amplitude anomaly') : probEst > 0.10 ? TR('anomalie d\'amplitude modérée','moderate amplitude anomaly') : TR('pas d\'anomalie d\'amplitude nette','no clear amplitude anomaly');
+      // Lecture brute de l'instrument : sert à la classe d'anomalie d'amplitude, qui reste une mesure.
+      const probRaw = clamp(1/(1+Math.exp(-logit)), 0.005, 0.95);
+      // Probabilité affichée = meilleure estimation, pas la mesure brute. Choisir le meilleur bloc parmi des estimations bruitées sélectionne
+      // les plus gonflées par le hasard (« malédiction du gagnant ») : le meilleur décile était annoncé à 78 % pour 66 % réel. On ramène donc
+      // la mesure vers la moyenne régionale dans l'espace des cotes (estimateur bayésien : moyenne a priori −1,6 en cotes, écart a priori 1,44,
+      // bruit effectif = bruit nominal + risque de faux signal). L'écart annoncé est l'écart-type de cette estimation.
+      const sig2 = Math.pow(0.35*um, 2) + pFalse*2.013, kShr = SEIS3D_TAU2/(SEIS3D_TAU2 + sig2), sdPost = Math.sqrt(SEIS3D_TAU2*sig2/(SEIS3D_TAU2 + sig2));
+      const logitShown = SEIS3D_MU + kShr*(logit - SEIS3D_MU);
+      const probEst = clamp(1/(1+Math.exp(-logitShown)), 0.005, 0.95);
+      const probErr = clamp(probEst*(1-probEst)*sdPost, 0.01, 0.25);
+      const amp = probRaw > 0.25 ? TR('forte anomalie d\'amplitude','strong amplitude anomaly') : probRaw > 0.10 ? TR('anomalie d\'amplitude modérée','moderate amplitude anomaly') : TR('pas d\'anomalie d\'amplitude nette','no clear amplitude anomaly');
       return {
         topReservoirEst: clamp(b.topOfReservoir+(rng()-.5)*2*errT, 200, 6000), topErr:errT,
-        probEst, probErr, dhiMisleading, amplitude: amp,
+        probEst, probErr, probRaw, dhiMisleading, amplitude: amp,
         qualityEst: clamp(b.trueQuality+(rng()-.5)*2*errQ, 0, 100), qualErr:errQ,
       };
     },
@@ -4545,7 +4553,7 @@ function bvRender(){
     c.querySelectorAll('.sec-layer-poly').forEach(poly => poly.addEventListener('click', (e) => {
       e.stopPropagation();
       secSelectLayer(c, poly);
-      document.getElementById('bvLayer').textContent = poly.dataset.layerName ? secLayerText(poly.dataset.layerName, secLayerInfo(e, poly)) : '';
+      document.getElementById('bvLayer').textContent = (poly.dataset.layerName || poly.dataset.li!=null) ? secLayerText(poly.dataset.layerName || '', secLayerInfo(e, poly), poly.dataset.li) : '';
     }));
     c.addEventListener('click', () => { c.querySelectorAll('.sec-layer-poly').forEach(q => q.classList.remove('sec-layer-selected')); document.getElementById('bvLayer').textContent = ''; });
     base = availW;
@@ -5246,8 +5254,9 @@ function secSelectLayer(svgEl, poly, info){
   if(secSelLi!==null) svgEl.querySelectorAll('.sec-layer-poly[data-li="'+secSelLi+'"]').forEach(p=>p.classList.add('sec-layer-selected'));
   else poly.classList.add('sec-layer-selected');
 }
-function secLayerText(name, info){
-  return name + (info ? TR(` · toit ${info.top} m · mur ${info.base} m · épaisseur ${info.th} m`,` · top ${info.top} m · base ${info.base} m · thickness ${info.th} m`) + (info.biseau ? TR(' · biseau : la couche s\'amincit ici',' · pinch-out: the layer thins here') : '') : '');
+function secLayerText(name, info, li){
+  const hn = (li!=null && li!=='' && !isNaN(+li)) ? 'H'+(+li+1)+(name?' · ':'') : '';
+  return hn + name + (info ? TR(` · toit ${info.top} m · mur ${info.base} m · épaisseur ${info.th} m`,` · top ${info.top} m · base ${info.base} m · thickness ${info.th} m`) + (info.biseau ? TR(' · biseau : la couche s\'amincit ici',' · pinch-out: the layer thins here') : '') : '');
 }
 
 // =====================================================================
@@ -6291,6 +6300,8 @@ function renderSection(){
   svg += `<text x="${MARG.l+PW}" y="${MARG.t+PH+24}" font-size="8.5"
     fill="var(--blue)" text-anchor="middle">B (${bb.x},${bb.y})</text>`;
 
+  // Numéro de chaque horizon (H1, H2...) en marge gauche, à la profondeur de son toit sur le premier bloc du profil : il sert à désigner la cible
+  { const d0 = dispData.find(bd=>bd.layers); if(d0){ let lastY = -99; d0.layers.forEach((ly, li)=>{ if(!ly || !(ly.thickness>1)) return; const y = yOf(ly.top); if(y < MARG.t+4 || y > MARG.t+PH-2 || y-lastY < 8) return; lastY = y; svg += `<text x="${MARG.l-3}" y="${(y+3).toFixed(1)}" font-size="7" fill="var(--muted)" text-anchor="end" style="pointer-events:none">H${li+1}</text>`; }); } }
   // Indicateur d'échelle
   svg += `<text x="${MARG.l+PW}" y="${MARG.t-8}" font-size="7"
     fill="var(--muted)" text-anchor="end">${TR(`Profondeur (m)`,`Depth (m)`)}</text>`;
@@ -6304,8 +6315,8 @@ function renderSection(){
   const secClearLabel = ()=>{ svgEl.querySelectorAll('.sec-layer-poly').forEach(p=>p.classList.remove('sec-layer-selected')); secSelLi = null; const l0 = document.getElementById('sectionLayerLabel'); if(l0) l0.remove(); };
   svgEl.querySelectorAll('.sec-layer-poly').forEach(poly=>{
     poly.addEventListener('click', (e)=>{
-      const name = poly.dataset.layerName;
-      if(!name) return;
+      const name = poly.dataset.layerName || '';
+      if(!name && poly.dataset.li==null) return; // sismique muette : pas de nom, mais le numéro d'horizon reste visible
       e.stopPropagation();
       const info = secLayerInfo(e, poly);
       secSelectLayer(svgEl, poly, info);
@@ -6317,7 +6328,7 @@ function renderSection(){
         svgEl.parentElement.style.position = svgEl.parentElement.style.position || 'relative';
         svgEl.parentElement.appendChild(lbl);
       }
-      lbl.textContent = secLayerText(name, info);
+      lbl.textContent = secLayerText(name, info, poly.dataset.li);
       const wrapRect = svgEl.parentElement.getBoundingClientRect();
       lbl.style.left = Math.max(0, Math.min(e.clientX - wrapRect.left, wrapRect.width - lbl.offsetWidth - 6)) + 'px';
       lbl.style.top = Math.max(e.clientY - wrapRect.top - 34, 0) + 'px';
@@ -8928,10 +8939,10 @@ function _doStartGame(){
         production`,`production class`)}</b>${TR(`. C'est facultatif, et ça rapporte de l'argent si vous êtes bien calibré.`,`. It is optional, and it earns money if you are well calibrated.`)}<br><br>${TR(`
         La règle récompense l'honnêteté : annoncer sa vraie croyance rapporte le plus en moyenne. Annoncer 95 %
         à chaque fois coûte environ 130 k$ par puits sec. Attention, les estimations 3D élevées sont plus
-        souvent trop optimistes que prudentes : un 80 % annoncé vaut en réalité autour de 70 %.`,`
+        souvent trop optimistes que prudentes. Les probabilités affichées sont déjà ramenées vers la moyenne de la carte pour en tenir compte : un 70 % annoncé vaut bien environ 70 %, mais seulement en moyenne sur beaucoup de blocs.`,`
         The rule rewards honesty: stating your true belief earns the most on average. Stating 95 %
         every time costs about $130k per dry well. Beware, high 3D estimates are more often
-        too optimistic than cautious: a stated 80 % is actually worth around 70 %.`)}`,
+        too optimistic than cautious. The displayed probabilities are already pulled toward the map average to account for this: a stated 70 % really is worth about 70 %, but only on average over many blocks.`)}`,
     },
     {
       title: TR('Forer et produire','Drilling and producing'),
