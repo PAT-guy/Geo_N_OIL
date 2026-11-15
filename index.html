@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.87</title>
+<title>GeoExplorer V4.88</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2595,6 +2595,7 @@ function performStudy(blockId, studyKey){
 
   // SISMIQUE 2D : s'applique sur le profil A→B actif
   if(st.profileBased){
+    if(G.sectionA!==null && G.sectionA===G.sectionB && !G._single){ addLog(TR('Une coupe doit relier deux blocs différents.','A section must link two different blocks.'),'bad'); return; }
     if(G.sectionA===null || G.sectionB===null){
       addLog(TR(`Définissez d'abord un profil A→B avec l'outil Coupe, puis lancez la sismique depuis l'onglet Coupe.`,`First define an A→B profile with the Section tool, then launch the seismic from the Section tab.`), 'bad'); return;
     }
@@ -2643,7 +2644,7 @@ function performStudy(blockId, studyKey){
   if(selectedBlock===blockId){ renderGeoPanel(b); renderStudiesPanel(b); }
   if(G.sectionA!==null && G.sectionB!==null) renderSection();
   addLog(TR(`${st.name} sur bloc (${b.x},${b.y}) : ${formatM(cost)}`,`${st.name} on block (${b.x},${b.y}): ${formatM(cost)}`), 'ev');
-  if(studyKey==='core' && b.strati && !b.well && !b.dryHole && !stratiHasLog(b)) addLog(TR(`🧫 La carotte seule ne change pas la coupe : la lithologie n'apparaît qu'après la diagraphie du sondage (${G.mode==='sandbox'?'gratuite':formatM(stratiLogCost(b))}).`,`🧫 The core alone does not change the section: lithology only appears after the survey hole log (${G.mode==='sandbox'?'free':formatM(stratiLogCost(b))}).`), 'ev');
+  if(studyKey==='core' && b.strati && !b.well && !b.dryHole) addLog(TR(`🧫 Carotte du sondage (${b.x},${b.y}) analysée : la lithologie de la colonne est dévoilée sur la coupe.`,`🧫 Survey hole core (${b.x},${b.y}) analysed: the lithology of the column is revealed on the section.`), 'good');
   updateHud();
 }
 
@@ -2888,6 +2889,8 @@ function applyCalibration(est, geoOk, initProd, b){
 function drillBlock(blockId, method, equip, est){
   const b = blocks[blockId];
   if(b.well||b.dryHole){addLog(TR('Ce bloc est déjà foré.','This block is already drilled.'),'bad');return;}
+  if(G.drilling.some(d=>d.blockId===blockId)){ const m = TR('Un forage est déjà en cours sur ce bloc.','A drilling is already under way on this block.'); addLog(m,'bad'); toast(m); return; }
+  if(method==='strati' && b.strati){ const m = TR('Ce bloc a déjà son sondage.','This block already has its survey hole.'); addLog(m,'bad'); toast(m); return; }
   if(G.labPick==null && LABOPT.pick && method!=='strati' && G.mode!=='sandbox'){ const m = TR('Désignez d\'abord votre horizon cible sur la coupe (clic sur la sismique ou bouton « viser » du tableau).','First designate your target horizon on the section (click on the seismic or the "aim" button in the table).'); addLog(m, 'bad'); toast(m); return; }
   if(b.studyLevel<1){addLog(TR('Réalisez au moins une étude (gravimétrie ou sismique) avant de forer.','Do at least one study (gravity or seismic) before drilling.'),'bad');return;}
   const depth = drillDepthEstimate(b);
@@ -3960,7 +3963,7 @@ function playNextDrillReveal(){
     drillRevealFlush(next);
     { const sk = document.getElementById('drillRevealSkipBtn'); if(sk) sk.style.display = 'none'; }
     icon.classList.remove('pulse');
-    if(limitingFactor==='strati'){ icon.textContent='🧪'; title.textContent=TR('SONDAGE TERMINÉ','SURVEY HOLE COMPLETED'); title.style.color='var(--text)'; sub.textContent=TR('Carottes récupérées : diagraphie à lancer séparément','Cores recovered: run the log separately'); detail.innerHTML = calibHtml; closeBtn.style.display=''; return; }
+    if(limitingFactor==='strati'){ icon.textContent='🧪'; title.textContent=TR('SONDAGE TERMINÉ','SURVEY HOLE COMPLETED'); title.style.color='var(--text)'; sub.textContent=TR('Carottes récupérées : analyse de carotte à lancer','Cores recovered: run the core analysis'); detail.innerHTML = calibHtml; closeBtn.style.display=''; return; }
     const success = geoOk && techOk;
     icon.textContent = success ? '⛽' : '✗';
     title.textContent = success ? TR('PUITS PRODUCTIF !','PRODUCTIVE WELL!') : TR('PUITS SEC','DRY HOLE');
@@ -5370,7 +5373,7 @@ function stratiLog(id){
   const c = stratiLogCost(b);
   if(G.budget < c && G.mode!=='sandbox'){ toast(TR('Budget insuffisant pour la diagraphie du sondage (','Insufficient budget for the survey hole log (') + formatM(c) + ').'); return; }
   G.budget -= c; labInjectStratiLog(b); updateBlockEstimate(b);
-  addLog(TR(`📈 Diagraphie du sondage (${b.x},${b.y}) réalisée${c>0?' (-'+formatM(c)+')':''} : log et lithologie de la colonne dévoilés.`,`📈 Survey hole log (${b.x},${b.y}) done${c>0?' (-'+formatM(c)+')':''}: log and lithology of the column revealed.`), 'good');
+  addLog(TR(`📈 Diagraphie du sondage (${b.x},${b.y}) réalisée${c>0?' (-'+formatM(c)+')':''} : courbes du log disponibles dans le panneau du bloc.${labCored(b)?'':' La lithologie sur la coupe vient de la carotte.'}`,`📈 Survey hole log (${b.x},${b.y}) done${c>0?' (-'+formatM(c)+')':''}: log curves available in the block panel.${labCored(b)?'':' The lithology on the section comes from the core.'}`), 'good');
   renderBlock(b); updateHud();
   if(selectedBlock===id){ renderGeoPanel(b); renderStudiesPanel(b); }
   if(typeof renderSection==='function') renderSection(); if(typeof renderGuide==='function') renderGuide();
@@ -5399,15 +5402,17 @@ function secActionsRender(){
   } else {
     const sp = b.strati ? null : stratiPlan(b), dp = drillPlan(b, 'vertical');
     if(!G.simple) { if(!b.strati) h += sp && sp.equip ? `<button onclick="launchStrati(${b.id})" ${money(sp.cost)?'':'disabled'}>${TR(`🧪 Sondage · `,`🧪 Survey hole · `)}${fmt(sp.cost)}</button>` : '';
-    else if(!stratiHasLog(b)) h += `<button onclick="stratiLog(${b.id}); secActionsRender();" ${money(stratiLogCost(b))?'':'disabled'}>${TR(`📈 Diagraphie du sondage · `,`📈 Survey hole log · `)}${fmt(stratiLogCost(b))}</button>`;
-    else h += `<span>${TR(`Sondage diagraphié`,`Survey hole logged`)}</span>`; }
+    else { const cc0 = STUDIES.core.cost*(b.isOffshore?STUDIES.core.offMult:1);
+      if(!labCored(b)) h += `<button class="go" onclick="performStudy(${b.id},'core'); secActionsRender();" ${money(cc0)?'':'disabled'}>${TR(`🧫 Carotte (lithologie) · `,`🧫 Core (lithology) · `)}${fmt(cc0)}</button>`;
+      else h += `<span>${TR(`Sondage carotté`,`Survey hole cored`)}</span>`;
+      if(!stratiHasLog(b)) h += `<button onclick="stratiLog(${b.id}); secActionsRender();" ${money(stratiLogCost(b))?'':'disabled'}>${TR(`📈 Diagraphie · `,`📈 Log · `)}${fmt(stratiLogCost(b))}</button>`; } }
     h += dp && dp.equip ? `<button class="go" onclick="secDrill(${b.id})" ${money(dp.cost)?'':'disabled'}>${TR(`⛏ Forer · `,`⛏ Drill · `)}${fmt(dp.cost)}</button>` : `<span style="color:var(--red)">${TR(`Aucun matériel n'atteint la profondeur estimée.`,`No equipment reaches the estimated depth.`)}</span>`;
     { const dh = G.simple ? null : drillPlan(b, 'horizontal');
       if(dh && dh.equip) h += `<button class="go" onclick="secDrill(${b.id},'horizontal')" ${money(dh.cost)?'':'disabled'}>${TR(`↔ Forer horizontal · `,`↔ Drill horizontal · `)}${fmt(dh.cost)}</button>`; }
     h += `<button onclick="switchTabOrScreenStudies()">${TR(`Plus d'options`,`More options`)}</button>`;
   }
   // carotte : possible dès qu'il y a un échantillon physique (puits, puits sec ou sondage)
-  if(!G.simple && (b.well || b.dryHole || b.strati) && !inProg && !b.studies.some(s=>s.type==='core')){
+  if(!G.simple && (b.well || b.dryHole) && !inProg && !b.studies.some(s=>s.type==='core')){
     const cc = STUDIES.core.cost*(b.isOffshore?STUDIES.core.offMult:1);
     h += `<button onclick="performStudy(${b.id},'core'); secActionsRender();" ${money(cc)?'':'disabled'}>${TR(`🧫 Carotte · `,`🧫 Core · `)}${fmt(cc)}</button>`;
   }
@@ -5421,14 +5426,17 @@ function stratiCardHtml(b){
   const done = stratiHasLog(b), p = b.strati ? null : stratiPlan(b);
   let h = `<div class="ps-section" style="margin-top:12px;">${TR(`Sondage stratigraphique`,`Stratigraphic test well`)}</div><div class="study-card" id="stratiCard">
     <div class="sc-name">${TR(`🧪 Sondage`,`🧪 Survey hole`)}${b.strati?TR('<span class="done-badge">✓ Foré</span>','<span class="done-badge">✓ Drilled</span>'):''}</div>
-    <div class="sc-desc">${TR(`Forage carotté à environ 30 % du prix d'un puits : il ne peut jamais produire et ne dit rien sur les hydrocarbures, mais il donne des carottes (analyse de carotte, Rock-Eval) et, avec la diagraphie, le log et la lithologie qui calent la sismique.`,`Cored well at about 30 % of the price of a well: it can never produce and says nothing about hydrocarbons, but it gives cores (core analysis, Rock-Eval) and, with the log, the log and lithology that tie the seismic.`)}</div>`;
+    <div class="sc-desc">${TR(`Forage carotté à environ 30 % du prix d'un puits : il ne peut jamais produire et ne dit rien sur les hydrocarbures, mais il donne des carottes : l'analyse de carotte dévoile la lithologie sur la coupe et cale la sismique ; la diagraphie, à part, donne les courbes du log.`,`Cored well at about 30 % of the price of a well: it can never produce and says nothing about hydrocarbons, but it gives cores: the core analysis reveals the lithology on the section and ties the seismic; the log, separately, gives the log curves.`)}</div>`;
   if(!b.strati){
     if(!p || p.equip===null) h += `<div style="font-size:11px;color:var(--red);">${p ? TR('Aucun matériel n\'atteint la profondeur estimée (','No equipment reaches the estimated depth (')+Math.round(p.depth)+' m).' : TR('Profondeur du réservoir inconnue : réalisez une étude de plus.','Reservoir depth unknown: run one more study.')}</div>`;
     else h += `<button class="study-btn study-btn-compact" id="stratiBtn" ${(G.budget>=p.cost||G.mode==='sandbox')?'':'disabled'} onclick="launchStrati(${b.id})">${TR(`🧪 Lancer le sondage : `,`🧪 Launch the survey hole: `)}${G.mode==='sandbox'?'Gratuit':formatM(p.cost)}</button>`;
-  } else if(!done){
-    h += `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${TR(`Carottes disponibles. La lithologie n'apparaît sur la coupe qu'après la diagraphie.`,`Cores available. Lithology appears on the section only after the log.`)}</div>
-      <button class="study-btn study-btn-compact" id="stratiLogBtn" ${(G.budget>=stratiLogCost(b)||G.mode==='sandbox')?'':'disabled'} onclick="stratiLog(${b.id})">${TR(`📈 Diagraphie du sondage : `,`📈 Survey hole log: `)}${G.mode==='sandbox'?'Gratuit':formatM(stratiLogCost(b))}</button>`;
-  } else h += `<div style="font-size:11px;color:var(--muted);">${TR(`✓ Diagraphie réalisée : log et lithologie disponibles.`,`✓ Log done: log and lithology available.`)}</div>`;
+  } else {
+    const cored = labCored(b), logged = stratiHasLog(b), free = G.mode==='sandbox', cc = STUDIES.core.cost*(b.isOffshore?STUDIES.core.offMult:1);
+    h += `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${cored ? TR(`✓ Carotte analysée : la lithologie de la colonne apparaît sur la coupe.`,`✓ Core analysed: the lithology of the column appears on the section.`) : TR(`Carottes disponibles. L'analyse de carotte dévoile la lithologie sur la coupe.`,`Cores available. The core analysis reveals the lithology on the section.`)}</div>`;
+    if(!cored) h += `<button class="study-btn study-btn-compact" id="stratiCoreBtn" ${(G.budget>=cc||free)?'':'disabled'} onclick="performStudy(${b.id},'core')">${TR(`🧫 Analyse de carotte : `,`🧫 Core analysis: `)}${free?TR('Gratuit','Free'):formatM(cc)}</button> `;
+    if(!logged) h += `<button class="study-btn study-btn-compact" id="stratiLogBtn" ${(G.budget>=stratiLogCost(b)||free)?'':'disabled'} onclick="stratiLog(${b.id})">${TR(`📈 Diagraphie (courbes du log) : `,`📈 Log (log curves): `)}${free?TR('Gratuit','Free'):formatM(stratiLogCost(b))}</button>`;
+    else h += `<div style="font-size:11px;color:var(--muted);">${TR(`✓ Diagraphie réalisée : courbes du log dans le panneau du bloc.`,`✓ Log done: log curves in the block panel.`)}</div>`;
+  }
   return h + `</div>`;
 }
 function labInjectStratiLog(b){
@@ -5445,8 +5453,8 @@ function labInjectStratiLog(b){
 function labResolveStrati(d){
   const b = blocks[d.blockId]; b.el?.classList.remove('drilling');
   b.strati = true; updateBlockEstimate(b);
-  addLog(TR(`🧪 Sondage stratigraphique terminé : bloc (${b.x},${b.y}). Carottes récupérées : lancez la diagraphie (${G.mode==='sandbox'?'gratuite':formatM(stratiLogCost(b))}) pour lire la lithologie.`,`🧪 Stratigraphic survey hole completed: block (${b.x},${b.y}). Cores recovered: run the log (${G.mode==='sandbox'?'free':formatM(stratiLogCost(b))}) to read the lithology.`), 'good');
-  const html = TR(`Le sondage a traversé la colonne et ramené des carottes. Il ne peut pas produire et ne dit rien sur la présence d'hydrocarbures. La diagraphie du sondage (étude payante) donne le log et la lithologie ; la carotte et le Rock-Eval restent possibles tout de suite.`,`The survey hole went through the column and brought back cores. It cannot produce and says nothing about the presence of hydrocarbons. The survey hole log (paid study) gives the log and lithology; core analysis and Rock-Eval remain possible right away.`) + (LABOPT.cal && LABOPT.mute && !labCalOk(b) ? TR(` Calez-le sur la sismique pour étendre la lithologie le long du profil.`,` Tie it to the seismic to extend the lithology along the profile.`) : '') + TR(` Le bloc reste forable. Onglet Études : carotte (cale le puits et double la portée de sa lithologie sur la coupe) et Rock-Eval (géochimie de la roche-mère).`,` The block can still be drilled. Studies tab: core (ties the well and doubles the reach of its lithology on the section) and Rock-Eval (source rock geochemistry).`);
+  addLog(TR(`🧪 Sondage stratigraphique terminé : bloc (${b.x},${b.y}). Carottes récupérées : lancez l'analyse de carotte pour dévoiler la lithologie sur la coupe.`,`🧪 Stratigraphic survey hole completed: block (${b.x},${b.y}). Cores recovered: run the core analysis to reveal the lithology on the section.`), 'good');
+  const html = TR(`Le sondage a traversé la colonne et ramené des carottes. Il ne peut pas produire et ne dit rien sur la présence d'hydrocarbures. L'analyse de carotte (étude payante) dévoile la lithologie sur la coupe ; la diagraphie du sondage donne, à part, les courbes du log ; le Rock-Eval reste possible.`,`The survey hole went through the column and brought back cores. It cannot produce and says nothing about the presence of hydrocarbons. The core analysis (paid study) reveals the lithology on the section; the survey hole log gives the log curves separately; Rock-Eval remains possible.`) + (LABOPT.cal && LABOPT.mute && !labCalOk(b) ? TR(` Calez-le sur la sismique pour étendre la lithologie le long du profil.`,` Tie it to the seismic to extend the lithology along the profile.`) : '') + TR(` Le bloc reste forable. La carotte cale le puits et double la portée de sa lithologie sur la coupe.`,` The block can still be drilled. The core ties the well and doubles the reach of its lithology on the section.`);
   renderBlock(b); updateHud();
   if(selectedBlock===d.blockId){ renderGeoPanel(b); renderStudiesPanel(b); }
   if(G.sectionA!==null && G.sectionB!==null && typeof renderSection==='function') renderSection();
@@ -5500,7 +5508,8 @@ function labTwtFn(dispData){
 }
 
 const LAB = { truth:false, freq:28 };
-const labDrilled = b => !!(b && (b.well || b.dryHole || (b.strati && b.studies.some(s=>s.type==='welllog'))));
+// Un sondage montre sa lithologie sur la coupe par la CAROTTE (analyse de carotte) ; la diagraphie donne les courbes du log, pas la lithologie de la coupe.
+const labDrilled = b => !!(b && (b.well || b.dryHole || (b.strati && b.studies.some(s=>s.type==='core'))));
 const labCored = b => !!(b && b.studies && b.studies.some(s=>s.type==='core'));
 // Niveau de dévoilement de chaque bloc du profil : 0 = puits, 1 à 3 = extrapolé (voisin proche à lointain), -1 = inconnu
 function labLevels(dispData){
@@ -6544,11 +6553,11 @@ function guideCompute(){
   }
   const hasProf = G.sectionA!==null && G.sectionB!==null;
   const free = b => !b.well && !b.dryHole && !G.drilling.some(d=>d.blockId===b.id);
-  // Sondage foré mais pas encore diagraphié : la diagraphie est l'étape qui livre la lithologie
-  { const sb = blocks.find(b=>b.strati && !b.well && !b.dryHole && !stratiHasLog(b));
-    if(sb){ const c = stratiLogCost(sb);
-      return {cur:4, text:TR(`Le sondage du bloc (${sb.x}, ${sb.y}) est foré. Sa diagraphie livre le log et la lithologie, qui servent à caler la sismique avant de forer cher.`,`The survey hole on block (${sb.x}, ${sb.y}) is drilled. Its log gives the log and lithology, which are used to tie the seismic before an expensive well.`),
-              act:{label:TR(`Diagraphie du sondage (${sb.x}, ${sb.y}) · ${G.mode==='sandbox'?'gratuite':formatM(c)}`,`Survey hole log (${sb.x}, ${sb.y}) · ${G.mode==='sandbox'?'free':formatM(c)}`), call:`guideDo('stratilog',${sb.id})`, ok:G.mode==='sandbox'||money(c), why:TR(`Budget insuffisant (${formatM(c)} requis).`,`Insufficient budget (${formatM(c)} required).`)}}; } }
+  // Sondage foré mais pas encore carotté : l'analyse de carotte est l'étape qui livre la lithologie
+  { const sb = blocks.find(b=>b.strati && !b.well && !b.dryHole && !labCored(b));
+    if(sb){ const c = STUDIES.core.cost*(sb.isOffshore?STUDIES.core.offMult:1)*(G.mode==='sandbox'?0:1);
+      return {cur:4, text:TR(`Le sondage du bloc (${sb.x}, ${sb.y}) est foré. Son analyse de carotte livre la lithologie, qui sert à caler la sismique avant de forer cher.`,`The survey hole on block (${sb.x}, ${sb.y}) is drilled. Its core analysis gives the lithology, which is used to tie the seismic before an expensive well.`),
+              act:{label:TR(`Carotte du sondage (${sb.x}, ${sb.y}) · ${G.mode==='sandbox'?'gratuite':formatM(c)}`,`Survey hole core (${sb.x}, ${sb.y}) · ${G.mode==='sandbox'?'free':formatM(c)}`), call:`guideDo('core',${sb.id})`, ok:G.mode==='sandbox'||money(c), why:TR(`Budget insuffisant (${formatM(c)} requis).`,`Insufficient budget (${formatM(c)} required).`)}}; } }
   // Meilleur bloc à forer : estimation 3D (ou log) la plus haute
   const drillable = blocks.filter(b=>free(b) && b.estimate?.prob!==undefined && b.studies.some(st=>st.type==='seismic3d'))
                           .sort((a,z)=>z.estimate.prob-a.estimate.prob);
@@ -6621,7 +6630,7 @@ function guideCompute(){
   // qu'un forage, la révèle. Proposé une seule fois par profil, sur son bloc libre le moins profond.
   if(LABOPT.mute && ranked.length && prof.length && !prof.some(o=>labDrilled(o.b)) && !prof.some(o=>o.b.strati)){
     const sc = prof.map(o=>o.b).filter(b=>free(b) && b.studyLevel>=1 && !b.strati).map(b=>({b, p:stratiPlan(b)})).filter(x=>x.p && x.p.equip).sort((a,z)=>a.p.cost-z.p.cost)[0];
-    if(sc) return {cur:4, text:TR(`La sismique est muette et aucun puits du profil n'a de log : la coupe ne montre pas les roches. Un sondage stratigraphique en (${sc.b.x}, ${sc.b.y}) coûte environ 30 % d'un forage et révèle la lithologie (puis diagraphie).`,`Seismic is silent and no well on the profile has a log: the section does not show the rocks. A stratigraphic survey hole at (${sc.b.x}, ${sc.b.y}) costs about 30 % of a well and reveals the lithology (then the log).`),
+    if(sc) return {cur:4, text:TR(`La sismique est muette et aucun puits du profil n'a de log : la coupe ne montre pas les roches. Un sondage stratigraphique en (${sc.b.x}, ${sc.b.y}) coûte environ 30 % d'un forage et révèle la lithologie (avec l'analyse de carotte).`,`Seismic is silent and no well on the profile has a log: the section does not show the rocks. A stratigraphic survey hole at (${sc.b.x}, ${sc.b.y}) costs about 30 % of a well and reveals the lithology (with the core analysis).`),
               act:{label:TR(`Sondage en (${sc.b.x}, ${sc.b.y}) · ${formatM(sc.p.cost)}`,`Survey hole at (${sc.b.x}, ${sc.b.y}) · ${formatM(sc.p.cost)}`), call:`guideDo('strati',${sc.b.id})`, ok:G.mode==='sandbox'||money(sc.p.cost), why:TR(`Budget insuffisant (${formatM(sc.p.cost)} requis).`,`Insufficient budget (${formatM(sc.p.cost)} required).`)}}; }
   if(G.labPick==null && LABOPT.pick && ranked.length){
     return {cur:4, text:TR('Avant de forer, désignez sur la coupe l\'horizon que vous pensez être le réservoir : clic sur la sismique, ou bouton « viser » du tableau. Un mauvais choix donne un puits sec.','Before drilling, designate on the section the horizon you think is the reservoir: click on the seismic, or the “aim” button in the table. A wrong choice gives a dry hole.'),
@@ -6698,10 +6707,11 @@ function guideDo(kind, id){
   if(kind==='ext'){
     // 2D réduite au seul bloc visé, sans toucher à la coupe affichée
     const a = G.sectionA, bb = G.sectionB;
-    G.sectionA = G.sectionB = id; performStudy(id,'seismic2d'); G.sectionA = a; G.sectionB = bb;
+    G.sectionA = G.sectionB = id; G._single = true; try { performStudy(id,'seismic2d'); } finally { G._single = false; } G.sectionA = a; G.sectionB = bb;
     performStudy(id,'seismic3d'); guideSelect(id); return;
   }
   if(kind==='stratilog'){ stratiLog(id); guideSelect(id); return; }
+  if(kind==='core'){ performStudy(id,'core'); guideSelect(id); return; }
   if(kind==='strati'){
     guideSelect(id);
     if(isMobileLayout()) showMobileScreen('studies'); else switchTab('studies');
@@ -6866,6 +6876,9 @@ function onBlockClick(id){
     case 'section':
       if(G.sectionA===null||G.sectionB!==null){
         G.sectionA=id; G.sectionB=null;
+      } else if(id===G.sectionA){
+        toast(TR('Choisissez un second bloc différent de A : une coupe a besoin d\'au moins deux blocs.','Pick a second block different from A: a section needs at least two blocks.'));
+        return;
       } else {
         G.sectionB=id; G.labSecPrev = null; secRemember(G.sectionA, id);
         // Le profil est posé : l'outil revient à Sélection, sinon le clic suivant effaçait la coupe.
@@ -7211,8 +7224,8 @@ const GLOSSARY_ENTRIES = [
   {term:TR('Porosité / perméabilité','Porosity / permeability'), def:TR('La porosité mesure le volume de vide pouvant stocker des fluides ; la perméabilité mesure la capacité de ces fluides à circuler. Un bon réservoir a besoin des deux.','Porosity measures the void volume able to store fluids; permeability measures the ability of those fluids to flow. A good reservoir needs both.')},
   {term:TR('Gravimétrie','Gravity'), def:TR('Étude régionale bon marché qui révèle la structure générale (hauts/bas structuraux) de toute la concession en une seule campagne.','Cheap regional study that reveals the general structure (structural highs/lows) of the whole concession in a single campaign.')},
   {term:TR('Sismique 2D','2D seismic'), def:TR('Profil le long d\'un transect A→B qui révèle la géométrie des horizons et les failles le long de ce profil.','Profile along an A→B transect that reveals the geometry of the horizons and the faults along this profile.')},
-  {term:TR('Log de puits','Well log'), def:TR('Diagraphies réalisées DANS un puits : donnent la colonne stratigraphique précise et les courbes (GR, résistivité, densité, neutron, sonique). Un forage les fournit toujours, succès ou échec. Un sondage stratigraphique, moins cher, ne les donne qu\'après une diagraphie payante lancée à part.','Logs run IN a well: they give the precise stratigraphic column and the curves (GR, resistivity, density, neutron, sonic). A well always provides them, success or failure. A cheaper stratigraphic survey hole only provides them after a paid log launched separately.')},
-  {term:TR('Sondage stratigraphique','Stratigraphic test well'), def:TR('Forage carotté à environ 30 % du prix d\'un puits, qui ne peut jamais produire et ne renseigne pas sur les fluides. Il ramène des carottes ; le log et la lithologie demandent la diagraphie du sondage. Utile pour caler la sismique avant de forer cher.','Cored well at about 30 % of the price of a well, which can never produce and gives no information on fluids. It brings back cores; the log and lithology require the survey hole log. Useful to tie the seismic before an expensive well.')},
+  {term:TR('Log de puits','Well log'), def:TR('Diagraphies réalisées DANS un puits : donnent la colonne stratigraphique précise et les courbes (GR, résistivité, densité, neutron, sonique). Un forage les fournit toujours, succès ou échec. Un sondage stratigraphique, moins cher, ne les donne qu\'après une diagraphie payante lancée à part (sa lithologie sur la coupe vient de la carotte).','Logs run IN a well: they give the precise stratigraphic column and the curves (GR, resistivity, density, neutron, sonic). A well always provides them, success or failure. A cheaper stratigraphic survey hole only provides them after a paid log launched separately (its lithology on the section comes from the core).')},
+  {term:TR('Sondage stratigraphique','Stratigraphic test well'), def:TR('Forage carotté à environ 30 % du prix d\'un puits, qui ne peut jamais produire et ne renseigne pas sur les fluides. Il ramène des carottes ; la lithologie sur la coupe demande l\'analyse de carotte, les courbes du log la diagraphie du sondage. Utile pour caler la sismique avant de forer cher.','Cored well at about 30 % of the price of a well, which can never produce and gives no information on fluids. It brings back cores; the lithology on the section requires the core analysis, the log curves the survey hole log. Useful to tie the seismic before an expensive well.')},
   {term:'Informateur', def:TR('Service payant du jeu : un briefing à 8 mois et un abonnement d\'alertes sur les événements de marché (chocs de prix, embargo, récession, tempête, taxe). Il ne voit qu\'une partie de ce qui se prépare et se trompe parfois : son bilan est affiché.','Paid in-game service: an 8-month briefing and an alert subscription for market events (price shocks, embargo, recession, storm, tax). It only sees part of what is brewing and is sometimes wrong: its track record is shown.')},
   {term:TR('Abandon d\'un puits','Well abandonment'), def:TR('Bouchons de ciment et remise en état du site, payés à la fermeture ou à l\'épuisement : 12 % du coût de forage à terre, 18 % en mer.','Cement plugs and site restoration, paid at closure or depletion: 12 % of the drilling cost onshore, 18 % offshore.')},
   {term:TR('Sismique 3D (DHI)','3D seismic (DHI)'), def:TR('Cube sismique avec analyse d\'amplitude (AVO) recherchant des indicateurs directs d\'hydrocarbures (bright spots). La meilleure information possible sans forer, mais qui reste une estimation.','Seismic cube with amplitude analysis (AVO) looking for direct hydrocarbon indicators (bright spots). The best possible information without drilling, but still an estimate.')},
@@ -7239,7 +7252,7 @@ const REALITY_ENTRIES = [
   {tag:'jeu', term:TR('Événements de marché','Market events'), def:TR('Embargo, récession, tempête, taxe exceptionnelle : des catégories réalistes, mais fréquences et ampleurs inventées.','Embargo, recession, storm, extraordinary tax: realistic categories, but invented frequencies and magnitudes.')},
   {tag:'jeu', term:'Informateur', def:TR('Détection de 75 à 80 % et fausses alertes : des règles de jeu pour créer un pari, pas des statistiques réelles.','Detection of 75 to 80 % and false alarms: game rules to create a gamble, not real statistics.')},
   {tag:'jeu', term:TR('Incidents du drain','Drain incidents'), def:TR('Les causes (argile, coude serré, outil usé, faille) sont réalistes ; les probabilités sont réglées pour le jeu.','The causes (clay, tight bend, worn tool, fault) are realistic; the probabilities are tuned for the game.')},
-  {tag:'jeu', term:TR('Sondage et diagraphie payés à part','Survey hole and log paid separately'), def:TR('Sur un chantier réel, la diagraphie fait partie du budget du forage. Elle est séparée ici pour en faire un choix.','On a real site, the log is part of the drilling budget. It is separated here to make it a choice.')},
+  {tag:'jeu', term:TR('Sondage, carotte et diagraphie payés à part','Survey hole, core and log paid separately'), def:TR('Sur un chantier réel, la diagraphie fait partie du budget du forage. Elle est séparée ici, comme la carotte, pour en faire un choix.','On a real site, the log is part of the drilling budget. It is separated here, like the core, to make it a choice.')},
 ];
 function renderGlossary(){
   const el = document.getElementById('glossaryContent');
@@ -8987,8 +9000,8 @@ function _doStartGame(){
     {
       title: TR('Sondage, carotte et Rock-Eval','Survey hole, core and Rock-Eval'),
       body: `${TR('<i style="color:var(--muted)">🌱 En mode Découverte, cette partie n\'est pas proposée : elle vient avec les autres niveaux.</i><br>','<i style="color:var(--muted)">🌱 In Discovery mode this part is not offered: it comes with the other levels.</i><br>')}Un <b>${TR(`sondage stratigraphique`,`stratigraphic survey hole`)}</b>${TR(` se lance depuis la carte `,` is launched from the card `)}<b>${TR(`Sondage`,`Survey hole`)}</b>${TR(` de l'onglet Études (dès qu'un bloc a une première étude). Il coûte environ 30 % d'un forage classique et ne produit jamais ;
-        il est foré hors du sommet du piège et ne dit rien sur les fluides. Il ramène des carottes. Le `,` of the Studies tab (as soon as a block has a first study). It costs about 30 % of a standard well and never produces;
-        it is drilled off the top of the trap and says nothing about fluids. It brings back cores. The `)}<b>log</b>${TR(` et la lithologie, eux, demandent la `,` and the lithology, for their part, require the `)}<b>${TR(`diagraphie du sondage`,`survey hole log`)}</b>${TR(`, une étude payante à lancer ensuite : sans elle, la coupe ne montre pas les roches.`,`, a paid study to launch next: without it, the section does not show the rocks.`)}<br><br>${TR(`
+        il est foré hors du sommet du piège et ne dit rien sur les fluides. Il ramène des carottes. La `,` of the Studies tab (as soon as a block has a first study). It costs about 30 % of a standard well and never produces;
+        it is drilled off the top of the trap and says nothing about fluids. It brings back cores. The `)}<b>${TR(`lithologie`,`lithology`)}</b>${TR(` sur la coupe, elle, demande l'`,` on the section, for its part, requires the `)}<b>${TR(`analyse de carotte`,`core analysis`)}</b>${TR(`, une étude payante à lancer ensuite : sans elle, la coupe ne montre pas les roches. La diagraphie du sondage donne, à part, les courbes du log.`,`, a paid study to launch next: without it, the section does not show the rocks. The survey hole log gives the log curves separately.`)}<br><br>${TR(`
         Après un forage ou un sondage, l'onglet `,`
         After a well or a survey hole, the `)}<b>Études</b>${TR(` propose aussi la `,` tab also offers the `)}<b>${TR(`carotte`,`core`)}</b>${TR(` (porosité, perméabilité, pétrographie)
         et la géochimie `,` (porosity, permeability, petrography)
@@ -9225,7 +9238,7 @@ function _doStartGame(){
     const calc = fluid==='eau' ? 'poro' : (opt.calc==='sw' || opt.calc==='contact' ? opt.calc : (Math.random()<0.5 ? 'sw' : 'contact'));
     const keep = { blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
     try {
-      for(let tries=0; tries<160; tries++){
+      for(let tries=0; tries<400; tries++){
         const bt = ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast'][Math.floor(Math.random()*8)];
         generateGeology(12, bt, true, (Math.random()*1e9)|0);
         const ok = blocks.filter(b=>!b.inSalt && b.horizons.some(h=>h.role==='reservoir' && (h.thicknessLocal??h.thickness)>=30) && b.topOfReservoir<4600);

@@ -25,8 +25,8 @@ const { chromium, devices } = require('playwright'); const path = require('path'
     b.studyLevel = 1; renderSection(); o.barBtns = [...bar.querySelectorAll('button')].map(x=>x.textContent.trim().slice(0,12));
     o.btnH = Math.min(...[...bar.querySelectorAll('button')].map(x=>x.getBoundingClientRect().height));
     const b0 = G.budget; launchStrati(b.id); o.strati = G.drilling.some(d=>d.blockId===b.id && d.method==='strati') && G.budget<b0;
-    for(let i=0;i<30 && G.drilling.some(d=>d.blockId===b.id); i++) monthTick(); renderSection(); o.barLog = /Diagraphie du sondage/.test(bar.textContent);
-    stratiLog(b.id); secActionsRender(); o.barDrill = /Forer/.test(bar.textContent) && /Sondage diagraphié/.test(bar.textContent);
+    for(let i=0;i<30 && G.drilling.some(d=>d.blockId===b.id); i++) monthTick(); renderSection(); o.barLog = /Carotte \(lithologie\)/.test(bar.textContent) && /Diagraphie/.test(bar.textContent);
+    performStudy(b.id,'core'); stratiLog(b.id); secActionsRender(); o.barDrill = /Forer/.test(bar.textContent) && /Sondage carotté/.test(bar.textContent);
     const b1 = G.budget; secDrill(b.id); o.drilled = G.drilling.some(d=>d.blockId===b.id && d.method==='vertical') && G.budget<b1;
     selectedBlock = null; renderSection(); o.barHidden = bar.style.display==='none';
     return o; });
@@ -37,7 +37,7 @@ const { chromium, devices } = require('playwright'); const path = require('path'
   ok(T.reopen, 'un clic sur une ancienne coupe la rouvre');
   ok(T.barStudy, 'sous la coupe, un bloc sans étude propose d\'abord une étude');
   ok(T.barBtns.some(x=>/Sondage/.test(x)) && T.barBtns.some(x=>/Forer/.test(x)) && T.btnH>=40, 'sondage et forage sont proposés avec leur coût, boutons de 40 px au moins '+JSON.stringify(T.barBtns)+' '+Math.round(T.btnH));
-  ok(T.strati && T.barLog && T.barDrill, 'le sondage se lance, puis la diagraphie, puis le forage, depuis la coupe');
+  ok(T.strati && T.barLog && T.barDrill, 'le sondage se lance, puis la carotte et la diagraphie, puis le forage, depuis la coupe');
   ok(T.drilled, 'le forage lancé depuis la coupe débite le budget et ouvre un forage vertical');
   ok(T.barHidden, 'la barre disparaît quand aucun bloc n\'est sélectionné');
   ok(errs.length===0, 'aucune erreur JS '+errs.join('|'));

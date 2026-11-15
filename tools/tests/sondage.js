@@ -17,12 +17,14 @@ const { chromium } = require('playwright'); const path = require('path');
     o.done = b.strati===true; o.noLog = !b.studies.some(s=>s.type==='welllog'); o.notDrilled = !labDrilled(b);
     renderStudiesPanel(b); o.logBtn = !!document.getElementById('stratiLogBtn');
     o.coreOk = (document.getElementById('studiesPanel')||document.body).innerHTML.includes("performStudy("+b.id+",'core')");
+    // la diagraphie donne les courbes du log mais ne dévoile pas la lithologie sur la coupe ; c'est la carotte qui le fait
     const b1 = G.budget; stratiLog(b.id); o.logPaid = Math.round(b1 - G.budget) === Math.round(stratiLogCost(b)) && stratiLogCost(b)>0;
-    o.hasLog = b.studies.some(s=>s.type==='welllog'); o.nowDrilled = labDrilled(b);
-    stratiLog(b.id); o.noDouble = Math.round(b1 - G.budget) === Math.round(stratiLogCost(b));
+    o.hasLog = b.studies.some(s=>s.type==='welllog'); o.logOnlyNotDrilled = !labDrilled(b);
+    const bc = G.budget; performStudy(b.id,'core'); o.corePaid = bc > G.budget; o.nowDrilled = labDrilled(b);
+    const b2 = G.budget; stratiLog(b.id); o.noDouble = G.budget === b2;
     renderStudiesPanel(b); o.logDone = /Diagraphie réalisée/.test(document.body.innerHTML);
     // guide : sondage foré sans log -> diagraphie proposée
-    blocks[0].studies.push({type:'gravity', cost:0, result:{}, month:1, revealed:true}); const c = blocks.find(x=>x.id!==b.id && !x.inSalt); c.strati = true; c.studyLevel = 1; const g = guideCompute(); o.guideLog = !!(g && /diagraphie/i.test(g.text) && /stratilog/.test(g.act.call)); c.strati = false;
+    blocks[0].studies.push({type:'gravity', cost:0, result:{}, month:1, revealed:true}); const c = blocks.find(x=>x.id!==b.id && !x.inSalt); c.strati = true; c.studyLevel = 1; const g = guideCompute(); o.guideLog = !!(g && /carotte/i.test(g.text) && /guideDo\('core'/.test(g.act.call)); c.strati = false;
     // sandbox : gratuit
     G.mode='sandbox'; o.sandFree = stratiLogCost(b)===0; G.mode='junior';
     return o; });
@@ -31,9 +33,10 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(T.paid && T.inDrilling, 'lancer le sondage coûte et ouvre un forage de type sondage');
   ok(T.done && T.noLog && T.notDrilled, 'un sondage terminé ne donne pas le log et ne compte pas encore sur la coupe');
   ok(T.logBtn && T.coreOk, 'la diagraphie est proposée à part, la carotte reste possible tout de suite');
-  ok(T.logPaid && T.hasLog && T.nowDrilled, 'la diagraphie est payante et fait compter le sondage sur la coupe');
+  ok(T.logPaid && T.hasLog && T.logOnlyNotDrilled, 'la diagraphie est payante et ne dévoile pas la lithologie sur la coupe');
+  ok(T.corePaid && T.nowDrilled, 'la carotte est payante et dévoile la lithologie du sondage sur la coupe');
   ok(T.noDouble && T.logDone, 'la diagraphie ne se paie qu\'une fois');
-  ok(T.guideLog, 'le guide propose la diagraphie d\'un sondage non diagraphié');
+  ok(T.guideLog, 'le guide propose la carotte d\'un sondage non carotté');
   ok(T.sandFree, 'diagraphie gratuite en bac à sable');
   const tut = await pg.evaluate(()=>{ document.getElementById('openTutorialBtn')?.click(); let s=''; for(let i=0;i<14;i++){ s += document.getElementById('tutoSlideBody').innerHTML; const n=document.getElementById('tutoNextBtn'); if(!n || /Terminer|Finish/.test(n.textContent)) break; n.click(); } return { strati:/carte <b>Sondage<\/b>/.test(s), aband:/abandon<\/b> \(12 %/.test(s), rig:/console de forage<\/b> \(pilotage/.test(s), daily:/Défi du jour<\/b>/.test(s) }; });
   ok(tut.strati && tut.aband && tut.rig && tut.daily, 'le tutoriel décrit le sondage, l\'abandon, la console de forage et le défi du jour '+JSON.stringify(tut));
