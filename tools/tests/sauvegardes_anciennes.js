@@ -26,7 +26,7 @@ const OLD = [ ['c7f9133','V4.45'], ['76c9ad4','V4.56'], ['5ba1c66','V4.63'], ['2
       o.same = G.month===exp.month && Math.round(G.budget)===exp.budget && G.wells.length===exp.wells && blocks.filter(x=>x.dryHole).length===exp.dry && blocks.length===exp.n && blocks[0].trueProbability===exp.p0;
       o.defaults = { simple:!!G.simple, pcalW:PCAL_W, pcalE:PCAL_E, hist:Array.isArray(G.sectionsHistory)||G.sectionsHistory===undefined, inf:getComputedStyle(document.getElementById('btnInformant')).display!=='none' };
       const errs=[]; const t = (n,fn)=>{ try{ fn(); }catch(e){ errs.push(n+' : '+e.message); } };
-      t('mois', ()=>{ for(let i=0;i<36;i++) monthTick(); }); t('coupe', ()=>{ setTool('section'); onBlockClick(0); onBlockClick(Math.min(5,blocks.length-1)); renderSection(); labDrawSecLine(); });
+      t('mois', ()=>{ const rr = Math.random; Math.random = ()=>0.9999; /* les vieilles sauvegardes n'ont pas de seed : sans cela un accident (0,4 % par puits et par mois) pouvait fermer le puits observé */ try { for(let i=0;i<36;i++) monthTick(); } finally { Math.random = rr; } }); t('coupe', ()=>{ setTool('section'); onBlockClick(0); onBlockClick(Math.min(5,blocks.length-1)); renderSection(); labDrawSecLine(); });
       t('panneau bloc', ()=>{ const b=blocks.find(x=>x.well||x.dryHole)||blocks[0]; selectedBlock=b.id; renderGeoPanel(b); renderStudiesPanel(b); secActionsRender(); });
       t('guide', ()=>{ renderGuide(); guideCompute(); }); t('finance', ()=>{ if(G.financeMode) renderFinancePanel(); }); t('gisements', ()=>{ renderGisementsPanel(); });
       t('informateur', ()=>{ informantOpen(); informantRender(); informantClose(); }); t('glossaire', ()=>{ showPauseView('glossary'); });
