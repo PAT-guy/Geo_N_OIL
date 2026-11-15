@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.85</title>
+<title>GeoExplorer V4.86</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -425,6 +425,7 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 @keyframes pauseSheetUp{from{transform:translateY(24px);opacity:.4;}to{transform:translateY(0);opacity:1;}}
 #drillRevealModal{position:fixed;inset:0;z-index:1300;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px;}
 #drillRevealModal.open{display:flex;}
+.dr-recap{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px;} .dr-recap th,.dr-recap td{padding:5px 6px;text-align:left;border-bottom:1px solid var(--line);} .dr-recap tr.ok td:nth-child(2){color:var(--green);font-weight:600;} .dr-recap tr.ko td:nth-child(2){color:var(--red);font-weight:600;} .dr-recap tfoot td{border-bottom:none;}
 .est-card{border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:10px 12px;margin:8px 0;}
 .est-row{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;gap:8px;}
 .est-row b{font-family:var(--mono);font-weight:600;color:var(--amber);}
@@ -489,7 +490,14 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .gl-loi{background:color-mix(in srgb,var(--green) 22%,var(--panel));color:var(--text);}
 .gl-approx{background:color-mix(in srgb,var(--amber) 24%,var(--panel));color:var(--text);}
 .gl-jeu{background:color-mix(in srgb,var(--muted) 24%,var(--panel));color:var(--text);}
-#endScreen{position:fixed;inset:0;z-index:998;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;padding:20px;}
+#endScreen{position:fixed;inset:0;z-index:998;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:flex-start;padding:20px 14px 40px;overflow-y:auto;}
+#endScreen .end-box{max-width:720px;}
+.end-sec{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;}
+.end-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:14px;}
+.end-kpi{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--bg);} .end-kpi b{display:block;font-family:var(--serif);font-size:22px;line-height:1.2;} .end-kpi span{font-size:11px;color:var(--muted);}
+.end-bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin:10px 0 2px;} .end-bar i{display:block;height:100%;background:var(--green);}
+.end-line{font-size:14px;line-height:1.5;}
+.end-tbl{width:100%;border-collapse:collapse;font-size:12px;} .end-tbl th,.end-tbl td{padding:6px 8px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top;} .end-tbl th{color:var(--muted);font-weight:500;font-size:11px;} .end-tbl tr.ok td:nth-child(5){color:var(--green);font-weight:600;} .end-tbl tr.ko td:nth-child(5){color:var(--red);font-weight:600;} .end-tblwrap{overflow-x:auto;}
 .end-icon{font-size:48px;margin-bottom:10px;}
 .end-title{font-family:var(--serif);font-weight:600;font-size:32px;margin-bottom:6px;}
 .end-box{background:var(--panel);border:1px solid var(--line);padding:24px;width:100%;max-width:500px;margin:16px 0;border-radius:10px;}
@@ -920,6 +928,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
     <div id="drillRevealTitle"></div>
     <div id="drillRevealSub"></div>
     <div id="drillRevealDetail"></div>
+    <button class="cg-close" id="drillRevealSkipBtn" style="display:none;">⏭ Tout voir d'un coup</button>
     <button class="cg-close" id="drillRevealCloseBtn" style="display:none;">✓ Continuer</button>
   </div>
 </div>
@@ -1070,13 +1079,17 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
 <div id="endScreen">
   <div class="end-icon" id="endIcon">🏆</div>
   <div class="end-title" id="endTitle" style="color:var(--amber)">FIN DE PARTIE</div>
+  <div class="end-box" id="endHero"></div>
+  <div class="end-box" id="endChartBox" style="display:none;"></div>
+  <div class="end-box" id="endDrillsBox" style="display:none;"></div>
   <div class="end-box">
+    <div class="end-sec" id="endStatsTitle"></div>
     <div class="end-grid" id="endStats"></div>
   </div>
-  <div class="end-box" id="debriefBox" style="max-width:640px;max-height:38vh;overflow-y:auto;margin-top:12px;">
+  <div class="end-box" id="debriefBox" style="margin-top:12px;">
     <div id="endDebrief"></div>
   </div>
-  <div class="end-box" id="endGisementsBox" style="max-width:640px;max-height:32vh;overflow-y:auto;margin-top:12px;">
+  <div class="end-box" id="endGisementsBox" style="margin-top:12px;">
     <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🛢 Gisements exploités</div>
     <div id="endGisementsContent"></div>
   </div>
@@ -2897,7 +2910,14 @@ function drillBlock(blockId, method, equip, est){
   updateHud(); renderBlock(b);
 }
 
+// Le résultat d'un forage ne doit pas apparaître (icône, journal, compteur) avant la révélation : on le retient jusqu'à la fin du suspense.
 function resolveDrilling(d){
+  if(d.sidetrack) return resolveSidetrack(d);
+  if(d.method==='strati') return labResolveStrati(d);
+  const b0 = blocks[d.blockId]; b0.revealPending = true; window.__logHold = [];
+  try { resolveDrillingCore(d); } finally { b0.__held = window.__logHold || []; window.__logHold = null; }
+}
+function resolveDrillingCore(d){
   if(d.sidetrack) return resolveSidetrack(d);
   if(d.method==='strati') return labResolveStrati(d);
   const b = blocks[d.blockId];
@@ -2959,7 +2979,6 @@ function resolveDrilling(d){
   const calibHtml = (d.est ? applyCalibration(d.est, geoOk, prodOut, b) : '') + labResultHtml(b, labMissed, labResIdx);
   renderBlock(b);
   updateHud();
-  if(selectedBlock===d.blockId){ renderGeoPanel(b); renderStudiesPanel(b); }
 
   showDrillReveal(b, geoOk, techOk, labMissed ? 'labmiss' : limitingFactor, calibHtml);
 }
@@ -3710,7 +3729,8 @@ function recapMarketCalibHtml(){
 function showEnd(reason){
   setSpeed(0);
   // Une fenêtre de forage ou d'alerte encore ouverte ne doit pas rester par-dessus l'écran de fin.
-  drillRevealQueue.length = 0; drillRevealPlaying = false;
+  [drillRevealCur, ...drillRevealQueue].forEach(it=>{ try{ drillRevealFlush(it); }catch(e){} });
+  drillRevealQueue.length = 0; drillRevealPlaying = false; drillRevealBatch = []; drillRevealRecapOpen = false;
   document.getElementById('drillRevealModal')?.classList.remove('open');
   document.getElementById('alertModal')?.classList.remove('open');
   const icon  = {win:'🏆', bankrupt:'💀', time:'⏰', quit:'🚪'}[reason];
@@ -3747,8 +3767,73 @@ function showEnd(reason){
     dailyRefreshBtn();
   }
   buildDebriefReport();
+  buildRecapExtras(reason);
   document.getElementById('endScreen').style.display='flex';
+  document.getElementById('endScreen').scrollTop = 0;
   document.getElementById('endRestartBtn').textContent = reason==='quit' ? TR('🏠 Retour à l\'accueil','🏠 Back to home') : TR('▶ REJOUER','▶ REPLAY');
+}
+
+
+// Page de bilan : résultat en tête (valeur nette, avancement vers l'objectif, taux de réussite), courbe du budget avec les forages, tableau de tous les forages.
+function buildRecapExtras(reason){
+  const m = MODES[G.mode], goal = m.winGoal || 0, nw = netWorth(), fx = v => String(v).replace('.',DEC);
+  const wells = G.wells.map(w=>({b:blocks[w.blockId], info:w, ok:true})).concat(blocks.filter(b=>b.dryHole && b.dryHoleInfo).map(b=>({b, info:b.dryHoleInfo, ok:false}))).sort((a,z)=>(a.info.month??0)-(z.info.month??0));
+  const nOk = wells.filter(w=>w.ok).length, nTot = wells.length, rate = nTot ? Math.round(nOk/nTot*100) : 0, years = (G.month/12).toFixed(1);
+  const head = { win: TR(`Objectif atteint : valeur nette ${formatM(nw)} en ${fx(years)} ans.`,`Goal reached: net worth ${formatM(nw)} in ${fx(years)} years.`),
+                 bankrupt: TR(`Faillite après ${fx(years)} ans : le budget est épuisé.`,`Bankruptcy after ${fx(years)} years: the budget is exhausted.`),
+                 time: TR(`Temps écoulé après ${fx(years)} ans : valeur nette ${formatM(nw)}${goal ? ' sur '+formatM(goal)+' visés' : ''}.`,`Time is up after ${fx(years)} years: net worth ${formatM(nw)}${goal ? ' out of '+formatM(goal)+' targeted' : ''}.`),
+                 quit: TR(`Partie quittée après ${fx(years)} ans : valeur nette ${formatM(nw)}.`,`Game left after ${fx(years)} years: net worth ${formatM(nw)}.`) }[reason];
+  const pct = goal ? Math.max(0, Math.min(100, Math.round(nw/goal*100))) : null;
+  const best = G.wells.slice().sort((a,z)=>z.production-a.production)[0];
+  const hero = document.getElementById('endHero');
+  if(hero) hero.innerHTML = `<div class="end-line"><b>${head}</b></div>`
+    + (pct!==null ? `<div class="end-bar"><i style="width:${pct}%"></i></div><div style="font-size:11px;color:var(--muted);">${TR(`Objectif ${formatM(goal)} : ${pct} %`,`Goal ${formatM(goal)}: ${pct} %`)}</div>` : '')
+    + `<div class="end-kpis">
+        <div class="end-kpi"><b>${formatM(nw)}</b><span>${TR('Valeur nette','Net worth')}</span></div>
+        <div class="end-kpi"><b>${nOk} / ${nTot}</b><span>${TR(`Forages productifs${nTot ? ' ('+rate+' %)' : ''}`,`Productive wells${nTot ? ' ('+rate+' %)' : ''}`)}</span></div>
+        <div class="end-kpi"><b>${formatM(G.totalRevenue||0)}</b><span>${TR('Revenus cumulés','Cumulative revenue')}</span></div>
+        <div class="end-kpi"><b>${best ? Math.round(best.production)+' '+(best.isGas?'Mcf':TR('b/mois','b/month')) : '–'}</b><span>${TR('Meilleur puits','Best well')}</span></div>
+      </div>`;
+  const t = document.getElementById('endStatsTitle'); if(t) t.textContent = TR('Détails de la partie','Game details');
+  // courbe du budget (et du brut) avec les forages en repères
+  const cb = document.getElementById('endChartBox'), H = G.history || [];
+  if(cb){
+    if(H.length < 3){ cb.style.display = 'none'; }
+    else {
+      cb.style.display = '';
+      const W = 640, HH = 190, L = 44, R = 10, T = 12, B = 26, n = H.length, m0 = H[0].month, m1 = H[n-1].month || 1;
+      const bud = H.map(h=>h.budget), lo = Math.min(0, ...bud), hi = Math.max(goal||0, ...bud) * 1.05 || 1;
+      const X = mo => L + (mo-m0)/Math.max(1,(m1-m0))*(W-L-R), Y = v => T + (1-(v-lo)/(hi-lo))*(HH-T-B);
+      const line = bud.map((v,i)=>`${i?'L':'M'}${X(H[i].month).toFixed(1)},${Y(v).toFixed(1)}`).join('');
+      const pr = H.map(h=>h.price), pl = Math.min(...pr), ph = Math.max(...pr), PY = v => T + (1-(v-pl)/Math.max(1,(ph-pl)))*(HH-T-B)*0.35 + (HH-T-B)*0.65;
+      const pline = pr.map((v,i)=>`${i?'L':'M'}${X(H[i].month).toFixed(1)},${PY(v).toFixed(1)}`).join('');
+      const dots = wells.map(w=>{ const mo = Math.max(m0, Math.min(m1, w.info.month ?? m0)); return `<circle cx="${X(mo).toFixed(1)}" cy="${(HH-B+10).toFixed(1)}" r="4" fill="${w.ok?'var(--green)':'var(--red)'}"><title>(${w.b.x},${w.b.y}) ${w.ok?'✓':'✗'}</title></circle>`; }).join('');
+      const yrs = []; for(let y=0; y*12<=m1; y+=Math.max(1,Math.round(m1/12/6))) yrs.push(y);
+      cb.innerHTML = `<div class="end-sec">${TR('Budget au fil des ans','Budget over the years')}</div>
+        <svg viewBox="0 0 ${W} ${HH}" style="width:100%;height:auto;" role="img" aria-label="${TR('Courbe du budget','Budget curve')}">
+          <line x1="${L}" y1="${Y(0).toFixed(1)}" x2="${W-R}" y2="${Y(0).toFixed(1)}" stroke="var(--line)"/>
+          ${goal ? `<line x1="${L}" y1="${Y(goal).toFixed(1)}" x2="${W-R}" y2="${Y(goal).toFixed(1)}" stroke="var(--green)" stroke-dasharray="4,3"/><text x="${L+4}" y="${(Y(goal)-3).toFixed(1)}" font-size="10" fill="var(--green)">${TR('objectif','goal')} ${formatM(goal)}</text>` : ''}
+          <path d="${pline}" fill="none" stroke="var(--muted)" stroke-width="1" opacity=".55"/>
+          <path d="${line}" fill="none" stroke="var(--amber)" stroke-width="2"/>
+          ${yrs.map(y=>`<text x="${X(y*12).toFixed(1)}" y="${HH-2}" font-size="10" fill="var(--muted)" text-anchor="middle">${y}${TR(' ans',' y')}</text>`).join('')}
+          <text x="4" y="${T+8}" font-size="10" fill="var(--muted)">${formatM(hi)}</text><text x="4" y="${Y(0)-3}" font-size="10" fill="var(--muted)">0</text>
+          ${dots}
+        </svg>
+        <div style="font-size:11px;color:var(--muted);">${TR('Ligne ambre : budget. Ligne grise : cours du brut. Points : forages (vert productif, rouge sec).','Amber line: budget. Grey line: crude price. Dots: wells (green productive, red dry).')}</div>`;
+    }
+  }
+  // tableau de tous les forages
+  const db = document.getElementById('endDrillsBox');
+  if(db){
+    if(!nTot){ db.style.display = 'none'; }
+    else {
+      db.style.display = '';
+      const rows = wells.map(w=>{ const b = w.b, inf = w.info, est = b.estAtDrill && b.estAtDrill.p!=null ? Math.round(b.estAtDrill.p*100)+' %' : '–';
+        const res = w.ok ? `${Math.round(inf.production)} ${inf.isGas?'Mcf':TR('b/mois','b/month')}` : (b.wrongTarget ? TR('mauvais horizon','wrong horizon') : (inf.techFail ? TR('échec technique','technical failure') : FACTOR_LABEL[inf.limitingFactor]||''));
+        return `<tr class="${w.ok?'ok':'ko'}"><td>${inf.month??''}</td><td>(${b.x},${b.y})</td><td>${STUDY_LEVEL_NOTE[inf.studyLevelAtDrill] ?? ''}</td><td>${est}</td><td>${w.ok?TR('✓ Productif','✓ Productive'):TR('✗ Sec','✗ Dry')}</td><td>${res}</td><td>${formatM(inf.cost||0)}</td></tr>`; }).join('');
+      db.innerHTML = `<div class="end-sec">${TR('Tous les forages','All wells')}</div><div class="end-tblwrap"><table class="end-tbl"><thead><tr><th>${TR('Mois','Month')}</th><th>${TR('Bloc','Block')}</th><th>${TR('Étude','Study')}</th><th>${TR('Annoncé','Stated')}</th><th>${TR('Résultat','Result')}</th><th>${TR('Production / cause','Production / cause')}</th><th>${TR('Coût','Cost')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+  }
 }
 
 // =====================================================================
@@ -3804,15 +3889,40 @@ function simpleLessonHtml(b, success){
       logTxt = `${TR(` Le log de ce puits montre : `,` This well's log shows: `)}<b>${r.name}</b> de ${th}${TR(` m, porosité `,` m, porosity `)}${Math.round(r.porosity)} %${seal ? TR(', sous <b>',', under <b>')+seal.name.toLowerCase()+'</b>' : ''}${b.isGas ? TR(', avec du gaz (croisement densité-neutron)',', with gas (density-neutron crossover)') : ''}${TR(`. C'est ce que la sismique ne pouvait pas voir.`,`. That is what seismic could not see.`)}`; } }
   return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><b>${TR(`🌱 Leçon.`,`🌱 Lesson.`)}</b> ${t}${logTxt || TR(' Ouvrez l\'onglet Géologie : le log de ce puits montre ce que la sismique ne pouvait pas voir.',' Open the Geology tab: this well\'s log shows what seismic could not see.')}</div>`;
 }
+let drillRevealBatch = [], drillRevealCur = null, drillRevealT = null, drillRevealRecapOpen = false;
+// Le résultat devient visible (carte, journal, compteur, panneaux) au moment de la révélation, pas avant.
+function drillRevealFlush(it){
+  if(!it) return; const b = it.b; if(!b || !b.revealPending) return;
+  b.revealPending = false; (b.__held||[]).forEach(([m,t])=>addLog(m,t)); b.__held = null;
+  renderBlock(b); updateHud();
+  if(selectedBlock===b.id){ renderGeoPanel(b); renderStudiesPanel(b); }
+  if(G.sectionA!==null && typeof renderSection==='function') renderSection();
+  if(typeof bigView!=='undefined' && bigView.open && bigView.kind==='section') bvRender();
+  const success = !!(it.geoOk && it.techOk), info = b.dryHoleInfo;
+  drillRevealBatch.push({ x:b.x, y:b.y, method:it.b.well?.method || 'vertical', success, prod: success ? Math.round(b.well.production) : 0, gas: !!b.isGas,
+    cost: success ? (b.well.cost||0) : (info?.cost||0), cause: success ? '' : (it.limitingFactor==='labmiss' ? TR('mauvais horizon visé','wrong horizon targeted') : !it.techOk ? TR('échec technique du matériel','equipment technical failure') : TR('aucun hydrocarbure','no hydrocarbons')) });
+}
+function showDrillRecap(){
+  const modal = document.getElementById('drillRevealModal'), icon = document.getElementById('drillRevealIcon'), title = document.getElementById('drillRevealTitle'), sub = document.getElementById('drillRevealSub'), detail = document.getElementById('drillRevealDetail');
+  const rows = drillRevealBatch, ok = rows.filter(r=>r.success).length, tot = rows.reduce((t,r)=>t+r.cost,0), prod = rows.reduce((t,r)=>t+r.prod,0);
+  modal.classList.add('open'); drillRevealRecapOpen = true; drillRevealPlaying = true;
+  icon.textContent = '📋'; icon.classList.remove('pulse'); title.textContent = TR('Récapitulatif des forages','Drilling summary'); title.style.color = 'var(--text)';
+  sub.textContent = TR(`${ok} productif${ok>1?'s':''} sur ${rows.length}`,`${ok} productive out of ${rows.length}`);
+  detail.innerHTML = `<table class="dr-recap"><thead><tr><th>${TR('Bloc','Block')}</th><th>${TR('Résultat','Result')}</th><th>${TR('Production / cause','Production / cause')}</th><th>${TR('Coût','Cost')}</th></tr></thead><tbody>`
+    + rows.map(r=>`<tr class="${r.success?'ok':'ko'}"><td>(${r.x},${r.y})</td><td>${r.success?TR('✓ Productif','✓ Productive'):TR('✗ Sec','✗ Dry')}</td><td>${r.success ? r.prod+' '+(r.gas?'Mcf':TR('barils','barrels'))+TR('/mois','/month') : r.cause}</td><td>${formatM(r.cost)}</td></tr>`).join('')
+    + `</tbody><tfoot><tr><td colspan="2"><b>${TR('Total','Total')}</b></td><td><b>${prod ? prod+TR(' /mois',' /month') : '–'}</b></td><td><b>${formatM(tot)}</b></td></tr></tfoot></table>`;
+  document.getElementById('drillRevealCloseBtn').style.display = ''; const sk = document.getElementById('drillRevealSkipBtn'); if(sk) sk.style.display = 'none';
+}
 function showDrillReveal(b, geoOk, techOk, limitingFactor, calibHtml){
   drillRevealQueue.push({b, geoOk, techOk, limitingFactor, calibHtml});
   if(!drillRevealPlaying) playNextDrillReveal();
+  else { const sk = document.getElementById('drillRevealSkipBtn'), cb = document.getElementById('drillRevealCloseBtn'); if(sk && cb && cb.style.display==='none' && !drillRevealRecapOpen) sk.style.display = ''; } // un forage est en suspense et d'autres attendent
 }
 
 function playNextDrillReveal(){
   const next = drillRevealQueue.shift();
   if(!next){ drillRevealPlaying=false; return; }
-  drillRevealPlaying = true;
+  drillRevealPlaying = true; drillRevealCur = next; drillRevealRecapOpen = false;
   const {b, geoOk, techOk, limitingFactor, calibHtml} = next;
   const modal = document.getElementById('drillRevealModal');
   const icon = document.getElementById('drillRevealIcon');
@@ -3828,6 +3938,7 @@ function playNextDrillReveal(){
   sub.textContent = '';
   detail.innerHTML = '';
   closeBtn.style.display = 'none';
+  { const sk = document.getElementById('drillRevealSkipBtn'); if(sk) sk.style.display = drillRevealQueue.length ? '' : 'none'; }
 
   let lineIdx = 0;
   sub.textContent = SUSPENSE_LINES[0];
@@ -3836,8 +3947,10 @@ function playNextDrillReveal(){
     sub.textContent = SUSPENSE_LINES[lineIdx];
   }, 380);
 
-  setTimeout(()=>{
+  const revealTimeout = setTimeout(()=>{
     clearInterval(suspenseInterval);
+    drillRevealFlush(next);
+    { const sk = document.getElementById('drillRevealSkipBtn'); if(sk) sk.style.display = 'none'; }
     icon.classList.remove('pulse');
     if(limitingFactor==='strati'){ icon.textContent='🧪'; title.textContent=TR('SONDAGE TERMINÉ','SURVEY HOLE COMPLETED'); title.style.color='var(--text)'; sub.textContent=TR('Carottes récupérées : diagraphie à lancer séparément','Cores recovered: run the log separately'); detail.innerHTML = calibHtml; closeBtn.style.display=''; return; }
     const success = geoOk && techOk;
@@ -3863,11 +3976,22 @@ function playNextDrillReveal(){
     if(G.simple) detail.innerHTML += simpleLessonHtml(b, success);
     closeBtn.style.display = '';
   }, 1500);
+  drillRevealT = { iv: suspenseInterval, to: revealTimeout };
 }
 
 document.getElementById('drillRevealCloseBtn').addEventListener('click', ()=>{
-  document.getElementById('drillRevealModal').classList.remove('open');
+  const modal = document.getElementById('drillRevealModal');
+  if(drillRevealRecapOpen){ drillRevealRecapOpen = false; drillRevealBatch = []; modal.classList.remove('open'); playNextDrillReveal(); return; }
+  if(!drillRevealQueue.length && drillRevealBatch.length>=2){ showDrillRecap(); return; } // plusieurs forages à la suite : tableau récapitulatif
+  if(!drillRevealQueue.length) drillRevealBatch = [];
+  modal.classList.remove('open');
   playNextDrillReveal();
+});
+// Plusieurs forages en file : tout voir d'un coup, directement le tableau récapitulatif
+document.getElementById('drillRevealSkipBtn')?.addEventListener('click', ()=>{
+  if(drillRevealT){ clearInterval(drillRevealT.iv); clearTimeout(drillRevealT.to); drillRevealT = null; }
+  const all = [drillRevealCur, ...drillRevealQueue.splice(0)].filter(Boolean); all.forEach(drillRevealFlush);
+  showDrillRecap();
 });
 
 
@@ -4042,7 +4166,8 @@ function renderBlock(b){
     div.innerHTML = `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.8);">${Math.round(p*100)}%</span>`;
   } else {
     // État visuel d'après ce que le joueur SAIT, jamais d'après la vraie géologie
-    if(b.well)         div.classList.add('has-well');
+    if(b.revealPending) div.classList.add('drilling');
+    else if(b.well)         div.classList.add('has-well');
     else if(b.dryHole) div.classList.add('dry-hole');
     else if(est?.prob !== undefined){
       const p = est.prob;
@@ -4056,7 +4181,7 @@ function renderBlock(b){
     else div.classList.add('unexplored');
     // Corps salifère : seulement si la gravimétrie l'a signalé, ou une fois foré
     // (avant, la teinte révélait gratuitement la position des diapirs).
-    if(est?.saltHint || (b.inSalt && (b.well || b.dryHole))) div.classList.add('salt');
+    if(est?.saltHint || (b.inSalt && !b.revealPending && (b.well || b.dryHole))) div.classList.add('salt');
     if(b.planned) div.style.outline='2px solid var(--green)';
   }
   if(b.isOffshore) div.classList.add('offshore','sea');
@@ -6317,7 +6442,7 @@ function updateHud(){
   cf.textContent=(G.lastCF>=0?'+':'')+formatM(G.lastCF||0);
   cf.style.color=(G.lastCF||0)>=0?'var(--green)':'var(--red)';
   document.getElementById('hudPrice').textContent=G.price.toFixed(1).replace('.',DEC);
-  document.getElementById('hudWells').textContent=G.wells.filter(w=>w.status==='producing').length;
+  document.getElementById('hudWells').textContent=G.wells.filter(w=>w.status==='producing' && !blocks[w.blockId]?.revealPending).length;
   if(m.winGoal>0){
     document.getElementById('hudGoalWrap').style.display='';
     const pct=Math.min(100,Math.max(0,(netWorth()/m.winGoal*100))).toFixed(0);
@@ -6666,6 +6791,7 @@ function figSwatch(layer){
   return `<svg class="sl-swatch" width="16" height="12" viewBox="0 0 16 12" style="border:1px solid var(--sec-line-soft);"><rect width="16" height="12" fill="${layer?.col||'#888'}"/>${f?`<rect width="16" height="12" fill="url(#fig-${f}${dark?'-l':''})"/>`:''}</svg>`;
 }
 function addLog(msg, type=''){
+  if(window.__logHold){ window.__logHold.push([msg, type]); return; } // résultat d'un forage : le journal attend la révélation
   if(type==='bad' && BLOCK_RE.test(msg)) toast(msg);
   const el=document.getElementById('logEntries');
   const div=document.createElement('div');
@@ -7581,7 +7707,7 @@ function loadGame(){
   // Bug V4.1 : JSON.stringify/parse transforme l'objet puits partagé entre
   // G.wells et b.well en deux copies indépendantes. On remet b.well sur
   // l'élément de G.wells (la seule copie que monthTick fait évoluer).
-  blocks.forEach(b => { b.well = null; });
+  blocks.forEach(b => { b.well = null; b.revealPending = false; b.__held = null; });
   (G.wells || []).forEach(w => { if(blocks[w.blockId]) blocks[w.blockId].well = w; });
   // Paramètres avancés : une sauvegarde V4.1 (version 1) n'en contient pas,
   // on garde alors les valeurs courantes.
@@ -8829,7 +8955,7 @@ function _doStartGame(){
     },
     {
       title: TR('Règles avancées','Advanced rules'),
-      body: `${TR(`Au lancement, un écran d'options règle la difficulté de lecture. Quatre préréglages : `,`At launch, an options screen sets the reading difficulty. Four presets: `)}<b>${TR(`Découverte`,`Discovery`)}</b>${TR(`
+      body: `${TR('<i style="color:var(--muted)">🌱 En mode Découverte, cette partie n\'est pas proposée : elle vient avec les autres niveaux.</i><br>','<i style="color:var(--muted)">🌱 In Discovery mode this part is not offered: it comes with the other levels.</i><br>')}${TR(`Au lancement, un écran d'options règle la difficulté de lecture. Quatre préréglages : `,`At launch, an options screen sets the reading difficulty. Four presets: `)}<b>${TR(`Découverte`,`Discovery`)}</b>${TR(`
         (les règles d'origine), `,`
         (the original rules), `)}<b>${TR(`Intermédiaire`,`Intermediate`)}</b>, <b>${TR(`Complet`,`Full`)}</b> et <b>Expert</b>${TR(`. Chaque niveau en propose un par défaut.
         Vous pouvez tout modifier, et verrouiller les options pour la partie.`,`. Each level offers one by default.
@@ -8849,7 +8975,7 @@ function _doStartGame(){
     },
     {
       title: TR('Sondage, carotte et Rock-Eval','Survey hole, core and Rock-Eval'),
-      body: `Un <b>${TR(`sondage stratigraphique`,`stratigraphic survey hole`)}</b>${TR(` se lance depuis la carte `,` is launched from the card `)}<b>${TR(`Sondage`,`Survey hole`)}</b>${TR(` de l'onglet Études (dès qu'un bloc a une première étude). Il coûte environ 30 % d'un forage classique et ne produit jamais ;
+      body: `${TR('<i style="color:var(--muted)">🌱 En mode Découverte, cette partie n\'est pas proposée : elle vient avec les autres niveaux.</i><br>','<i style="color:var(--muted)">🌱 In Discovery mode this part is not offered: it comes with the other levels.</i><br>')}Un <b>${TR(`sondage stratigraphique`,`stratigraphic survey hole`)}</b>${TR(` se lance depuis la carte `,` is launched from the card `)}<b>${TR(`Sondage`,`Survey hole`)}</b>${TR(` de l'onglet Études (dès qu'un bloc a une première étude). Il coûte environ 30 % d'un forage classique et ne produit jamais ;
         il est foré hors du sommet du piège et ne dit rien sur les fluides. Il ramène des carottes. Le `,` of the Studies tab (as soon as a block has a first study). It costs about 30 % of a standard well and never produces;
         it is drilled off the top of the trap and says nothing about fluids. It brings back cores. The `)}<b>log</b>${TR(` et la lithologie, eux, demandent la `,` and the lithology, for their part, require the `)}<b>${TR(`diagraphie du sondage`,`survey hole log`)}</b>${TR(`, une étude payante à lancer ensuite : sans elle, la coupe ne montre pas les roches.`,`, a paid study to launch next: without it, the section does not show the rocks.`)}<br><br>${TR(`
         Après un forage ou un sondage, l'onglet `,`
@@ -8861,7 +8987,7 @@ function _doStartGame(){
     },
     {
       title: TR('Prix du brut et alertes','Crude price and alerts'),
-      body: `${TR(`Le brut démarre à 80 $ et varie entre 20 et 140 $. Quand il monte, les appareils de forage coûtent plus cher ;
+      body: `${TR('<i style="color:var(--muted)">🌱 En mode Découverte, cette partie n\'est pas proposée : elle vient avec les autres niveaux.</i><br>','<i style="color:var(--muted)">🌱 In Discovery mode this part is not offered: it comes with the other levels.</i><br>')}${TR(`Le brut démarre à 80 $ et varie entre 20 et 140 $. Quand il monte, les appareils de forage coûtent plus cher ;
         quand il s'effondre, ils se louent moins cher. Les charges fixes d'un puits pèsent plus lourd quand le prix baisse.`,`Crude starts at $80 and varies between $20 and $140. When it rises, drilling rigs cost more;
         when it collapses, they rent for less. A well's fixed costs weigh more heavily when the price falls.`)}<br><br>${TR(`
         La cloche 🔔 à côté du cours permet de poser des `,`
@@ -8875,7 +9001,7 @@ function _doStartGame(){
     },
     {
       title: TR('Argent et imprévus','Money and the unexpected'),
-      body: `${TR(`Avec le mode Finance (activé par défaut), vous pouvez emprunter (7 % par an, dans la limite d'une capacité qui grandit avec vos puits en production ; la dette restante compte contre votre valeur nette pour gagner), stocker la production,
+      body: `${TR('<i style="color:var(--muted)">🌱 En mode Découverte, cette partie n\'est pas proposée : elle vient avec les autres niveaux.</i><br>','<i style="color:var(--muted)">🌱 In Discovery mode this part is not offered: it comes with the other levels.</i><br>')}${TR(`Avec le mode Finance (activé par défaut), vous pouvez emprunter (7 % par an, dans la limite d'une capacité qui grandit avec vos puits en production ; la dette restante compte contre votre valeur nette pour gagner), stocker la production,
         couvrir un prix et relancer un puits par récupération assistée (EOR).`,`With Finance mode (on by default), you can borrow (7 % per year, within a capacity that grows with your producing wells; the remaining debt counts against your net worth to win), store production,
         hedge a price and restart a well through enhanced oil recovery (EOR).`)}<br><br>${TR(`
         Des accidents sont possibles : éruption, grève, incident environnemental. Le jeu s'arrête alors et une
