@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.89</title>
+<title>GeoExplorer V4.90</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -26,6 +26,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="GeoExplorer">
 <style>
+/* Découverte (V4.90) : interface allégée, seulement l'essentiel */
+body.simple-ui .hud-item:has(#hudCF), body.simple-ui #btnPriceAlert, body.simple-ui .lab-secchk, body.simple-ui #zoomIn, body.simple-ui #zoomOut, body.simple-ui #zoomLbl, body.simple-ui .rtab[data-tab="gisements"], body.simple-ui #toolLabel{display:none !important;}
+body.simple-ui:not(.simple-prod) .hud-item:has(#hudPrice), body.simple-ui:not(.simple-prod) #priceSparkline{display:none !important;}
+
 :root{
   /* Kit visuel (refonte) : papier, encre et rouille. Les noms historiques
      (--bg, --panel, --panel2, --amber...) sont conservés pour ne pas toucher
@@ -6506,6 +6510,7 @@ function updateHud(){
   document.getElementById('hudBudget').style.color=G.budget<2e6?'var(--red)':G.budget<5e6?'var(--amber)':'var(--text)';
   const brandSub=document.getElementById('brandSub');
   if(brandSub) brandSub.textContent=(BASIN_NAMES[G.basinType]||'')+' · '+(MODE_NAMES[G.mode]||'')+(G.financeMode?' · Finance':'');
+  document.body.classList.toggle('simple-ui', !!G.simple); document.body.classList.toggle('simple-prod', !!G.simple && G.wells.some(w=>w.status==='producing'));
   const cf=document.getElementById('hudCF');
   cf.textContent=(G.lastCF>=0?'+':'')+formatM(G.lastCF||0);
   cf.style.color=(G.lastCF||0)>=0?'var(--green)':'var(--red)';
@@ -9559,7 +9564,7 @@ function _doStartGame(){
         const tgt = ifs.find(f=>f.res); if(!tgt || Math.abs(tgt.R[0]) < 0.035 || Math.abs(tgt.R[NCOL-1]) < 0.035) continue;
         // colonnes : puits de calage et colonne cible, de part et d'autre de la faille de préférence ; réflecteur voisin à plus de 70 m aux deux colonnes
         const sep = (col) => Math.min(...ifs.filter(f=>!f.res).map(f=>Math.abs(f.tops[col]-tgt.tops[col])), 1e9);
-        const cands = []; for(let a=0;a<NCOL;a++) for(let t=0;t<NCOL;t++){ if(Math.abs(a-t) < 3) continue; if(sep(a) < 70 || sep(t) < 70) continue; cands.push([a,t, (a<=gap) !== (t<=gap)]); }
+        const cands = []; for(let a=0;a<NCOL;a++) for(let t=0;t<NCOL;t++){ if(Math.abs(a-t) < 3) continue; if(sep(a) < 70 || sep(t) < 70 || Math.abs(tgt.R[a]) < 0.035 || Math.abs(tgt.R[t]) < 0.035) continue; cands.push([a,t, (a<=gap) !== (t<=gap)]); }
         const cross = cands.filter(c=>c[2]); const pool = cross.length ? cross : cands; if(!pool.length) continue;
         const [tieCol, tgtCol] = pool[Math.floor(Math.random()*pool.length)];
         const allZ = ifs.flatMap(f=>f.tops), zMax = Math.min(Math.max(...tgt.tops) + 520, Math.max(...allZ) + 60), zMin = Math.max(0, Math.min(...allZ) - 60);

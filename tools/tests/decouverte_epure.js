@@ -1,0 +1,20 @@
+// Découverte (V4.90) : interface allégée. Cash flow, alertes de prix, traits de coupe, zoom et onglet Gisements masqués ; le cours du brut n'apparaît qu'avec un puits productif ; Junior garde tout.
+const { chromium } = require('playwright'); const path = require('path');
+(async()=>{ const br=await chromium.launch(); let ko=0; const ok=(c,m)=>{ if(!c){ko++; console.log('ECHEC',m);} else console.log('ok',m); };
+  const pg=await br.newPage({viewport:{width:1280,height:800}}); const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
+  await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1');localStorage.setItem('geoexplorer_played','1')}catch(e){}});
+  await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(500);
+  const vis = ids => pg.evaluate(ids=>ids.map(s=>{ const e=document.querySelector(s); return !!e && e.getClientRects().length>0; }), ids);
+  const IDS=['#hudCF','#btnPriceAlert','#secLineChk','#zoomIn','#zoomOut','#zoomLbl','.rtab[data-tab="gisements"]','#priceSparkline','#hudPrice','#hudBudget','#hudDate','#toolSelect','#toolSection','#toolPlan','.rtab[data-tab="log"]'];
+  await pg.evaluate(async()=>{ document.getElementById('geoSeed').value='808'; menuConfig.mode='decouverte'; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); monthTick(); });
+  let v = await vis(IDS);
+  ok(v.slice(0,9).every(x=>!x), 'Découverte : cash flow, alertes, traits de coupe, zoom, onglet Gisements et cours du brut masqués au départ '+JSON.stringify(v));
+  ok(v.slice(9).every(x=>x), 'Découverte : budget, date, trois outils de carte et onglet Journal restent visibles '+JSON.stringify(v));
+  await pg.evaluate(()=>{ G.wells.push({blockId:blocks.find(b=>!b.inSalt).id,status:'producing'}); updateHud(); });
+  v = await vis(['#hudPrice','#priceSparkline']);
+  ok(v.every(x=>x), 'avec un puits productif, le cours du brut apparaît '+JSON.stringify(v));
+  await pg.evaluate(async()=>{ document.getElementById('geoSeed').value='909'; menuConfig.mode='junior'; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); monthTick(); });
+  v = await vis(IDS);
+  ok(v.every(x=>x), 'Junior garde toute l\'interface '+JSON.stringify(v));
+  ok(errs.length===0,'aucune erreur JS '+errs.join('|'));
+  await br.close(); console.log(ko?'ECHECS: '+ko:'TOUT OK'); process.exit(ko?1:0); })();
