@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.1</title>
+<title>GeoExplorer V5.2</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3451,14 +3451,14 @@ function getSecondReservoirInfo(b){
 // (même `hcFrac` que les logs). Puits fracturé : reflux (flowback) très aqueux au départ qui retombe, puis lente remontée. Règles de jeu simplifiées, valeurs non sourcées.
 // Gestion de l'eau : camion, injection (puits SWD à construire) ou recyclage (usine à construire, l'eau alimente les fracs suivantes). Absent en Découverte.
 // =====================================================================
-const WATER = { truck:2.8, swd:1.0, recycle:1.5, offshore:2.0, swdCapex:2.0e6, plantCapex:1.0e6, poolCap:3e6, freshFrac:1.5, poolFrac:0.2, fracBbl:300000, gasBblPerMcf:0.25 };
+const WATER = { truck:2.2, swd:0.8, recycle:1.2, offshore:2.0, swdCapex:2.0e6, plantCapex:1.0e6, poolCap:3e6, freshFrac:1.5, poolFrac:0.2, fracBbl:300000, gasBblPerMcf:0.25 };
 function waterState(){ if(!G.water) G.water = { mode:'truck', swd:false, plant:false, pool:0, total:0, month:0, spent:0 }; return G.water; }
 const hcFracOf = b => clamp(0.35 + 0.6*(b.trapFactor ?? 0.5), 0.35, 0.95);   // part du réservoir au-dessus du contact : même formule que les logs
 function waterParams(b, isFrac){
   const r = SR('water', b.id), j = () => r()*2-1;
   if(isFrac) return { kind:'frac', b0: clamp(0.65+0.10*j(), 0.5, 0.8), binf: clamp(0.35+0.08*j(), 0.2, 0.5), slope: 0.004 };
   const hf = hcFracOf(b), gas = !!b.isGas;
-  return { kind:'conv', b0: clamp(0.01 + 0.10*(1-hf) + 0.01*j(), 0.005, 0.2), tb: Math.round(clamp((12 + 100*Math.pow(hf,1.5))*(1+0.2*j()), 10, 130)), bmax: clamp((gas ? 0.10 : 0.55) + (gas ? 0.3 : 0.4)*(1-hf) + 0.05*j(), 0.08, 0.95) };
+  return { kind:'conv', b0: clamp(0.01 + 0.10*(1-hf) + 0.01*j(), 0.005, 0.2), tb: Math.round(clamp((12 + 100*Math.pow(hf,1.5))*(1+0.2*j()), 10, 130)), bmax: clamp((gas ? 0.10 : 0.47) + (gas ? 0.3 : 0.34)*(1-hf) + 0.05*j(), 0.08, 0.95) };
 }
 function bswAt(p, t){
   if(!p) return 0;
@@ -3683,7 +3683,7 @@ function wellEconomicsRaw(w){
 // aussi). Le transport coûte par baril vendu. Le shale sature vite une unité de départ. Absent en Découverte ; les anciennes sauvegardes n'ont pas de capacité (G.infraOn).
 // Règles de jeu simplifiées, valeurs non sourcées.
 // =====================================================================
-const INFRA = { backlogMonths:2, holdCost:0.4, procCap:[25000, 60000, 150000, 400000], procCapex:[0, 3e6, 8e6, 16e6], truckCap:30000, truckCost:4.0, pipeCap:[150000, 400000], pipeCapex:[6e6, 10e6], pipeCost:1.2 };
+const INFRA = { backlogMonths:2, holdCost:0.4, procCap:[25000, 60000, 150000, 400000], procCapex:[0, 3e6, 8e6, 16e6], truckCap:30000, truckCost:3.0, pipeCap:[150000, 400000], pipeCapex:[6e6, 10e6], pipeCost:1.0 };
 // Sauvegardes d'avant la V5.1 : les parties dont les puits portent déjà eau, fluides ou capacités gardent ces règles
 function advMigrate(g){ if(g.advOn===undefined) g.advOn = !!(g.infraOn || (g.wells||[]).some(w=>w.wp||w.fp||w.rd)); return g.advOn; }
 function infraState(){ if(!G.infraOn) return null; if(!G.infra) G.infra = { proc:0, pipe:-1, spent:0, backlog:0, lostBbl:0, releasedBbl:0 }; return G.infra; }

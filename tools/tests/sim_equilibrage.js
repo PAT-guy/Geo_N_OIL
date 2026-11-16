@@ -1,6 +1,7 @@
 // Mesure (sans verdict) : un joueur automatique qui suit le guide joue des parties complètes. Sert à regarder le taux de victoire, la valeur nette finale et le poids des pannes de matériel dans les échecs.
 // Usage : node tools/tests/sim_equilibrage.js [mode] [nombre de parties] [stratégie]   (modes : decouverte, junior, expert ; défaut decouverte 40)
-// Stratégies : base (défaut), frac (le joueur tente sondage + carotte + Rock-Eval puis frac), prog (option Dimensionner le forage avec le programme conseillé), fracprog (les deux)
+// Stratégies : base (défaut : production avancée selon le mode), frac (sondage + carotte + Rock-Eval puis frac), prog (option Dimensionner le forage), fracprog (les deux),
+// noadv (production avancée forcée à off), adv (forcée à on, sans leviers), advlev (forcée à on, le joueur joue les leviers : SWD, unité de gaz, maintien de pression). Se combinent : fracadvlev, etc.
 const { chromium } = require('playwright'); const path = require('path');
 const MODE = process.argv[2] || 'decouverte', N = parseInt(process.argv[3] || '40', 10), STRAT_BOT = process.argv[4] || 'base', OFF = parseInt(process.argv[5] || '0', 10);
 (async()=>{ const br = await chromium.launch(); const pg = await br.newPage(); const errs = [];
@@ -13,7 +14,7 @@ const MODE = process.argv[2] || 'decouverte', N = parseInt(process.argv[3] || '4
       menuConfig.mode = mode; menuConfig.daily = null; menuConfig.seed = (s+OFF)*97+5;
       if(mode==='decouverte'){ menuConfig.basinType='paris'; menuConfig.gridSize=8; menuConfig.offshore=false; menuConfig.financeMode=false; LABOPT = labNormOpt({ ...LAB_DEFAULT_OPT, ...LAB_PRESETS.decouverte.o, cheat:false, finance:false }); }
       else { menuConfig.basinType = ['paris','rift','aquitaine','passive'][s%4]; menuConfig.gridSize = 12; menuConfig.offshore = false; menuConfig.financeMode = true; LABOPT = labNormOpt({ ...LAB_DEFAULT_OPT, ...LAB_PRESETS.decouverte.o, finance:true }); }
-      LABOPT.rigprog = /prog/.test(strat); document.getElementById('menu').classList.add('hidden'); startGame(); setSpeed(0);
+      LABOPT.rigprog = /prog/.test(strat); LABOPT.advfluids = /noadv/.test(strat) ? false : /adv/.test(strat) ? true : !!LAB_MODE_ADV[mode]; document.getElementById('menu').classList.add('hidden'); startGame(); setSpeed(0);
       const m = MODES[G.mode], maxM = (m.maxYears||25)*12; let ended = null, guard = 0;
       const flush = ()=>{ [drillRevealCur, ...drillRevealQueue].forEach(it=>{ try{ drillRevealFlush(it); }catch(e){} }); drillRevealQueue.length = 0; drillRevealPlaying = false; drillRevealBatch = []; drillRevealRecapOpen = false; document.getElementById('drillRevealModal')?.classList.remove('open'); };
       while(!ended && G.month < maxM + 2 && guard++ < 5000){
@@ -24,6 +25,14 @@ const MODE = process.argv[2] || 'decouverte', N = parseInt(process.argv[3] || '4
           else if(/guideDo\('strati',(\d+)\)/.test(call)){ launchStrati(+/guideDo\('strati',(\d+)\)/.exec(call)[1]); }
           else (0, eval)(call);
         }catch(e){ break; } flush(); }
+        if(G.advOn && /lev/.test(strat)){ try{
+          const prod = G.wells.filter(w=>w.status==='producing'), ws = waterState(), gs = gasState();
+          const waterMonth = prod.reduce((a,w)=>a + (w.offshore ? 0 : wellEconomics(w).waterBbl), 0);
+          if(!ws.swd && waterMonth*(WATER.truck-WATER.swd)*36 > WATER.swdCapex*1.3 && G.budget > WATER.swdCapex + 2e6) waterBuild('swd');
+          const mcf = prod.reduce((a,w)=>a + wellEconomics(w).assocMcf, 0);
+          if(!gs.plant && mcf*gasNetPrice()*36 > FLUID.gasPlantCapex*1.3 && G.budget > FLUID.gasPlantCapex + 2e6) gasBuild();
+          for(const w of prod){ if(!w.maint && !w.offshore && driveGuess(w)==='solgas' && wellEconomics(w).waterBbl >= MAINT.minWater){ const gain = (DRIVE.solgas.boost-1)*w.production*(G.price-14)*36; if(gain > MAINT.capex*1.3 && G.budget > MAINT.capex + 2e6){ maintBuy(w.blockId); break; } } }
+        }catch(e){} }
         if(!G.simple && G.infraOn){ try{ const st = infraState(); if(infraFactor() < 0.97){ const L = infraLoad(); if(L.liquid > L.procCap*0.97 && st.proc < INFRA.procCap.length-1 && G.budget > INFRA.procCapex[st.proc+1] + 2e6) infraUpgradeProc(); else if(L.oil > L.routeCap*0.97 && st.pipe < INFRA.pipeCap.length-1 && G.budget > INFRA.pipeCapex[st.pipe+1] + 2e6) infraBuildPipe(); } }catch(e){} }
         if(/frac/.test(strat) && !G.simple){ try{
           const free = b=>!b.inSalt && !b.isOffshore && !b.well && !b.dryHole && !G.drilling.some(d=>d.blockId===b.id);
