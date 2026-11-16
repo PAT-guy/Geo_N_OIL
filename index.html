@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.92</title>
+<title>GeoExplorer V4.93</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3110,7 +3110,134 @@ function applyCalibration(est, geoOk, initProd, b){
   return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);"><b>${TR(`${TR(`Vos estimations`,`Your estimates`)}`,`Your estimates`)}</b> : ${lines.join(' ')}${TR(`${TR(` Total : `,` Total: `)}`,` Total: `)}<b>${pay>=0?'+':''}${formatM(pay)}</b>.</div>`;
 }
 
-function drillBlock(blockId, method, equip, est){
+// =====================================================================
+// PROGRAMME DE FORAGE (V4.93), option « Dimensionner le forage » : densité de boue par section, sabots de tubage et matériel, face à la fenêtre de pression du bloc.
+// Pression des pores : hydrostatique (1,00 sg) puis zone de surpression (rampe de 250 m) ; fracturation : loi d'Eaton, Pf = Pp + ν/(1−ν)·(σv − Pp), ν = 0,35,
+// contrainte verticale σv(z) = 2,05 + 0,12·(1 − e^(−z/1500)) sg. Le joueur voit un profil PRÉVU (vitesses sismiques : ±0,05 sg avec sismique, ±0,15 sans) ;
+// la vérité du bloc s'en écarte (écart de surpression et de profondeur du toit) et n'est connue qu'au forage. Règles de jeu simplifiées, pédagogiques :
+// ce n'est pas une procédure de contrôle de puits.
+// =====================================================================
+const PROG_KF = 0.35/(1-0.35), PROG_RAMP = 250, PROG_CASING_COST = 0.10, PROG_MUD_COST = 0.4, PROG_LOAD = 0.08;
+const progSv = z => 2.05 + 0.12*(1 - Math.exp(-z/1500));
+function progWorld(b, TD){   // profil du bloc, vrai et prévu ; déterministe par seed et par bloc
+  const r = SR('press', b.id), over = r() < clamp((TD-1200)/3000, 0.05, 0.85);
+  const zop = over ? Math.round((0.40 + 0.25*r())*TD/10)*10 : 1e9, Gmax = over ? 1.18 + 0.32*r() : 1.0, delta = over ? -0.03 + 0.11*r() : 0;
+  const hasSeis = b.studies.some(s=>s.type==='seismic2d' || s.type==='seismic3d'), u = hasSeis ? 0.05 : 0.15, dz = (hasSeis ? 60 : 150)*(r()*2-1), zopP = over ? Math.round((zop+dz)/10)*10 : 1e9;
+  const ramp = (zo, z) => z<=zo ? 0 : Math.min(1, (z-zo)/PROG_RAMP);
+  const gpPred = z => 1.0 + (Gmax-1.0)*ramp(zopP, z), gp = z => 1.0 + (Gmax-1.0)*ramp(zop, z) + delta*ramp(zop, z);
+  const eat = p => z => p(z) + PROG_KF*(progSv(z) - p(z));
+  return { TD, over, zop, zopP, Gmax, delta, u, hasSeis, gpPred, gp, gfPred:eat(gpPred), gf:eat(gp) };
+}
+// Programme : { shoes:[profondeurs des sabots intermédiaires, croissantes], mud:[densité de chaque section, k+1 valeurs] }
+function progSections(prog, TD){ const cuts = [0, ...prog.shoes, TD]; return prog.mud.map((w,i)=>({ z0:cuts[i], z1:cuts[i+1], w })); }
+function progAuto(b, TD){   // programme conseillé : un sabot 150 m avant la surpression prévue, boue = pore prévu maximal de la section + 0,03 sg (marge de manœuvre seulement : il ignore l'incertitude de la prévision)
+  const W = progWorld(b, TD), shoes = (W.over && W.zopP-150 >= 300 && W.zopP < TD-100) ? [Math.round((W.zopP-150)/10)*10] : [], cuts = [0, ...shoes, TD], mud = [];
+  for(let i=0;i<cuts.length-1;i++){ let m=0; for(let z=Math.max(cuts[i],10); z<=cuts[i+1]; z+=10) m = Math.max(m, W.gpPred(z)); mud.push(Math.round((m+0.03)*50)/50); }
+  return { shoes, mud };
+}
+// Prévision (profil prévu, sans la surprise) : marge de pression de chaque section, pour l'écran de dimensionnement
+function progForecast(b, prog, TD){
+  const W = progWorld(b, TD);
+  return progSections(prog, TD).map(s=>{ let kick = Infinity, loss = Infinity;
+    for(let z=Math.max(s.z0,10); z<=s.z1; z+=10){ kick = Math.min(kick, s.w - (W.gpPred(z) + (z>W.zopP ? W.u : 0))); loss = Math.min(loss, W.gfPred(z) - s.w); }
+    return { ...s, kick, loss };
+  });
+}
+// Évaluation sur la VRAIE géologie du bloc, au forage. `rng` : tirage déterministe. Renvoie les incidents, leur coût et si le puits est perdu.
+function progEvaluate(b, prog, TD, baseCost, rng){
+  const W = progWorld(b, TD), inc = []; let extra = 0, lost = false;
+  const secs = progSections(prog, TD);
+  secs.forEach((s,i)=>{
+    let under = -Infinity, over = -Infinity; for(let z=Math.max(s.z0,10); z<=s.z1; z+=10){ under = Math.max(under, W.gp(z) - s.w); over = Math.max(over, s.w - W.gf(z)); }
+    const last = i===secs.length-1, obTD = s.w - W.gp(TD);
+    let pBO = 0;
+    if(under > 0.005){ pBO = clamp((under-0.04)/0.14, 0, 0.95); const c = baseCost*(0.04 + 1.2*under); extra += c; inc.push({ type:'kick', sec:i, v:under, cost:c, text:TR(`Venue d'effluents (kick) en section ${i+1} : la boue (${s.w.toFixed(2)} sg) est sous la pression des pores (+${under.toFixed(2)} sg)`,`Kick in section ${i+1}: the mud (${s.w.toFixed(2)} sg) is below the pore pressure (+${under.toFixed(2)} sg)`) }); }
+    if(over > 0){ const c = baseCost*(0.05 + 1.5*over); extra += c; if(under > 0.005) pBO = Math.max(pBO, 0.5);
+      inc.push({ type:'loss', sec:i, v:over, cost:c, text:TR(`Pertes de circulation en section ${i+1} : la boue (${s.w.toFixed(2)} sg) dépasse la pression de fracturation (+${over.toFixed(2)} sg)`,`Lost circulation in section ${i+1}: the mud (${s.w.toFixed(2)} sg) exceeds the fracture pressure (+${over.toFixed(2)} sg)`), pLost:clamp((over-0.05)/0.2, 0, 0.6) }); }
+    if(pBO > 0 && rng() < pBO){ lost = true; inc.push({ type:'blowout', sec:i, cost:0, text:TR(`Éruption non maîtrisée en section ${i+1} : puits perdu`,`Uncontrolled blowout in section ${i+1}: well lost`) }); }
+    if(last && obTD > 0.12){ const p = clamp((obTD-0.12)/0.25, 0, 0.7); if(rng() < p){ const c = baseCost*0.06; extra += c; const freed = rng() < 0.7; if(!freed) lost = true;
+      inc.push({ type:'stuck', sec:i, v:obTD, cost:c, text: freed ? TR(`Coincement par pression différentielle en fond de trou (surpression de la boue ${obTD.toFixed(2)} sg), outil dégagé`,`Differential sticking at the bottom (mud overbalance ${obTD.toFixed(2)} sg), tool freed`) : TR(`Coincement par pression différentielle (surpression de la boue ${obTD.toFixed(2)} sg), outil perdu : puits perdu`,`Differential sticking (mud overbalance ${obTD.toFixed(2)} sg), tool lost: well lost`) }); } }
+  });
+  inc.filter(x=>x.type==='loss' && x.pLost>0).forEach(x=>{ if(!lost && rng() < x.pLost){ lost = true; inc.push({ type:'lostwell', sec:x.sec, cost:0, text:TR(`Pertes massives : le trou ne se rétablit pas, puits perdu`,`Massive losses: the hole cannot be recovered, well lost`) }); } });
+  return { inc, extra, lost, W };
+}
+const progCostFactors = (prog, depth, eq, offMult) => { const k = prog.shoes.length, avg = prog.mud.reduce((s,v)=>s+v,0)/prog.mud.length;
+  return { mult: 1 + PROG_MUD_COST*Math.max(0, avg-1.0), casing: k*PROG_CASING_COST*depth*eq.costM*offMult, effDepth: depth*(1 + PROG_LOAD*k) }; };
+
+// ---------- écran de dimensionnement ----------
+let PROGUI = null;
+function progTrueTD(b, method){ return method==='frac' ? (b.srcTopDepth || b.topOfReservoir) : (G.labPick!=null && b.horizons[G.labPick]) ? b.horizons[G.labPick].top : b.topOfReservoir; }
+function progOpen(blockId, method, equip, est){
+  const b = blocks[blockId], TDe = method==='frac' ? fracDepthEstimate(b) : drillDepthEstimate(b), TD = Math.round(progTrueTD(b, method)/10)*10;
+  PROGUI = { blockId, method, equip, est, TDe, TD, prog: progAuto(b, TD) };
+  let el = document.getElementById('progModal'); if(!el){ el = document.createElement('div'); el.id = 'progModal'; document.body.appendChild(el); }
+  el.classList.add('open'); progBuild();
+}
+function progClose(){ document.getElementById('progModal')?.classList.remove('open'); PROGUI = null; }
+function progSetK(k){ const P = PROGUI, b = blocks[P.blockId]; if(k===P.prog.shoes.length) return; const a = progAuto(b, P.TD);
+  const shoes = []; for(let i=1;i<=k;i++) shoes.push(Math.round(P.TD*i/(k+1)/10)*10); if(k===1 && a.shoes.length) shoes[0] = a.shoes[0];
+  P.prog = { shoes, mud: shoes.concat([P.TD]).map(()=>1.10) }; const f = progForecast(b, P.prog, P.TD); P.prog.mud = f.map(s=>{ let m=0; const W=progWorld(b,P.TD); for(let z=Math.max(s.z0,10); z<=s.z1; z+=10) m=Math.max(m, W.gpPred(z)); return Math.round((m+0.03)*50)/50; }); progBuild(); }
+function progAutoFill(){ const P = PROGUI; P.prog = progAuto(blocks[P.blockId], P.TD); progBuild(); }
+function progSetShoe(i, v){ const P = PROGUI, lo = i===0 ? 200 : P.prog.shoes[i-1]+100, hi = i===P.prog.shoes.length-1 ? P.TD-100 : P.prog.shoes[i+1]-100; P.prog.shoes[i] = clamp(Math.round(+v/10)*10, lo, hi); progRefresh(); }
+function progSetMud(i, v){ PROGUI.prog.mud[i] = Math.round(+v*50)/50; progRefresh(); }
+function progSetEquip(v){ PROGUI.equip = v; progRefresh(); }
+function progConfirm(){ const P = PROGUI; if(!P) return; const {blockId, method, equip, est, prog} = P; progClose(); drillBlock(blockId, method, equip, est, JSON.parse(JSON.stringify(prog))); if(selectedBlock!==null) renderStudiesPanel(blocks[selectedBlock]); }
+function progCost(P){
+  const b = blocks[P.blockId], eq = EQUIPMENT[P.equip], me = METHODS[P.method], off = siteCost(b), depth = P.TDe;
+  const base = depth*eq.costM*me.costMult*off, pf = progCostFactors(P.prog, depth, eq, off), extraFrac = P.method==='frac' ? fracCompletion(fracLat()) : 0;
+  const total = base*pf.mult + pf.casing + extraFrac;
+  return { base, mudExtra: base*(pf.mult-1), casing: pf.casing, frac: extraFrac, total, rel: eqReliability(eq, pf.effDepth), deepOk: depth <= eq.maxDepth, afford: G.budget >= total || G.mode==='sandbox' };
+}
+function progBuild(){
+  const P = PROGUI, el = document.getElementById('progModal'), b = blocks[P.blockId]; if(!P||!el) return;
+  const k = P.prog.shoes.length;
+  const secName = i => i===0 && k===0 ? TR('Trou entier','Whole hole') : TR(`Section ${i+1}`,`Section ${i+1}`);
+  el.innerHTML = `<div class="prog-box"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><b style="font-size:15px;">${TR(`Programme de forage : bloc (${b.x},${b.y})`,`Drilling programme: block (${b.x},${b.y})`)}</b><button class="lab-pick" onclick="progClose()">${TR('Annuler','Cancel')}</button></div>
+    <div class="lab-note" style="margin:4px 0 6px;">${TR(`La boue doit rester au-dessus de la pression des pores (sinon venue d'effluents) et sous la pression de fracturation (sinon pertes). Un tubage isole une section pour changer de densité, mais coûte et charge l'appareil. Le profil montré est prévu : la vérité s'en écarte (±${b.studies.some(s=>s.type==='seismic2d'||s.type==='seismic3d')?'0,05':'0,15'} sg, toit de la surpression à ±${b.studies.some(s=>s.type==='seismic2d'||s.type==='seismic3d')?60:150} m).`,`The mud must stay above the pore pressure (otherwise a kick) and below the fracture pressure (otherwise losses). Casing isolates a section so the density can change, but costs money and loads the rig. The profile shown is predicted: the truth differs from it (±${b.studies.some(s=>s.type==='seismic2d'||s.type==='seismic3d')?'0.05':'0.15'} sg, top of the overpressure ±${b.studies.some(s=>s.type==='seismic2d'||s.type==='seismic3d')?60:150} m).`)}</div>
+    <svg id="progSvg" viewBox="0 0 320 250" style="width:100%;height:auto;background:var(--panel2);border:1px solid var(--line);border-radius:8px;"></svg>
+    <div class="lab-chips" style="margin:6px 0;"><span style="font-size:12px;align-self:center;">${TR('Tubages intermédiaires','Intermediate casings')}</span>${[0,1,2].map(n=>`<button class="lab-pick ${n===k?'sel':''}" onclick="progSetK(${n})">${n}</button>`).join('')}<button class="lab-pick" onclick="progAutoFill()" title="${TR('Sabot avant la surpression prévue, boue = pore prévu + 0,03 sg : ignore l\'incertitude de la prévision','Shoe before the predicted overpressure, mud = predicted pore + 0.03 sg: ignores the forecast uncertainty')}">${TR('Programme conseillé','Suggested programme')}</button></div>
+    ${P.prog.shoes.map((z,i)=>`<div class="prog-row"><span>${TR(`Sabot ${i+1}`,`Shoe ${i+1}`)}</span><input type="range" min="200" max="${P.TD-100}" step="10" value="${z}" oninput="progSetShoe(${i}, this.value)"><b id="progShoeV${i}">${z} m</b></div>`).join('')}
+    ${P.prog.mud.map((w,i)=>`<div class="prog-row"><span>${TR('Boue','Mud')} · ${secName(i)}</span><input type="range" min="1" max="1.9" step="0.02" value="${w}" oninput="progSetMud(${i}, this.value)"><b id="progMudV${i}">${w.toFixed(2)} sg</b></div>`).join('')}
+    <div class="prog-row"><span>${TR('Matériel','Equipment')}</span><select class="drill-select" onchange="progSetEquip(this.value)">${Object.entries(EQUIPMENT).map(([key,e])=>`<option value="${key}" ${key===P.equip?'selected':''}>${e.label} (max ${e.maxDepth} m)</option>`).join('')}</select><span></span></div>
+    <div id="progFore" class="drill-summary" style="margin-top:6px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;"><button class="lab-pick sel" id="progGo" onclick="progConfirm()">${TR('⛏ Forer avec ce programme','⛏ Drill with this programme')}</button></div></div>`;
+  progRefresh();
+}
+function progRefresh(){
+  const P = PROGUI; if(!P) return; const b = blocks[P.blockId], W = progWorld(b, P.TD), svg = document.getElementById('progSvg'), fore = document.getElementById('progFore'); if(!svg||!fore) return;
+  P.prog.shoes.forEach((z,i)=>{ const e = document.getElementById('progShoeV'+i); if(e) e.textContent = z+' m'; }); P.prog.mud.forEach((w,i)=>{ const e = document.getElementById('progMudV'+i); if(e) e.textContent = w.toFixed(2)+' sg'; });
+  const XL=34, XR=312, YT=10, YB=232, gx = g => XL + (XR-XL)*(g-0.9)/(2.1-0.9), zmax = P.TDe*1.08, gy = z => YT + (YB-YT)*Math.min(z,zmax)/zmax;
+  let h = `<line x1="${XL}" y1="${YT}" x2="${XL}" y2="${YB}" stroke="var(--muted)"/><line x1="${XL}" y1="${YB}" x2="${XR}" y2="${YB}" stroke="var(--muted)"/>`;
+  for(let g=1;g<=2.0;g+=0.2) h += `<text x="${gx(g).toFixed(1)}" y="${YB+11}" font-size="8" text-anchor="middle" fill="var(--muted)">${g.toFixed(1)}</text>`;
+  for(let i=0;i<=4;i++){ const z = zmax*i/4; h += `<text x="${XL-3}" y="${(gy(z)+3).toFixed(1)}" font-size="8" text-anchor="end" fill="var(--muted)">${Math.round(z/100)*100}</text>`; }
+  h += `<text x="${(XL+XR)/2}" y="${YB+22}" font-size="9" text-anchor="middle" fill="var(--muted)">${TR('densité équivalente (sg)','equivalent density (sg)')}</text>`;
+  const zs = []; for(let z=0; z<=zmax; z+=10) zs.push(z);
+  const pts = f => zs.map((z,i)=>(i?'L':'M')+gx(f(z)).toFixed(1)+' '+gy(z).toFixed(1)).join('');
+  const up = z => W.gpPred(z) + (z>W.zopP ? W.u : 0), lo = z => W.gpPred(z);
+  h += `<path d="${zs.map((z,i)=>(i?'L':'M')+gx(up(z)).toFixed(1)+' '+gy(z).toFixed(1)).join('')}${[...zs].reverse().map(z=>'L'+gx(lo(z)).toFixed(1)+' '+gy(z).toFixed(1)).join('')}Z" fill="rgba(60,120,220,.22)"/>`;
+  h += `<path d="${pts(W.gpPred)}" fill="none" stroke="#2f6fd0" stroke-width="1.8"/><path d="${pts(W.gfPred)}" fill="none" stroke="#c0392b" stroke-width="1.8"/>`;
+  progSections(P.prog, P.TD).forEach(s=>{ const y0 = gy(s.z0), y1 = gy(Math.min(s.z1, zmax)); h += `<path d="M${gx(s.w).toFixed(1)} ${y0.toFixed(1)}L${gx(s.w).toFixed(1)} ${y1.toFixed(1)}" stroke="#1e9e55" stroke-width="3" fill="none"/>`; });
+  P.prog.shoes.forEach(z=>{ h += `<line x1="${XL}" y1="${gy(z).toFixed(1)}" x2="${XR}" y2="${gy(z).toFixed(1)}" stroke="var(--text)" stroke-dasharray="3 3" opacity=".6"/>`; });
+  h += `<line x1="${XL}" y1="${gy(P.TDe).toFixed(1)}" x2="${XR}" y2="${gy(P.TDe).toFixed(1)}" stroke="var(--muted)" stroke-dasharray="1 3"/><text x="${XR}" y="${(gy(P.TDe)-2).toFixed(1)}" font-size="8" text-anchor="end" fill="var(--muted)">${TR('profondeur visée (estimée)','target depth (estimated)')}</text>`;
+  h += `<g font-size="8"><text x="${XL+4}" y="${YT+8}" fill="#2f6fd0">${TR('pores prévus','predicted pore')}</text><text x="${XL+62}" y="${YT+8}" fill="#c0392b">${TR('fracturation prévue','predicted fracture')}</text><text x="${XL+150}" y="${YT+8}" fill="#1e9e55">${TR('votre boue','your mud')}</text></g>`;
+  svg.innerHTML = h;
+  const f = progForecast(b, P.prog, P.TD), c = progCost(P);
+  const sv = (m, a, bad) => m < 0 ? `<span class="ds-bad">${bad}</span>` : m < a ? `<span class="ds-warn">${TR('marge faible','thin margin')}</span>` : `<span class="ds-good">OK</span>`;
+  const last = f[f.length-1], obTD = last.w - W.gpPred(P.TD);
+  fore.innerHTML = f.map((s,i)=>`<div class="tr"><span class="tl">${s.z0}-${Math.round(s.z1)} m · ${s.w.toFixed(2)} sg</span><span>${TR('venue','kick')} ${sv(s.kick, 0.03, TR('sous les pores','below pore'))} · ${TR('pertes','losses')} ${sv(s.loss, 0.04, TR('sur la fracturation','above fracture'))}</span></div>`).join('')
+    + `<div class="tr"><span class="tl">${TR('Surpression de la boue au fond','Mud overbalance at the bottom')}</span><span>${obTD.toFixed(2)} sg ${obTD>0.12?`<span class="ds-warn">${TR('risque de coincement','sticking risk')}</span>`:''}</span></div>`
+    + `<div class="tr"><span class="tl">${TR('Coût estimé','Estimated cost')}</span><span>${G.mode==='sandbox'?'Gratuit':formatM(c.total)} <span style="color:var(--muted);font-size:10.5px;">(${TR('boue','mud')} +${formatM(c.mudExtra)}, ${TR('tubage','casing')} +${formatM(c.casing)})</span></span></div>`
+    + `<div class="tr"><span class="tl">${TR('Fiabilité du matériel (charge incluse)','Equipment reliability (load included)')}</span><span>${Math.round(c.rel*100)} %</span></div>`
+    + (c.deepOk ? '' : `<div class="ds-bad">${TR(`Profondeur ${Math.round(P.TDe)} m au-delà de la limite du matériel`,`Depth ${Math.round(P.TDe)} m beyond the equipment limit`)}</div>`)
+    + (c.afford ? '' : `<div class="ds-bad">${TR('Budget insuffisant','Insufficient budget')}</div>`);
+  const go = document.getElementById('progGo'); if(go) go.disabled = !(c.deepOk && c.afford);
+}
+function progRevealHtml(b){
+  if(!b.progInc || !b.progInc.length) return '';
+  return `<div style="margin-top:8px;font-size:12px;"><b>${TR('Incidents de forage','Drilling incidents')}</b><ul style="margin:4px 0 0 16px;padding:0;">${b.progInc.map(x=>`<li>${x.text}${x.cost>0?` (-${formatM(x.cost)})`:''}</li>`).join('')}</ul></div>`;
+}
+
+function drillBlock(blockId, method, equip, est, prog){
   const b = blocks[blockId];
   if(b.well||b.dryHole){addLog(TR('Ce bloc est déjà foré.','This block is already drilled.'),'bad');return;}
   if(G.drilling.some(d=>d.blockId===blockId)){ const m = TR('Un forage est déjà en cours sur ce bloc.','A drilling is already under way on this block.'); addLog(m,'bad'); toast(m); return; }
@@ -3121,16 +3248,18 @@ function drillBlock(blockId, method, equip, est){
   const depth = method==='frac' ? fracDepthEstimate(b) : drillDepthEstimate(b);
   const lat = method==='frac' ? fracLat() : 0;
   const eq = EQUIPMENT[equip], me = METHODS[method];
+  if(LABOPT.rigprog && !prog && method!=='strati' && !G.simple){ progOpen(blockId, method, equip, est); return; }
   if(depth > eq.maxDepth){addLog(TR(`Matériel insuffisant : profondeur estimée ${Math.round(depth)}m > max ${eq.maxDepth}m.`,`Insufficient equipment: estimated depth ${Math.round(depth)} m > max ${eq.maxDepth} m.`),'bad');return;}
   const cf = drillCostFactor();
   const offMult = siteCost(b, cf);
-  const cost = depth * eq.costM * me.costMult * offMult + (method==='frac' ? fracCompletion(lat, cf) : 0);
+  const pf = prog ? progCostFactors(prog, depth, eq, offMult) : null;
+  const cost = depth * eq.costM * me.costMult * offMult * (pf ? pf.mult : 1) + (pf ? pf.casing : 0) + (method==='frac' ? fracCompletion(lat, cf) : 0);
   if(G.budget < cost && G.mode!=='sandbox'){addLog(TR('Budget insuffisant pour ce forage.','Insufficient budget for this well.'),'bad');return;}
   G.budget -= cost;
   b.planned = false; b.estAtDrill = (b.playerEst && b.playerEst.p!==null && b.playerEst.p!==undefined) ? {p:b.playerEst.p, own:true} : (b.estimate?.prob!==undefined ? {p:b.estimate.prob, own:false} : null);
 
-  const drillingMonths = method==='strati' ? Math.max(1, Math.round(depth/1200)) : Math.max(2, Math.round(depth/600));
-  G.drilling.push({blockId, method, equip, cost, depth, cf, lat, startMonth:G.month, endMonth:G.month+drillingMonths,
+  const drillingMonths = method==='strati' ? Math.max(1, Math.round(depth/1200)) : Math.max(2, Math.round(depth/600*(1 + (prog ? 0.12*prog.shoes.length : 0))));
+  G.drilling.push({blockId, method, equip, cost, depth, cf, lat, prog: prog || null, startMonth:G.month, endMonth:G.month+drillingMonths,
                    est: est && (est.p!==null || est.bucket!==null) ? {p:est.p, bucket:est.bucket} : null});
   b.el?.classList.add('drilling');
   if(method==='strati') addLog(TR(`🧪 Sondage stratigraphique lancé : bloc (${b.x},${b.y}).`,`🧪 Stratigraphic test well started: block (${b.x},${b.y}).`), 'ev');
@@ -3170,7 +3299,7 @@ function resolveDrillingCore(d){
   // trou foré, on règle l'écart avec la profondeur réelle (dépassement ou
   // économie), et un matériel trop faible pour la vraie profondeur échoue.
   const trueDepth = isFrac ? (b.srcTopDepth || b.topOfReservoir) : (G.labPick!=null && b.horizons[G.labPick]) ? b.horizons[G.labPick].top : b.topOfReservoir;
-  const techRel = eqReliability(eq, trueDepth), techRoll = rd() < techRel;
+  const techRel = eqReliability(eq, d.prog ? trueDepth*(1 + PROG_LOAD*d.prog.shoes.length) : trueDepth), techRoll = rd() < techRel;
   const settleDelta = (trueDepth - d.depth) * eq.costM * me.costMult * siteCost(b, d.cf ?? 1);
   if(Math.abs(settleDelta) > 1000){
     G.budget -= settleDelta; d.cost += settleDelta;
@@ -3180,7 +3309,9 @@ function resolveDrillingCore(d){
   }
   const tooDeep = trueDepth > eq.maxDepth;
   if(tooDeep) addLog(TR(`⚠ Matériel insuffisant : le réservoir est à ${Math.round(trueDepth)} m, au-delà de la limite de ${eq.maxDepth} m du matériel choisi.`,`⚠ Insufficient equipment: the reservoir is at ${Math.round(trueDepth)} m, beyond the ${eq.maxDepth} m limit of the chosen equipment.`), 'bad');
-  const techOk = techRoll && !tooDeep;
+  let progRes = null;
+  if(d.prog){ progRes = progEvaluate(b, d.prog, trueDepth, d.cost, SR('prog', `${d.blockId}|${d.method}`)); G.budget -= progRes.extra; d.cost += progRes.extra; progRes.inc.forEach(x=>addLog('⚠ '+x.text+(x.cost>0?` (-${formatM(x.cost)})`:''), x.type==='blowout'||x.type==='lostwell'||(x.type==='stuck'&&progRes.lost)?'bad':'ev')); b.progInc = progRes.inc; b.progLost = progRes.lost; }
+  const techOk = techRoll && !tooDeep && !(progRes && progRes.lost);
   // Facteur du système pétrolier le plus limitant sur CE bloc (vraie
   // géologie), pour pouvoir expliquer après coup pourquoi ça a marché ou non.
   const factors = {piège:b.trapFactor, réservoir:b.resFactor, couverture:b.sealFactor, charge:b.srcFactor};
@@ -3208,10 +3339,10 @@ function resolveDrillingCore(d){
     if(isFrac) b.fracInfo = { ...sh, lat:d.lat||2000, ip:0, why: geoOk ? '' : sh.why };
     b.dryHole = true;
     b.wrongTarget = !!labMissed;
-    b.dryHoleInfo = {method:d.method, cost:d.cost, studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month, techFail: !geoOk ? false : true,
+    b.dryHoleInfo = {method:d.method, cost:d.cost, studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month, techFail: (progRes && progRes.lost) ? true : (!geoOk ? false : true),
       techDetail: (!geoOk ? null : {equip:d.equip, depth:Math.round(trueDepth), rel:techRel, tooDeep})};
     b.el?.classList.add('dry-hole');
-    const why = !geoOk ? (isFrac ? FRAC_WHY()[sh.why] : TR('aucun HC (puits sec)','no HC (dry hole)')) : TR('échec technique','technical failure');
+    const why = (progRes && progRes.lost) ? TR('incident de forage','drilling incident') : !geoOk ? (isFrac ? FRAC_WHY()[sh.why] : TR('aucun HC (puits sec)','no HC (dry hole)')) : TR('échec technique','technical failure');
     addLog(TR(`✗ Forage infructueux : bloc (${b.x},${b.y}), ${why}.`,`✗ Unsuccessful drilling: block (${b.x},${b.y}), ${why}.`),'bad');
   }
   refreshNeighbors(b);
@@ -4142,7 +4273,7 @@ function drillRevealFlush(it){
   if(typeof bigView!=='undefined' && bigView.open && bigView.kind==='section') bvRender();
   const success = !!(it.geoOk && it.techOk), info = b.dryHoleInfo;
   drillRevealBatch.push({ x:b.x, y:b.y, method:it.b.well?.method || it.b.dryHoleInfo?.method || 'vertical', success, prod: success ? Math.round(b.well.production) : 0, gas: !!b.isGas,
-    cost: success ? (b.well.cost||0) : (info?.cost||0), cause: success ? '' : (it.limitingFactor==='frac' ? (FRAC_WHY()[b.fracInfo?.why] || TR('échec technique du matériel','equipment technical failure')) : it.limitingFactor==='labmiss' ? TR('mauvais horizon visé','wrong horizon targeted') : !it.techOk ? TR('échec technique du matériel','equipment technical failure') : TR('aucun hydrocarbure','no hydrocarbons')) });
+    cost: success ? (b.well.cost||0) : (info?.cost||0), cause: success ? '' : (it.limitingFactor==='frac' ? (FRAC_WHY()[b.fracInfo?.why] || TR('échec technique du matériel','equipment technical failure')) : it.limitingFactor==='labmiss' ? TR('mauvais horizon visé','wrong horizon targeted') : !it.techOk ? (it.b.progLost ? TR('incident de forage (boue ou tubage)','drilling incident (mud or casing)') : TR('échec technique du matériel','equipment technical failure')) : TR('aucun hydrocarbure','no hydrocarbons')) });
 }
 function showDrillRecap(){
   const modal = document.getElementById('drillRevealModal'), icon = document.getElementById('drillRevealIcon'), title = document.getElementById('drillRevealTitle'), sub = document.getElementById('drillRevealSub'), detail = document.getElementById('drillRevealDetail');
@@ -4215,6 +4346,8 @@ function playNextDrillReveal(){
       detail.innerHTML = limitingFactor==='labmiss' ? `${TR(`Cause : `,`Cause: `)}<b>${TR(`mauvais horizon visé`,`wrong horizon targeted`)}</b>${TR(`. Le puits a traversé la colonne sans toucher le réservoir.`,`. The well went through the column without hitting the reservoir.`)}` : `${TR(`Facteur limitant : `,`Limiting factor: `)}<b>${FACTOR_LABEL[limitingFactor]}</b> : ${FACTOR_EXPLAIN_BAD[limitingFactor]}.`;
     }
     if(limitingFactor==='frac' && b.fracInfo){ detail.innerHTML = fracRevealHtml(b, success); if(!success && !techOk===false && b.fracInfo.why) sub.textContent = TR('Roche-mère non exploitable','Source rock not exploitable'); }
+    if(!success && b.progLost){ sub.textContent = TR('Incident de forage : puits perdu','Drilling incident: well lost'); detail.innerHTML = TR('Le programme de boue ou de tubage n\'a pas tenu face à la pression réelle du bloc.','The mud or casing programme did not hold against the block\'s real pressure.'); }
+    if(b.progInc && b.progInc.length) detail.innerHTML += progRevealHtml(b);
     if(calibHtml) detail.innerHTML += calibHtml;
     if(G.simple) detail.innerHTML += simpleLessonHtml(b, success);
     closeBtn.style.display = '';
@@ -5535,7 +5668,7 @@ function labThickFactor(i, x, y, g, structureMap){
   const ang = h2*Math.PI*2, drift = ((x/g - .5)*Math.cos(ang) + (y/g - .5)*Math.sin(ang)) * 0.35 * (h3 - 0.25)*2;
   return clamp(1 + 0.12*Math.tanh(structureMap/400)*sens + drift, 0.6, 1.4);
 }
-const LAB_DEFAULT_OPT = { finance:true, thick:true, nolimit:false, mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true, locked:false };
+const LAB_DEFAULT_OPT = { rigprog:false, finance:true, thick:true, nolimit:false, mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true, locked:false };
 const LAB_PRESETS = {
   decouverte: { label:TR('Découverte','Discovery'), d:TR('Coupe lisible comme dans les règles d\'origine, aucune contrainte.','Section readable as in the original rules, no constraint.'), o:{ mute:false, pick:false, cal:false, strati:true, dhi:false, real:false, thick:false, cheat:true } },
   inter:      { label:TR('Intermédiaire','Intermediate'), d:TR('Sismique muette et cible à désigner, calage non exigé.','Silent seismic and target to be designated, tie not required.'), o:{ mute:true, pick:true, cal:false, strati:true, dhi:false, real:false, thick:true, cheat:true } },
@@ -5579,6 +5712,7 @@ function labOptRender(){
     ${row('real', TR('Imagerie sismique réaliste','Realistic seismic imaging'), TR('Bruit croissant avec la profondeur, multiples (faux réflecteurs), qualité de traitement variable selon la ligne (retraitement payant), axe de temps double en ms.','Noise increasing with depth, multiples (false reflectors), processing quality varying by line (paid reprocessing), two-way time axis in ms.'))}
     ${row('thick', TR('Épaisseurs variables des couches','Variable layer thicknesses'), TR('Une couche n\'a plus la même épaisseur partout : plus épaisse dans les bas structuraux, plus mince sur les hauts, avec une dérive latérale propre à chaque couche. Désactivée : épaisseur constante dans une province, comme dans les règles d\'origine. Attention : la carte générée pour une même graine n\'est pas la même selon ce réglage.','A layer no longer has the same thickness everywhere: thicker in structural lows, thinner on highs, with a lateral drift specific to each layer. Off: constant thickness within a province, as in the original rules. Note: the map generated for a given seed is not the same depending on this setting.'), labOptMode!=='start')}
     ${row('nolimit', TR('Aucune limite de temps','No time limit'), TR('La partie ne s\'arrête pas à la fin de la durée prévue du niveau (20, 25 ou 35 ans) : elle ne se termine que par la victoire ou la faillite. Modifiable en cours de partie tant que les options ne sont pas verrouillées.','The game does not stop at the end of the level\'s planned duration (20, 25 or 35 years): it ends only by victory or bankruptcy. Can be changed during the game as long as the options are not locked.'))}
+    ${row('rigprog', TR('Dimensionner le forage','Size the drilling programme'), TR('Avant chaque forage, vous composez le programme : densité de boue par section, sabots de tubage, matériel, face à la fenêtre de pression du bloc (pores et fracturation). Une boue trop légère donne une venue d\'effluents, trop lourde des pertes ou un coincement ; un tubage de plus coûte et charge l\'appareil. Désactivé : le forage se lance directement, comme avant.','Before each well you compose the programme: mud density per section, casing shoes, equipment, against the block\'s pressure window (pore and fracture). Mud that is too light gives a kick, too heavy gives losses or sticking; one more casing costs money and loads the rig. Off: the well is launched directly, as before.'))}
     ${row('cheat', TR('Bouton « Voir la vérité » (triche)','“Show the truth” button (cheat)'), TR('Affiche la vraie coupe géologique à tout moment.','Shows the true geological section at any time.'))}
     <label class="lab-opt-row" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px;"><input type="checkbox" ${o.locked?'checked':''} onchange="labOptSet('locked', this.checked)"><span><b>${TR(`🔒 Verrouiller ces options`,`🔒 Lock these options`)}</b><br><span class="lab-mut">${TR(`Aucune modification possible en cours de partie, et le bouton « vérité » est retiré.`,`No changes possible during the game, and the “truth” button is removed.`)}</span></span></label>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;position:sticky;bottom:-14px;background:var(--panel);padding:10px 0 4px;"><button class="lab-pick" onclick="labOptCancel()">${labOptMode==='start'?TR('Retour','Back'):'Annuler'}</button><button class="lab-pick sel" id="labOptGo" onclick="labOptValidate()">${labOptMode==='start'?TR('Lancer la partie','Start the game'):'Appliquer'}</button></div></div>`;
@@ -10210,6 +10344,11 @@ function _doStartGame(){
 .lab-tab th{text-align:left;color:var(--muted);font-weight:500;border-bottom:1px solid var(--line);padding:4px 6px;white-space:nowrap;}
 .lab-tab td{border-bottom:1px solid var(--line);padding:4px 6px;white-space:nowrap;}
 .lab-mut{color:var(--muted);}
+#progModal{position:fixed;inset:0;z-index:1370;background:rgba(0,0,0,.55);display:none;align-items:flex-start;justify-content:center;padding:14px;overflow-y:auto;}
+#progModal.open{display:flex;}
+.prog-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;width:100%;max-width:560px;}
+.prog-row{display:grid;grid-template-columns:130px 1fr 64px;gap:8px;align-items:center;font-size:12px;margin:4px 0;}
+.prog-row input[type=range]{width:100%;min-height:30px;}
 #labOptModal{position:fixed;inset:0;z-index:1360;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:14px;}
 #labOptModal.open{display:flex;}
 .lab-opt-row{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.45;padding:6px 0;cursor:pointer;}
