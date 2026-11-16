@@ -11,7 +11,7 @@ const { chromium } = require('playwright'); const path = require('path');
     // 1. courbes
     let cv=true, bnd=true, det=true; land.slice(0,60).forEach(b=>{ const p=waterParams(b,false), p2=waterParams(b,false); if(JSON.stringify(p)!==JSON.stringify(p2)) det=false; let prev=-1; for(let t=0;t<=130;t+=5){ const v=bswAt(p,t); if(v<prev-1e-9) cv=false; if(v<0||v>0.95) bnd=false; prev=v; } });
     o.cv=cv; o.bnd=bnd; o.det=det; const pc=waterParams(land[5],false); o.conv=[+bswAt(pc,0).toFixed(3), +bswAt(pc,pc.tb).toFixed(2), +bswAt(pc,130).toFixed(2), pc.tb];
-    const pf=waterParams(land[5],true); o.frac=[+bswAt(pf,0).toFixed(2), +bswAt(pf,12).toFixed(2), +bswAt(pf,60).toFixed(2)]; o.fracShape = bswAt(pf,0)>bswAt(pf,12) && bswAt(pf,60)>bswAt(pf,12);
+    const pf=waterParams(land[5],true); o.frac=[+bswAt(pf,0).toFixed(2), +bswAt(pf,12).toFixed(2), +bswAt(pf,60).toFixed(2)]; o.fracShape = bswAt(pf,0)<bswAt(pf,12) && bswAt(pf,12)<bswAt(pf,60) && bswAt(pf,0)>=0.55 && bswAt(pf,0)<=0.78 && bswAt(pf,60)>=0.7 && bswAt(pf,60)<=0.9;
     // 2. économie : le coût de l'eau s'ajoute aux coûts, pas au revenu
     const mk=(b,wp)=>({blockId:b.id,cost:5e6,offshore:false,production:2000,comps:[{q0:2000,t0:0}],monthsActive:60,status:'producing',isGas:false,eorActive:false,eorMonthsLeft:0,wp});
     const wNo=mk(land[1],null), wYes=mk(land[1],{kind:'conv',b0:0.05,tb:30,bmax:0.8}); const eN=wellEconomics(wNo), eY=wellEconomics(wYes); const st=waterState(); st.mode='truck';
@@ -47,7 +47,7 @@ const { chromium } = require('playwright'); const path = require('path');
     return o; });
   ok(R.cv && R.bnd && R.det, 'BSW conventionnel : croissant, borné, déterministe par bloc');
   ok(R.conv[0]<0.25 && R.conv[2]>R.conv[0] && R.conv[3]>=10, 'BSW conventionnel : faible au départ ('+R.conv[0]+'), plus fort après la percée ('+R.conv[2]+' à 130 mois, percée au mois '+R.conv[3]+')');
-  ok(R.fracShape, 'BSW de frac : reflux élevé, creux vers 12 mois, remontée lente '+JSON.stringify(R.frac));
+  ok(R.fracShape, 'BSW de frac : 55 à 78 % au départ, qui monte vers 70 à 90 % en cinq ans (rapport eau-huile de 2 à 5 environ) '+JSON.stringify(R.frac));
   ok(R.eco && R.wor, 'l\'eau coûte (levage, traitement) sans réduire le revenu ; WOR = BSW / (1 − BSW)');
   ok(R.noSwd && R.swd && R.swdCheaper, 'l\'injection n\'est choisissable qu\'une fois le puits SWD construit (2 M$), et l\'eau coûte alors moins cher');
   ok(R.plant && R.offUnit, 'usine de recyclage construite ; en mer, tarif unique');

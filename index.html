@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.3</title>
+<title>GeoExplorer V5.4</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -497,6 +497,7 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .gl-loi{background:color-mix(in srgb,var(--green) 22%,var(--panel));color:var(--text);}
 .gl-approx{background:color-mix(in srgb,var(--amber) 24%,var(--panel));color:var(--text);}
 .gl-jeu{background:color-mix(in srgb,var(--muted) 24%,var(--panel));color:var(--text);}
+.gl-repere{background:color-mix(in srgb,var(--amber) 28%,var(--panel));color:var(--text);}
 #endScreen{position:fixed;inset:0;z-index:998;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:flex-start;padding:20px 14px 40px;overflow-y:auto;}
 #endScreen .end-box{max-width:720px;}
 .end-sec{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;}
@@ -3036,7 +3037,7 @@ const METHODS = {
 // =====================================================================
 const SHALE_BASE = 190, SHALE_DECL = { Di:0.17, b:1.1 }, FRAC_STAGE_COST = 85000, FRAC_LATS = [1000, 2000, 3000];
 const fracLat = () => { const v = +document.getElementById('fracLat')?.value; return FRAC_LATS.includes(v) ? v : 2000; };
-const fracStages = lat => Math.max(1, Math.round(lat/60));
+const fracStages = lat => Math.max(1, Math.round(lat/70));   // espacement de 150 à 250 pieds (45 à 75 m) selon les enquêtes de Hart Energy
 const fracCompletion = (lat, cf) => fracStages(lat) * FRAC_STAGE_COST * (cf ?? drillCostFactor()) + fracWater(lat).cost;   // étages + eau de frac
 const fracQ = (toc, matF, brit) => 100 * clamp(0.40*Math.sqrt(clamp(toc/8, 0, 1)) + 0.30*matF + 0.30*brit, 0, 1);
 const SHALE_BASIN = { permian:1.45 };   // le Permien est le bassin de shale de référence : roche-mère plus productive à qualité égale (règle de jeu)
@@ -3497,18 +3498,18 @@ function getSecondReservoirInfo(b){
 // (même `hcFrac` que les logs). Puits fracturé : reflux (flowback) très aqueux au départ qui retombe, puis lente remontée. Règles de jeu simplifiées, valeurs non sourcées.
 // Gestion de l'eau : camion, injection (puits SWD à construire) ou recyclage (usine à construire, l'eau alimente les fracs suivantes). Absent en Découverte.
 // =====================================================================
-const WATER = { truck:2.2, swd:0.8, recycle:1.2, offshore:2.0, swdCapex:2.0e6, plantCapex:1.0e6, poolCap:3e6, freshFrac:1.5, poolFrac:0.2, fracBbl:300000, gasBblPerMcf:0.25 };
+const WATER = { truck:2.5, swd:0.6, recycle:0.4, offshore:2.0, swdCapex:2.0e6, plantCapex:1.0e6, poolCap:3e6, freshFrac:1.5, poolFrac:0.2, fracBbl:260000, gasBblPerMcf:0.25 };   // repères : camion 2,50 $/bbl, évacuation 0,25 à 1 $/bbl, retraitement 0,15 à 0,20 $/bbl, frac 110 à 130 bbl par mètre de drain (Wood Mackenzie, BEG)
 function waterState(){ if(!G.water) G.water = { mode:'truck', swd:false, plant:false, pool:0, total:0, month:0, spent:0 }; return G.water; }
 const hcFracOf = b => clamp(0.35 + 0.6*(b.trapFactor ?? 0.5), 0.35, 0.95);   // part du réservoir au-dessus du contact : même formule que les logs
 function waterParams(b, isFrac){
   const r = SR('water', b.id), j = () => r()*2-1;
-  if(isFrac) return { kind:'frac', b0: clamp(0.65+0.10*j(), 0.5, 0.8), binf: clamp(0.35+0.08*j(), 0.2, 0.5), slope: 0.004 };
+  if(isFrac) return { kind:'frac', b0: clamp(0.67+0.06*j(), 0.55, 0.78), binf: clamp(0.82+0.05*j(), 0.7, 0.9), tau: 18 };   // Wolfcamp : rapport eau-huile ~2 au départ, ~5 vers la 4e année, eau 70 à 80 % (Wood Mackenzie)
   const hf = hcFracOf(b), gas = !!b.isGas;
-  return { kind:'conv', b0: clamp(0.01 + 0.10*(1-hf) + 0.01*j(), 0.005, 0.2), tb: Math.round(clamp((12 + 100*Math.pow(hf,1.5))*(1+0.2*j()), 10, 130)), bmax: clamp((gas ? 0.10 : 0.47) + (gas ? 0.3 : 0.34)*(1-hf) + 0.05*j(), 0.08, 0.95) };
+  return { kind:'conv', b0: clamp(0.01 + 0.10*(1-hf) + 0.01*j(), 0.005, 0.2), tb: Math.round(clamp((12 + 100*Math.pow(hf,1.5))*(1+0.2*j()), 10, 130)), bmax: clamp((gas ? 0.10 : 0.60) + (gas ? 0.3 : 0.30)*(1-hf) + 0.05*j(), 0.08, 0.95) };
 }
 function bswAt(p, t){
   if(!p) return 0;
-  if(p.kind==='frac') return clamp(p.binf + (p.b0-p.binf)*Math.exp(-t/6) + p.slope*t, 0, 0.85);
+  if(p.kind==='frac') return clamp(p.b0 + (p.binf-p.b0)*(1-Math.exp(-t/(p.tau||18))), 0, 0.9);
   const sc = 8 + 0.1*p.tb; return clamp(p.b0 + (p.bmax-p.b0)/(1+Math.exp(-(t-p.tb)/sc)), 0, 0.95);
 }
 const wellBsw = w => bswAt(w.wp, w.monthsActive||0);
@@ -3521,7 +3522,7 @@ function waterUnit(w){
 // Ce que le joueur peut prévoir d'un puits à forer : a priori régional, affiné par les puits déjà forés à moins de 3,5 blocs (leur BSW et leur percée sont connus)
 function waterPrior(b, isFrac){
   const near = G.wells.filter(w=>w.wp && w.wp.kind===(isFrac?'frac':'conv') && blocks[w.blockId] && Math.hypot(blocks[w.blockId].x-b.x, blocks[w.blockId].y-b.y)<=3.5);
-  if(isFrac) return near.length ? { ...near[0].wp } : { kind:'frac', b0:0.65, binf:0.35, slope:0.004, prior:true };
+  if(isFrac) return near.length ? { ...near[0].wp } : { kind:'frac', b0:0.67, binf:0.82, tau:18, prior:true };
   if(near.length){ const m = k => near.reduce((s,w)=>s+w.wp[k],0)/near.length; return { kind:'conv', b0:m('b0'), tb:Math.round(m('tb')), bmax:m('bmax'), informed:near.length }; }
   return { kind:'conv', b0:0.03, tb:60, bmax:b.estimate?.isGas ? 0.2 : 0.8, prior:true };
 }
@@ -3557,24 +3558,24 @@ function waterCardHtml(){
     </div>`;
 }
 const wellWaterRows = w => { if(!w.wp) return ''; const f = wellBsw(w), e = wellEconomics(w);
-  return infoRow('BSW', `${Math.round(f*100)} %${w.wp.kind==='conv' ? TR(` (percée vers le mois ${w.wp.tb})`,` (breakthrough around month ${w.wp.tb})`) : TR(' (reflux puis remontée lente)',' (flowback then slow rise)')}`) + infoRow(TR('Eau produite/mois','Water produced/month'), `${Math.round(e.waterBbl).toLocaleString()} ${TR('barils','barrels')} · ${formatM(e.waterCost)}`); };
+  return infoRow('BSW', `${Math.round(f*100)} %${w.wp.kind==='conv' ? TR(` (percée vers le mois ${w.wp.tb})`,` (breakthrough around month ${w.wp.tb})`) : TR(' (monte avec les années)',' (rises over the years)')}`) + infoRow(TR('Eau produite/mois','Water produced/month'), `${Math.round(e.waterBbl).toLocaleString()} ${TR('barils','barrels')} · ${formatM(e.waterCost)}`); };
 
 // =====================================================================
 // QUALITÉ DU BRUT ET DU GAZ (V4.96) : chaque puits porte les fluides de son gisement (`w.fp`) : densité API, soufre, GOR (gaz dissous) pour l'huile ; rendement en condensat
-// et gaz acide (H2S) pour le gaz. Les réservoirs froids (moins de 60 °C) sont biodégradés : huile lourde et soufrée ; plus la roche-mère est mûre, plus l'huile est légère
-// et riche en gaz. Le prix réalisé suit la qualité (+1,2 % par °API au-dessus de 30, −4 % par point de soufre au-dessus de 0,7 %). Le gaz associé (GOR) est brûlé (taxe) ou vendu
+// et gaz acide (H2S) pour le gaz. Les réservoirs froids (moins de 80 °C, seuil de pasteurisation) sont biodégradés : huile lourde et soufrée ; plus la roche-mère est mûre, plus l'huile est légère
+// et riche en gaz. Le prix réalisé suit la qualité (+0,8 % par °API au-dessus de 30, −5 % par point de soufre au-dessus de 0,7 % : l'écart Maya / LLS donne 24 % dans le jeu, 23 % dans l'EIA). Le gaz associé (GOR) est brûlé (taxe) ou vendu
 // si une unité de traitement est construite. Règles de jeu simplifiées, valeurs non sourcées. Absent en Découverte ; les anciens puits gardent leur économie.
 // =====================================================================
-const FLUID = { gasPlantCapex:1.5e6, flareFee:0.25, gasShare:0.55, gasProc:0.6, sweeten:0.8, condPremium:1.05 };
+const FLUID = { gasPlantCapex:1.5e6, flareFee:0.25, gasShare:0.25, gasProc:0.6, sweeten:0.8, condPremium:1.05 };
 function gasState(){ if(!G.gas) G.gas = { mode:'flare', plant:false, spent:0, soldMcf:0, flaredMcf:0 }; return G.gas; }
 const gasNetPrice = () => Math.max(0, G.price*0.18*FLUID.gasShare - FLUID.gasProc);   // $/Mcf net de traitement
-const fluidPf = fp => fp && fp.kind==='oil' ? clamp(1 + 0.012*(fp.api-30) - 0.04*(fp.sulfur-0.7), 0.6, 1.12) : 1;   // référence du jeu : 30 °API, 0,7 % de soufre
+const fluidPf = fp => fp && fp.kind==='oil' ? clamp(1 + 0.008*(fp.api-30) - 0.05*(fp.sulfur-0.7), 0.6, 1.12) : 1;   // référence du jeu : 30 °API, 0,7 % de soufre
 function fluidParams(b, isFrac){
   const r = SR('fluid', b.id), j = () => r()*2-1, temp = b.tempAtRes ?? 60, mat = clamp(b.maturity ?? 0.5, 0.05, 1);
   const rh = b.horizons?.find(h=>h.role==='reservoir'), carb = /calcaire|dolomi|limestone|carbonat/i.test(`${FRN(rh?.name||'')} ${FRN(rh?.lith||'')}`);
   if(b.isGas) return { kind:'gas', cgr: clamp(40*(1-mat)+3+3*j(), 1, 50), sour: r() < (carb ? 0.35 : 0.12) };
-  if(isFrac) return { kind:'oil', api: Math.round(clamp(38 + 6*(mat-0.5) + 3*j(), 33, 50)*10)/10, sulfur: Math.round(clamp(0.2 + 0.15*j(), 0.05, 0.6)*100)/100, gor: Math.round(clamp(600 + 1500*mat + 150*j(), 300, 3000)) };
-  const bio = clamp((60-temp)/40, 0, 1);
+  if(isFrac) return { kind:'oil', api: Math.round(clamp(38 + 6*(mat-0.5) + 3*j(), 33, 50)*10)/10, sulfur: Math.round(clamp(0.2 + 0.15*j(), 0.05, 0.6)*100)/100, gor: Math.round(clamp(1500 + 2500*mat + 200*j(), 800, 4500)) };   // GOR du Permien : 2 100 à 5 000 scf/bbl selon les puits (TGS, Wood Mackenzie)
+  const bio = clamp((80-temp)/60, 0, 1);
   const api = clamp(30 + 14*(mat-0.45) - 10*bio + 3*j(), 10, 50);
   return { kind:'oil', api: Math.round(api*10)/10, sulfur: Math.round(clamp(0.25 + 1.0*bio + (carb?0.4:0) + (api<22?0.5:0) + 0.15*j(), 0.05, 3.5)*100)/100, gor: Math.round(clamp(150 + 2200*mat*mat + 150*j(), 60, 3500)) };
 }
@@ -3583,7 +3584,7 @@ function fluidPrior(b, isFrac){
   const gas = !!b.estimate?.isGas, kind = gas ? 'gas' : 'oil';
   const near = G.wells.filter(w=>w.fp && w.fp.kind===kind && blocks[w.blockId] && Math.hypot(blocks[w.blockId].x-b.x, blocks[w.blockId].y-b.y)<=3.5);
   if(near.length){ const m = k => near.reduce((s,w)=>s+(+w.fp[k]),0)/near.length; return kind==='gas' ? { kind, cgr:m('cgr'), sour:near.some(w=>w.fp.sour), informed:near.length } : { kind, api:m('api'), sulfur:m('sulfur'), gor:m('gor'), informed:near.length }; }
-  return kind==='gas' ? { kind, cgr:20, sour:false, prior:true } : isFrac ? { kind, api:40, sulfur:0.2, gor:1200, prior:true } : { kind, api:30, sulfur:0.7, gor:700, prior:true };
+  return kind==='gas' ? { kind, cgr:20, sour:false, prior:true } : isFrac ? { kind, api:40, sulfur:0.2, gor:2800, prior:true } : { kind, api:30, sulfur:0.7, gor:700, prior:true };
 }
 const fluidCfg = (b, isFrac) => { if(!G.advOn) return undefined; const p = fluidPrior(b, isFrac), st = gasState(); if(p.kind==='gas') return { pf:1, gasPerBbl: p.cgr/1000*G.price*FLUID.condPremium - (p.sour ? FLUID.sweeten : 0) }; return { pf: fluidPf(p), gasPerBbl: ((st.mode==='sell' && st.plant) ? p.gor/1000*gasNetPrice() : -(st.mode==='flare' ? p.gor/1000*FLUID.flareFee : 0)) - infraTransportCfg(b) }; };
 function gasSetMode(m){ const st = gasState(); if(m==='sell' && !st.plant) return; st.mode = m; renderGisementsPanel(); }
@@ -3729,7 +3730,7 @@ function wellEconomicsRaw(w){
 // aussi). Le transport coûte par baril vendu. Le shale sature vite une unité de départ. Absent en Découverte ; les anciennes sauvegardes n'ont pas de capacité (G.infraOn).
 // Règles de jeu simplifiées, valeurs non sourcées.
 // =====================================================================
-const INFRA = { backlogMonths:2, holdCost:0.4, procCap:[25000, 60000, 150000, 400000], procCapex:[0, 3e6, 8e6, 16e6], truckCap:30000, truckCost:3.0, pipeCap:[150000, 400000], pipeCapex:[6e6, 10e6], pipeCost:1.0 };
+const INFRA = { backlogMonths:2, holdCost:0.4, procCap:[25000, 60000, 150000, 400000], procCapex:[0, 3e6, 8e6, 16e6], truckCap:30000, truckCost:2.0, pipeCap:[150000, 400000], pipeCapex:[6e6, 10e6], pipeCost:0.5 };   // repères : camion court ~2 $/bbl, pipeline ~0,5 $/bbl
 // Sauvegardes d'avant la V5.1 : les parties dont les puits portent déjà eau, fluides ou capacités gardent ces règles
 function advMigrate(g){ if(g.advOn===undefined) g.advOn = !!(g.infraOn || (g.wells||[]).some(w=>w.wp||w.fp||w.rd)); return g.advOn; }
 function infraState(){ if(!G.infraOn) return null; if(!G.infra) G.infra = { proc:0, pipe:-1, spent:0, backlog:0, lostBbl:0, releasedBbl:0 }; return G.infra; }
@@ -5677,7 +5678,7 @@ function updateDrillSummary(blockId){
     summary.innerHTML=`<div class="tr"><span class="tl">${TR(`Coût estimé (forage + ${fracStages(lat)} étages)`,`Estimated cost (drilling + ${fracStages(lat)} stages)`)}</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}</span></div>
       <div class="tr"><span class="tl">${TR(`Débit initial si exploitable`,`Initial rate if exploitable`)}</span><span>~${Math.round(ip)} ${u}${TR('/mois','/month')}${se.known?'':TR(' (a priori, très incertain)',' (prior, very uncertain)')}</span></div>
       ${!G.advOn ? '' : `<div class="tr"><span class="tl">${TR('Eau de frac','Frac water')}</span><span>${Math.round(fw.vol/1000).toLocaleString()} k${TR('barils','bbl')} · ${formatM(fw.cost)}${fw.fromPool>0?TR(` (dont ${Math.round(fw.fromPool/1000)} k du stock recyclé)`,` (incl. ${Math.round(fw.fromPool/1000)} k from the recycled stock)`):''}</span></div>
-      <div class="tr"><span class="tl">${TR('BSW attendu','Expected BSW')}</span><span>${TR('reflux ~65 % puis ~35-60 %','flowback ~65 % then ~35-60 %')}</span></div>`}
+      <div class="tr"><span class="tl">${TR('BSW attendu','Expected BSW')}</span><span>${TR('~67 % au départ, ~80 % après quelques années','~67 % at start, ~80 % after a few years')}</span></div>`}
       <div class="tr"><span class="tl">${TR(`Déclin`,`Decline`)}</span><span>${TR('≈ −68 % la 1re année','≈ −68 % in year 1')}</span></div>
       <div class="${beClass}" style="margin-top:4px;">${be===null?TR('Non rentabilisé en 10 ans à ce débit et à ce prix','Not paid back in 10 years at this rate and price'):TR(`Rentabilisé en ~${be} mois si la roche-mère est exploitable`,`Paid back in ~${be} months if the source rock is exploitable`)}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:4px;">${known}</div>`;
@@ -7997,9 +7998,19 @@ const GLOSSARY_ENTRIES = [
 ];
 
 // Réel ou simplifié : pour chaque mécanisme, loi physique, approximation ou réglage de jeu (honnêteté sur ce que le jeu enseigne)
-const REALITY_TAGS = { loi:TR('Loi physique','Physical law'), approx:'Approximation', jeu:TR('Réglage de jeu','Game setting') };
+const REALITY_TAGS = { loi:TR('Loi physique','Physical law'), approx:'Approximation', jeu:TR('Réglage de jeu','Game setting'), repere:TR('Repère réel sourcé','Sourced real benchmark') };
 const REALITY_ENTRIES = [
-  {tag:'jeu', term:'BSW', def:TR('Basic Sediment and Water : part d\'eau et de sédiments dans le liquide produit. Le rapport eau-huile (WOR) vaut BSW / (1 − BSW) : à 50 % de BSW, un baril d\'huile s\'accompagne d\'un baril d\'eau, à 90 % de neuf. Dans le jeu, l\'eau produite coûte du levage, du traitement et de l\'évacuation, et le BSW monte avec le temps (percée d\'eau). Valeurs de jeu, non sourcées.','Basic Sediment and Water: share of water and sediment in the produced liquid. The water-oil ratio (WOR) equals BSW / (1 − BSW): at 50 % BSW one barrel of oil comes with one barrel of water, at 90 % nine. In the game, produced water costs lifting, treatment and disposal, and BSW rises over time (water breakthrough). Game values, not sourced.')},
+  {tag:'repere', term:TR('Eau produite : le Permien','Produced water: the Permian'), def:TR('Repère réel : un puits du Wolfcamp démarre vers 2 barils d\'eau par baril d\'huile, environ 5 vers la 4e année et jusqu\'à 7 ; dans le Delaware l\'eau atteint 70 à 80 % (Wood Mackenzie, 2018-2019). Un puits conventionnel produit en moyenne bien plus d\'eau (environ 13 pour 1, étude du Bureau of Economic Geology). Dans le jeu : BSW des puits fracturés de 60-75 % au départ à 75-90 % après cinq ans, conventionnel de 60 à 90 % au plus ; le jeu est un peu plus doux que la réalité pour le conventionnel.','Real benchmark: a Wolfcamp well starts near 2 barrels of water per barrel of oil, about 5 by year four and up to 7; in the Delaware water reaches 70 to 80 % (Wood Mackenzie, 2018-2019). A conventional well produces on average far more water (about 13 to 1, Bureau of Economic Geology study). In the game: BSW of fracked wells from 60-75 % at the start to 75-90 % after five years, conventional up to 60-90 %; the game is somewhat gentler than reality for conventional wells.')},
+  {tag:'repere', term:TR('Coût de l\'eau','Cost of water'), def:TR('Repère réel : camion environ 2,50 $/bbl, pipeline environ 0,30 $/bbl, manutention totale de 0,50 à 3,00 $/bbl ; évacuation 0,25 à 1 $/bbl, retraitement pour réutilisation 0,15 à 0,20 $/bbl (Wood Mackenzie ; blog de l\'industrie, moins fiable). Dans le jeu : camion 2,5, injection 0,6 (après un puits de 2 M$), recyclage 0,4 (après une usine de 1 M$). Il n\'y a pas de pipeline d\'eau.','Real benchmark: trucking about $2.50/bbl, pipeline about $0.30/bbl, total handling $0.50 to $3.00/bbl; disposal $0.25 to $1/bbl, treatment for reuse $0.15 to $0.20/bbl (Wood Mackenzie; industry blog, less reliable). In the game: trucking 2.5, injection 0.6 (after a $2M well), recycling 0.4 (after a $1M plant). There is no water pipeline.')},
+  {tag:'repere', term:TR('Eau de fracturation','Frac water'), def:TR('Repère réel : médiane de 250 000 barils par puits dans le Midland en 2015, 15,6 millions de gallons (environ 370 000 barils) en 2018 pour des drains de 2 900 m en moyenne, soit 110 à 130 barils par mètre (Bureau of Economic Geology, Université du Texas). Dans le jeu : 130 barils par mètre, 260 000 barils pour 2 000 m.','Real benchmark: median of 250,000 barrels per well in the Midland in 2015, 15.6 million gallons (about 370,000 barrels) in 2018 for laterals averaging 2,900 m, i.e. 110 to 130 barrels per metre (Bureau of Economic Geology, University of Texas). In the game: 130 barrels per metre, 260,000 barrels for 2,000 m.')},
+  {tag:'repere', term:TR('Prix du brut selon la qualité','Crude price by quality'), def:TR('Repère réel : environ 0,7 % du prix du Brent par degré API (Banque mondiale) ; l\'écart entre le LLS (léger, doux) et le Maya (lourd, soufré) atteint 23 % (EIA, Plante, 2019). Dans le jeu : +0,8 % par °API au-dessus de 30, −5 % par point de soufre au-dessus de 0,7 %, soit 24 % entre ces deux bruts. Le coefficient de soufre est calé sur l\'écart observé, pas sur une mesure directe.','Real benchmark: about 0.7 % of the Brent price per API degree (World Bank); the spread between LLS (light, sweet) and Maya (heavy, sour) reaches 23 % (EIA, Plante, 2019). In the game: +0.8 % per °API above 30, −5 % per sulphur point above 0.7 %, i.e. 24 % between those two crudes. The sulphur coefficient is fitted to the observed spread, not to a direct measurement.')},
+  {tag:'repere', term:TR('Biodégradation de l\'huile','Oil biodegradation'), def:TR('Repère réel : l\'huile se dégrade (plus lourde, plus soufrée) dans les réservoirs plus froids qu\'environ 80 °C (75 à 90 selon les études) ; un réservoir chauffé au-delà puis remonté peut garder une huile légère (pasteurisation). Dans le jeu : seuil de 80 °C, sans histoire de pasteurisation.','Real benchmark: oil degrades (heavier, more sulphurous) in reservoirs cooler than about 80 °C (75 to 90 depending on the study); a reservoir heated above that then uplifted can keep a light oil (pasteurisation). In the game: 80 °C threshold, without any pasteurisation history.')},
+  {tag:'repere', term:TR('GOR du Permien','Permian GOR'), def:TR('Repère réel : 2 100 à 5 000 pieds cubes par baril selon les puits, environ 2 800 puis 3 600 à 4 200 pour le bassin, plus fort vers l\'ouest du Delaware, plus profond et plus mûr (TGS, EIA, Novi Labs). Dans le jeu : puits fracturés de 1 600 à 4 500, conventionnel de 60 à 3 500. Le gaz associé est valorisé à 25 % du prix énergétique, soit environ 3 $/Mcf net, plus proche du gaz réel que le gaz des puits à gaz du jeu (14 $/Mcf, équivalence énergétique, simplification d\'origine).','Real benchmark: 2,100 to 5,000 cubic feet per barrel depending on the wells, about 2,800 then 3,600 to 4,200 for the basin, higher toward the western Delaware, deeper and more mature (TGS, EIA, Novi Labs). In the game: fracked wells 1,600 to 4,500, conventional 60 to 3,500. Associated gas is valued at 25 % of the energy price, about $3/Mcf net, closer to real gas than the gas of the game\'s gas wells ($14/Mcf, energy equivalence, original simplification).')},
+  {tag:'repere', term:TR('Déclin d\'un puits de shale','Shale well decline'), def:TR('Repère réel : 60 à 80 % de baisse la première année (source peu fiable) ; facteur b d\'Arps de 1,5 à 2 au début puis environ 0,5, avec un déclin terminal de 5 à 10 % par an (AAPG, Novi Labs, Rystad). Dans le jeu : b = 1,1 et Di = 17 % par mois, soit −68 % la première année, sans déclin terminal : simplifié, il surestime un peu les queues de production lointaines.','Real benchmark: 60 to 80 % decline in the first year (low-reliability source); Arps b factor of 1.5 to 2 early then about 0.5, with a terminal decline of 5 to 10 % per year (AAPG, Novi Labs, Rystad). In the game: b = 1.1 and Di = 17 % per month, i.e. −68 % in the first year, without terminal decline: simplified, it slightly overstates distant production tails.')},
+  {tag:'repere', term:TR('Coût et étages d\'une frac','Frac cost and stages'), def:TR('Repère réel : forage et complétion de 4,9 à 8,3 M$ (EIA et IHS, 2016) ; environ 775 $ par pied de drain en 2024, soit 7,75 M$ pour un drain de 10 000 pieds (Permian Resources) ; un étage tous les 150 à 250 pieds (45 à 75 m), 35 étages en moyenne. Dans le jeu : un étage tous les 70 m ; les coûts de forage sont calés pour l\'équilibre du jeu et représentent à peu près le double du réel pour un drain de même longueur, avec des débits plus faibles : ne pas les lire comme des valeurs absolues.','Real benchmark: drilling and completion of $4.9 to $8.3M (EIA and IHS, 2016); about $775 per lateral foot in 2024, i.e. $7.75M for a 10,000 ft lateral (Permian Resources); one stage every 150 to 250 feet (45 to 75 m), 35 stages on average. In the game: one stage every 70 m; drilling costs are tuned for game balance and are roughly twice the real ones for a lateral of the same length, with lower rates: do not read them as absolute values.')},
+  {tag:'repere', term:TR('Transport du brut','Crude transport'), def:TR('Repère réel : camion environ 2 $/bbl sur courte distance, pipeline environ 0,5 $/bbl (tarifs de segments de 0,14 à 0,50 $/bbl) ; les estimations de camion vont jusqu\'à 8-20 $/bbl selon la distance (Texas Railroad Commission, RBN Energy, sources variables). Dans le jeu : camion 2,0, pipeline 0,5.','Real benchmark: trucking about $2/bbl over short distances, pipeline about $0.5/bbl (segment tariffs of $0.14 to $0.50/bbl); trucking estimates go up to $8-20/bbl depending on distance (Texas Railroad Commission, RBN Energy, varying sources). In the game: trucking 2.0, pipeline 0.5.')},
+  {tag:'repere', term:TR('Roche-mère du Wolfcamp','Wolfcamp source rock'), def:TR('Repère réel : TOC de 1 à 3 % en carotte, jusqu\'à 6 à 8 % dans les faciès siliceux, maxima publiés de 8 à 10 % (IHS Markit, Colorado School of Mines, Hart Energy). Dans le jeu : TOC généré de 0,2 à 8,7 %, seuil d\'exploitation en frac de 1,5 %. Tmax : immature sous 435 °C, fenêtre à huile de 435 à 455 (type II), gaz au-delà de 470 ; le jeu place le gaz dès 460, un peu tôt.','Real benchmark: TOC of 1 to 3 % in core, up to 6 to 8 % in siliceous facies, published maxima of 8 to 10 % (IHS Markit, Colorado School of Mines, Hart Energy). In the game: generated TOC from 0.2 to 8.7 %, frac exploitation threshold of 1.5 %. Tmax: immature below 435 °C, oil window 435 to 455 (type II), gas beyond 470; the game puts gas from 460, slightly early.')},
+  {tag:'jeu', term:'BSW', def:TR('Basic Sediment and Water : part d\'eau et de sédiments dans le liquide produit. Le rapport eau-huile (WOR) vaut BSW / (1 − BSW) : à 50 % de BSW, un baril d\'huile s\'accompagne d\'un baril d\'eau, à 90 % de neuf. Dans le jeu, l\'eau produite coûte du levage, du traitement et de l\'évacuation, et le BSW monte avec le temps (percée d\'eau). Repères réels sourcés : voir les entrées « Eau produite » et « Coût de l\'eau ».','Basic Sediment and Water: share of water and sediment in the produced liquid. The water-oil ratio (WOR) equals BSW / (1 − BSW): at 50 % BSW one barrel of oil comes with one barrel of water, at 90 % nine. In the game, produced water costs lifting, treatment and disposal, and BSW rises over time (water breakthrough). Sourced real benchmarks: see the “Produced water” and “Cost of water” entries.')},
   {tag:'jeu', term:TR('Injection d\'eau usée (SWD)','Saltwater disposal (SWD)'), def:TR('Puits qui réinjecte l\'eau produite dans une formation profonde. Coûteux à construire, bon marché à exploiter : il vaut le coup quand le volume d\'eau est grand, comme sur un bassin de shale.','A well that reinjects produced water into a deep formation. Costly to build, cheap to run: worth it when water volumes are large, as in a shale basin.')},
   {tag:'loi', term:TR('Saturation en eau (Archie)','Water saturation (Archie)'), def:TR('Loi d\'Archie avec a = 1, m = n = 2, utilisée telle quelle dans les logs et les calculs de saturation.','Archie\'s law with a = 1, m = n = 2, used as is in the logs and saturation calculations.')},
   {tag:'loi', term:TR('Porosité-densité et croisement densité-neutron','Density porosity and density-neutron crossover'), def:TR('φ = (ρma − ρb) / (ρma − ρf). Un neutron nettement sous la porosité-densité signe le gaz.','φ = (ρma − ρb) / (ρma − ρf). A neutron reading clearly below density porosity signals gas.')},
@@ -8034,7 +8045,7 @@ function renderGlossary(){
   `)}</div>`;
   html += GLOSSARY_ENTRIES.map(e=>`<div class="glossary-term"><b>${e.term}</b><br>${e.def}</div>`).join('');
   html += `<div id="realitySection" style="margin-top:18px;"><div style="font-weight:700;font-size:14px;margin-bottom:6px;">${TR(`Réel ou simplifié ?`,`Real or simplified?`)}</div>
-    <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:10px;">${TR(`Ce jeu enseigne des principes de géologie pétrolière, mais tous ses chiffres ne sont pas des mesures. Chaque mécanisme est marqué : `,`This game teaches principles of petroleum geology, but not all its numbers are measurements. Each mechanism is marked: `)}<span class="gl-tag gl-loi">${TR(`Loi physique`,`Physical law`)}</span>${TR(` appliquée telle quelle, `,` applied as is, `)}<span class="gl-tag gl-approx">Approximation</span>${TR(` d'un phénomène réel, ou `,` of a real phenomenon, or `)}<span class="gl-tag gl-jeu">${TR(`Réglage de jeu`,`Game setting`)}</span>${TR(` inventé pour l'équilibre.`,` invented for balance.`)}</div>`
+    <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:10px;">${TR(`Ce jeu enseigne des principes de géologie pétrolière, mais tous ses chiffres ne sont pas des mesures. Chaque mécanisme est marqué : `,`This game teaches principles of petroleum geology, but not all its numbers are measurements. Each mechanism is marked: `)}<span class="gl-tag gl-loi">${TR(`Loi physique`,`Physical law`)}</span>${TR(` appliquée telle quelle, `,` applied as is, `)}<span class="gl-tag gl-approx">Approximation</span>${TR(` d'un phénomène réel, ou `,` of a real phenomenon, or `)}<span class="gl-tag gl-jeu">${TR(`Réglage de jeu`,`Game setting`)}</span>${TR(` inventé pour l'équilibre. Les `,` invented for balance. The `)}<span class="gl-tag gl-repere">${TR(`Repères réels sourcés`,`Sourced real benchmarks`)}</span>${TR(` donnent la valeur publiée (étude, organisme, année) à côté de celle du jeu : l'écart est dit sans détour.`,` give the published value (study, organisation, year) next to the game's: the gap is stated plainly.`)}</div>`
     + REALITY_ENTRIES.map(e=>`<div class="glossary-term"><span class="gl-tag gl-${e.tag}">${REALITY_TAGS[e.tag]}</span> <b>${e.term}</b><br>${e.def}</div>`).join('') + `</div>`;
   el.innerHTML = html;
 }
