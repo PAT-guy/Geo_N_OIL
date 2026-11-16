@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.91</title>
+<title>GeoExplorer V4.92</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2731,6 +2731,7 @@ function discoveryBoost(b){
   let f = 1;
   for(const o of blocks){
     if(o===b) continue;
+    if(o.well?.method==='frac' || o.dryHoleInfo?.method==='frac') continue;   // une frac réussie ou ratée ne prouve rien sur les pièges conventionnels
     const productif = !!o.well, secUtile = !!o.dryHole && !o.wrongTarget && o.dryHoleInfo && !o.dryHoleInfo.techFail;
     if(!productif && !secUtile) continue;
     const d = Math.hypot(o.x-b.x, o.y-b.y); if(d > DISC_RADIUS) continue;
@@ -2938,20 +2939,20 @@ const prodSite = b => (b && b.isOffshore) ? OFFSHORE_PROD_MULT : ONSHORE_PROD_MU
 // Di = 1,1 %/mois nominal (1,5 % avant la V4.35) et b = 0,5 donnent environ -12 % la 1re année, 56 % du débit
 // initial après 5 ans et 36 % après 10 ans : une queue longue, comme sur un gisement conventionnel.
 const DECL = { Di: 0.011, b: 0.5 };
-const declineFactor = age => Math.pow(1 + DECL.b*DECL.Di*Math.max(0, age), -1/DECL.b);
+const declineFactor = (age, dc) => { const d = dc || DECL; return Math.pow(1 + d.b*d.Di*Math.max(0, age), -1/d.b); };
 // Débit courant d'un puits = somme de ses venues (puits initial, puis side-tracks), chacune
 // avec sa propre courbe de déclin. `comps` est créé à la volée pour les anciennes sauvegardes.
 function wellRate(w){
   if(!w.comps) w.comps = [{ q0: w.production, t0: w.monthsActive||0 }];
-  return w.comps.reduce((sum, c) => sum + c.q0*declineFactor((w.monthsActive||0) - c.t0), 0);
+  return w.comps.reduce((sum, c) => sum + c.q0*declineFactor((w.monthsActive||0) - c.t0, c.dc), 0);
 }
 // Projection d'un puits neuf : cumul net sur `months` mois (arrêt si le net devient négatif) et
 // délai de remboursement du coût de forage. Mêmes coûts d'exploitation que wellEconomics().
-function projectWell(q0, price, offshore, gas, cost, months){
+function projectWell(q0, price, offshore, gas, cost, months, dc){
   const fixed = offshore?OFFSHORE_OPEX:8000, varOp = (offshore?14:4)+6, pr = gas?price*.18:price;
   let cum = 0, payback = null;
   for(let m=0; m<(months||120); m++){
-    const q = q0*declineFactor(m), net = q*(pr-varOp) - fixed;
+    const q = q0*declineFactor(m, dc), net = q*(pr-varOp) - fixed;
     if(net<=0) break;
     cum += net; if(payback===null && cum>=cost) payback = m+1;
   }
@@ -2972,8 +2973,66 @@ function eqReliability(eq, depth){ return clamp(eq.reliability*eqLoadFactor(eq, 
 const METHODS = {
   vertical:   {label:'Vertical',   costMult:1.0, prodMult:1.0},
   horizontal: {label:'Horizontal', costMult:1.8, prodMult:1.7},
+  frac:       {label:TR('Horizontal + fracturation (roche-mère)','Horizontal + hydraulic fracturing (source rock)'), costMult:1.8, prodMult:1.0},
   strati:     {label:TR('Sondage stratigraphique (carotte + log, sans production)','Stratigraphic test well (core + log, no production)'), costMult:0.3, prodMult:0},
 };
+
+// =====================================================================
+// FRACTURATION DE LA ROCHE-MÈRE (V4.92) : forage horizontal + frac dans la roche-mère elle-même, comme dans le bassin permien.
+// Le réservoir est la roche-mère : il faut une roche mûre (fenêtre à huile ou à gaz), assez riche (TOC ≥ 1,5 %), assez épaisse (≥ 15 m) et cassante.
+// Qualité 0-100 = 0,40·√(TOC/8) + 0,30·maturité + 0,30·fragilité. Production : qualité × épaisseur utile (≤ 60 m) × SHALE_BASE × (drain/2000)^0,8.
+// Déclin de shale (Arps b = 1,1, Di = 17 %/mois : environ −68 % la première année). La fragilité n'est pas visible avant le forage.
+// =====================================================================
+const SHALE_BASE = 190, SHALE_DECL = { Di:0.17, b:1.1 }, FRAC_STAGE_COST = 85000, FRAC_LATS = [1000, 2000, 3000];
+const fracLat = () => { const v = +document.getElementById('fracLat')?.value; return FRAC_LATS.includes(v) ? v : 2000; };
+const fracStages = lat => Math.max(1, Math.round(lat/60));
+const fracCompletion = (lat, cf) => fracStages(lat) * FRAC_STAGE_COST * (cf ?? drillCostFactor());
+const fracQ = (toc, matF, brit) => 100 * clamp(0.40*Math.sqrt(clamp(toc/8, 0, 1)) + 0.30*matF + 0.30*brit, 0, 1);
+const fracProdOf = (q, thick, lat, b) => (q/100) * Math.min(thick, 60) * SHALE_BASE * Math.pow(lat/2000, 0.8) * prodSite(b);
+let _britCache = { seed:null, m:new Map() };
+function shaleBrittle(b){   // bruit de valeur lissé (maille de 3 blocs), déterministe par seed : 0,30 à 0,85
+  const seed = G.seedNum ?? 'x'; if(_britCache.seed!==seed){ _britCache = { seed, m:new Map() }; }
+  const lat = (i,j)=>{ const k=i+','+j; if(!_britCache.m.has(k)) _britCache.m.set(k, makeRng(seedToInt(`${seed}|brit|${k}`))()); return _britCache.m.get(k); };
+  const gx=b.x/3, gy=b.y/3, i=Math.floor(gx), j=Math.floor(gy), fx=gx-i, fy=gy-j, sx=fx*fx*(3-2*fx), sy=fy*fy*(3-2*fy);
+  const v = lat(i,j)*(1-sx)*(1-sy) + lat(i+1,j)*sx*(1-sy) + lat(i,j+1)*(1-sx)*sy + lat(i+1,j+1)*sx*sy;
+  return 0.30 + 0.55*v;
+}
+// Vérité du bloc (jamais montrée avant le forage)
+function shaleTrue(b){
+  const out = { ok:false, why:'', q:0, toc:0, thick:0, brittle:0, matF:0 };
+  const h = b.horizons ? b.horizons.findLast(z=>z.role==='source') : null;
+  if(b.isOffshore){ out.why='offshore'; return out; }
+  if(!h || b.srcAbsent){ out.why='absent'; return out; }
+  if(/charbon|houille/i.test(FRN(h.name))){ out.why='coal'; return out; }
+  out.toc = parseFloat(h.toc)||0; out.thick = h.thicknessLocal ?? h.thickness ?? 0; out.brittle = shaleBrittle(b);
+  out.matF = b.maturityClass==='Surmature (gaz)' ? 0.55 : b.maturityClass==='Fenêtre à huile' ? 0.4+0.6*(b.maturity||0.5) : 0;
+  out.q = fracQ(out.toc, out.matF, out.brittle);
+  if(b.maturityClass==='Immature') out.why='immature'; else if(out.toc<1.5) out.why='toc'; else if(out.thick<15) out.why='thin'; else out.ok = true;
+  return out;
+}
+// Ce que le joueur sait : une Rock-Eval (donc une carotte) donne TOC et Tmax ; sans elle, a priori régional
+function shaleEstimate(b){
+  const rk = b.studies.find(s=>s.type==='rockeval'), nom = STRAT.findLast(l=>l.role==='source'), thick = Math.min(60, nom?.thickness||40);
+  if(!rk) return { known:false, q:45, thick, ok:null, toc:null };
+  const toc = parseFloat(rk.result.toc), tmax = rk.result.tmax, matF = tmax<430 ? 0 : tmax>=460 ? 0.55 : 0.4+0.6*clamp(1-Math.abs(tmax-445)/30, 0.15, 1);
+  return { known:true, q:fracQ(toc, matF, 0.55), thick, ok: tmax>=430 && toc>=1.5, toc, tmax };
+}
+// Profondeur estimée de la roche-mère : estimation du toit du réservoir + écart nominal de la colonne type (pas la vraie profondeur)
+function fracDepthEstimate(b){
+  const ri = STRAT.findIndex(l=>l.role==='reservoir'), si = STRAT.findLastIndex(l=>l.role==='source');
+  let gap = 0; if(ri>=0 && si>ri) for(let i=ri;i<si;i++) gap += STRAT[i].thickness||0;
+  return drillDepthEstimate(b) + Math.max(150, gap);
+}
+const FRAC_WHY = () => ({ absent:TR('pas de roche-mère dans la colonne','no source rock in the column'), coal:TR('la roche-mère est un charbon','the source rock is a coal'), immature:TR('roche-mère immature : le kérogène n\'a pas généré','immature source rock: the kerogen has not generated'),
+  toc:TR('roche-mère trop pauvre (TOC sous 1,5 %)','source rock too lean (TOC below 1.5 %)'), thin:TR('roche-mère trop mince (moins de 15 m)','source rock too thin (under 15 m)'), offshore:TR('frac non proposée en mer','frac not offered offshore') });
+function fracRevealHtml(b, success){
+  const f = b.fracInfo; if(!f) return '';
+  const base = TR(`Roche-mère visée : TOC <b>${f.toc.toFixed(1)} %</b>, épaisseur <b>${Math.round(f.thick)} m</b>, ${matLbl(b.maturityClass).toLowerCase()}, fragilité <b>${Math.round(f.brittle*100)} %</b>, qualité <b>${Math.round(f.q)}/100</b>. Drain de ${f.lat} m, ${fracStages(f.lat)} étages de frac.`,
+    `Target source rock: TOC <b>${f.toc.toFixed(1)} %</b>, thickness <b>${Math.round(f.thick)} m</b>, ${matLbl(b.maturityClass).toLowerCase()}, brittleness <b>${Math.round(f.brittle*100)} %</b>, quality <b>${Math.round(f.q)}/100</b>. ${f.lat} m lateral, ${fracStages(f.lat)} frac stages.`);
+  const tail = success ? TR(` Débit initial ${Math.round(f.ip)} par mois, avec un déclin raide (environ −68 % la première année) : l'argent se gagne dans les premiers mois.`, ` Initial rate ${Math.round(f.ip)} per month, with a steep decline (about −68 % in the first year): the money is made in the first months.`)
+    : f.why ? TR(` Pas de production : ${FRAC_WHY()[f.why]}.`, ` No production: ${FRAC_WHY()[f.why]}.`) : TR(' Échec technique pendant la fracturation.', ' Technical failure during fracturing.');
+  return base + tail;
+}
 
 // Profondeur utilisée pour estimer et budgéter un forage. Avec une sismique
 // elle vient de l'estimation ; avec la seule gravimétrie, elle se déduit de la
@@ -3058,18 +3117,20 @@ function drillBlock(blockId, method, equip, est){
   if(method==='strati' && b.strati){ const m = TR('Ce bloc a déjà son sondage.','This block already has its survey hole.'); addLog(m,'bad'); toast(m); return; }
   if(G.labPick==null && LABOPT.pick && method!=='strati' && G.mode!=='sandbox'){ const m = TR('Désignez d\'abord votre horizon cible sur la coupe (clic sur la sismique ou bouton « viser » du tableau).','First designate your target horizon on the section (click on the seismic or the "aim" button in the table).'); addLog(m, 'bad'); toast(m); return; }
   if(b.studyLevel<1){addLog(TR('Réalisez au moins une étude (gravimétrie ou sismique) avant de forer.','Do at least one study (gravity or seismic) before drilling.'),'bad');return;}
-  const depth = drillDepthEstimate(b);
+  if(method==='frac' && (G.simple || b.isOffshore)){ const m = TR('La fracturation n\'est pas proposée ici.','Fracturing is not offered here.'); addLog(m,'bad'); toast(m); return; }
+  const depth = method==='frac' ? fracDepthEstimate(b) : drillDepthEstimate(b);
+  const lat = method==='frac' ? fracLat() : 0;
   const eq = EQUIPMENT[equip], me = METHODS[method];
   if(depth > eq.maxDepth){addLog(TR(`Matériel insuffisant : profondeur estimée ${Math.round(depth)}m > max ${eq.maxDepth}m.`,`Insufficient equipment: estimated depth ${Math.round(depth)} m > max ${eq.maxDepth} m.`),'bad');return;}
   const cf = drillCostFactor();
   const offMult = siteCost(b, cf);
-  const cost = depth * eq.costM * me.costMult * offMult;
+  const cost = depth * eq.costM * me.costMult * offMult + (method==='frac' ? fracCompletion(lat, cf) : 0);
   if(G.budget < cost && G.mode!=='sandbox'){addLog(TR('Budget insuffisant pour ce forage.','Insufficient budget for this well.'),'bad');return;}
   G.budget -= cost;
   b.planned = false; b.estAtDrill = (b.playerEst && b.playerEst.p!==null && b.playerEst.p!==undefined) ? {p:b.playerEst.p, own:true} : (b.estimate?.prob!==undefined ? {p:b.estimate.prob, own:false} : null);
 
   const drillingMonths = method==='strati' ? Math.max(1, Math.round(depth/1200)) : Math.max(2, Math.round(depth/600));
-  G.drilling.push({blockId, method, equip, cost, depth, cf, startMonth:G.month, endMonth:G.month+drillingMonths,
+  G.drilling.push({blockId, method, equip, cost, depth, cf, lat, startMonth:G.month, endMonth:G.month+drillingMonths,
                    est: est && (est.p!==null || est.bucket!==null) ? {p:est.p, bucket:est.bucket} : null});
   b.el?.classList.add('drilling');
   if(method==='strati') addLog(TR(`🧪 Sondage stratigraphique lancé : bloc (${b.x},${b.y}).`,`🧪 Stratigraphic test well started: block (${b.x},${b.y}).`), 'ev');
@@ -3100,14 +3161,15 @@ function resolveDrillingCore(d){
   b.el?.classList.remove('drilling');
   const eq = EQUIPMENT[d.equip], me = METHODS[d.method];
   const rd = SR('drill', `${d.blockId}|${d.method}`);
-  let geoOk  = rd() < clamp(b.trueProbability*discoveryBoost(b), 0, 0.95);
+  const isFrac = d.method==='frac', sh = isFrac ? shaleTrue(b) : null;
+  let geoOk  = isFrac ? (rd(), sh.ok) : rd() < clamp(b.trueProbability*discoveryBoost(b), 0, 0.95);
   const labResIdx = STRAT.findIndex(l=>l.role==='reservoir');
-  const labMissed = G.labPick!=null && G.labPick!==labResIdx;
-  if(labMissed) geoOk = false;
+  const labMissed = !isFrac && G.labPick!=null && G.labPick!==labResIdx;
+  if(labMissed && !isFrac) geoOk = false;
   // Le coût payé au lancement repose sur la profondeur ESTIMÉE. Une fois le
   // trou foré, on règle l'écart avec la profondeur réelle (dépassement ou
   // économie), et un matériel trop faible pour la vraie profondeur échoue.
-  const trueDepth = (G.labPick!=null && b.horizons[G.labPick]) ? b.horizons[G.labPick].top : b.topOfReservoir;
+  const trueDepth = isFrac ? (b.srcTopDepth || b.topOfReservoir) : (G.labPick!=null && b.horizons[G.labPick]) ? b.horizons[G.labPick].top : b.topOfReservoir;
   const techRel = eqReliability(eq, trueDepth), techRoll = rd() < techRel;
   const settleDelta = (trueDepth - d.depth) * eq.costM * me.costMult * siteCost(b, d.cf ?? 1);
   if(Math.abs(settleDelta) > 1000){
@@ -3122,14 +3184,16 @@ function resolveDrillingCore(d){
   // Facteur du système pétrolier le plus limitant sur CE bloc (vraie
   // géologie), pour pouvoir expliquer après coup pourquoi ça a marché ou non.
   const factors = {piège:b.trapFactor, réservoir:b.resFactor, couverture:b.sealFactor, charge:b.srcFactor};
-  const limitingFactor = Object.entries(factors).sort((a,z)=>a[1]-z[1])[0][0];
+  const limitingFactor = isFrac ? 'frac' : Object.entries(factors).sort((a,z)=>a[1]-z[1])[0][0];
   let prodOut = null;
   if(geoOk && techOk){
     const res = b.horizons.find(l=>l.role==='reservoir');
-    const initProd = (b.trueQuality/100) * (res?.thicknessLocal||20) * PROD_BASE * me.prodMult * prodSite(b);
+    const fz = isFrac ? Math.exp(0.3*GEO.gauss(rd) - 0.045) : 1;   // aléa de complétion, d'espérance 1
+    const initProd = isFrac ? fracProdOf(sh.q, sh.thick, d.lat||2000, b) * fz : (b.trueQuality/100) * (res?.thicknessLocal||20) * PROD_BASE * me.prodMult * prodSite(b);
+    if(isFrac) b.fracInfo = { ...sh, lat:d.lat||2000, ip:initProd };
     const well = {blockId:d.blockId, method:d.method, equip:d.equip, cost:d.cost,
                   studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month,
-                  production:initProd, comps:[{q0:initProd, t0:0}], monthsActive:0, status:'producing',
+                  production:initProd, comps:[isFrac ? {q0:initProd, t0:0, dc:SHALE_DECL} : {q0:initProd, t0:0}], monthsActive:0, status:'producing',
                   isGas:b.isGas, offshore:b.isOffshore, eorActive:false, eorMonthsLeft:0};
     G.wells.push(well);
     prodOut = initProd;
@@ -3137,22 +3201,23 @@ function resolveDrillingCore(d){
     b.el?.classList.add('has-well');
     injectWellLog(b); // le forage donne toujours le log complet, succès ou non
     revealTrueGeology(b); // mode TP : commentaire pédagogique additionnel
-    addLog(TR(`✓ Puits productif : bloc (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barils'}/mois.`,`✓ Producing well: block (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barrels'}/month.`),'good');
+    addLog(isFrac ? TR(`✓ Puits fracturé productif : bloc (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barils'}/mois au départ, déclin raide.`,`✓ Productive fracked well: block (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barrels'}/month at the start, steep decline.`) : TR(`✓ Puits productif : bloc (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barils'}/mois.`,`✓ Producing well: block (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barrels'}/month.`),'good');
   } else {
     injectWellLog(b);
     revealTrueGeology(b);
+    if(isFrac) b.fracInfo = { ...sh, lat:d.lat||2000, ip:0, why: geoOk ? '' : sh.why };
     b.dryHole = true;
     b.wrongTarget = !!labMissed;
-    b.dryHoleInfo = {cost:d.cost, studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month, techFail: !geoOk ? false : true,
+    b.dryHoleInfo = {method:d.method, cost:d.cost, studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month, techFail: !geoOk ? false : true,
       techDetail: (!geoOk ? null : {equip:d.equip, depth:Math.round(trueDepth), rel:techRel, tooDeep})};
     b.el?.classList.add('dry-hole');
-    const why = !geoOk ? TR('aucun HC (puits sec)','no HC (dry hole)') : TR('échec technique','technical failure');
+    const why = !geoOk ? (isFrac ? FRAC_WHY()[sh.why] : TR('aucun HC (puits sec)','no HC (dry hole)')) : TR('échec technique','technical failure');
     addLog(TR(`✗ Forage infructueux : bloc (${b.x},${b.y}), ${why}.`,`✗ Unsuccessful drilling: block (${b.x},${b.y}), ${why}.`),'bad');
   }
   refreshNeighbors(b);
-  if(b.well) addLog(TR('🧭 Découverte : les blocs voisins (à moins de 3 cases) deviennent plus prometteurs.','🧭 Discovery: neighbouring blocks (within 3 cells) become more promising.'), 'ev');
-  else if(b.dryHoleInfo && !b.dryHoleInfo.techFail && !b.wrongTarget) addLog(TR('Les blocs voisins sont un peu moins prometteurs.','Neighbouring blocks are slightly less promising.'), 'ev');
-  const calibHtml = (d.est ? applyCalibration(d.est, geoOk, prodOut, b) : '') + labResultHtml(b, labMissed, labResIdx);
+  if(b.well && !isFrac) addLog(TR('🧭 Découverte : les blocs voisins (à moins de 3 cases) deviennent plus prometteurs.','🧭 Discovery: neighbouring blocks (within 3 cells) become more promising.'), 'ev');
+  else if(!isFrac && b.dryHoleInfo && !b.dryHoleInfo.techFail && !b.wrongTarget) addLog(TR('Les blocs voisins sont un peu moins prometteurs.','Neighbouring blocks are slightly less promising.'), 'ev');
+  const calibHtml = isFrac ? '' : (d.est ? applyCalibration(d.est, geoOk, prodOut, b) : '') + labResultHtml(b, labMissed, labResIdx);
   renderBlock(b);
   updateHud();
 
@@ -3188,6 +3253,7 @@ function resolveSidetrack(d){
 function launchSidetrack(blockId){
   const b = blocks[blockId];
   const w = b?.well;
+  if(w?.method==='frac'){ addLog(TR('Pas de side-track sur un puits fracturé.','No side-track on a fracked well.'),'bad'); return; }
   if(!w || w.status!=='producing'){ addLog(TR('Aucun puits actif sur ce bloc.','No active well on this block.'),'bad'); return; }
   if(w.sidetrackDone){ addLog(TR('Side-track déjà tenté sur ce puits.','Side-track already attempted on this well.'),'bad'); return; }
   const info = getSecondReservoirInfo(b);
@@ -4075,8 +4141,8 @@ function drillRevealFlush(it){
   if(G.sectionA!==null && typeof renderSection==='function') renderSection();
   if(typeof bigView!=='undefined' && bigView.open && bigView.kind==='section') bvRender();
   const success = !!(it.geoOk && it.techOk), info = b.dryHoleInfo;
-  drillRevealBatch.push({ x:b.x, y:b.y, method:it.b.well?.method || 'vertical', success, prod: success ? Math.round(b.well.production) : 0, gas: !!b.isGas,
-    cost: success ? (b.well.cost||0) : (info?.cost||0), cause: success ? '' : (it.limitingFactor==='labmiss' ? TR('mauvais horizon visé','wrong horizon targeted') : !it.techOk ? TR('échec technique du matériel','equipment technical failure') : TR('aucun hydrocarbure','no hydrocarbons')) });
+  drillRevealBatch.push({ x:b.x, y:b.y, method:it.b.well?.method || it.b.dryHoleInfo?.method || 'vertical', success, prod: success ? Math.round(b.well.production) : 0, gas: !!b.isGas,
+    cost: success ? (b.well.cost||0) : (info?.cost||0), cause: success ? '' : (it.limitingFactor==='frac' ? (FRAC_WHY()[b.fracInfo?.why] || TR('échec technique du matériel','equipment technical failure')) : it.limitingFactor==='labmiss' ? TR('mauvais horizon visé','wrong horizon targeted') : !it.techOk ? TR('échec technique du matériel','equipment technical failure') : TR('aucun hydrocarbure','no hydrocarbons')) });
 }
 function showDrillRecap(){
   const modal = document.getElementById('drillRevealModal'), icon = document.getElementById('drillRevealIcon'), title = document.getElementById('drillRevealTitle'), sub = document.getElementById('drillRevealSub'), detail = document.getElementById('drillRevealDetail');
@@ -4148,6 +4214,7 @@ function playNextDrillReveal(){
       sub.textContent = TR('Aucun hydrocarbure exploitable','No exploitable hydrocarbons');
       detail.innerHTML = limitingFactor==='labmiss' ? `${TR(`Cause : `,`Cause: `)}<b>${TR(`mauvais horizon visé`,`wrong horizon targeted`)}</b>${TR(`. Le puits a traversé la colonne sans toucher le réservoir.`,`. The well went through the column without hitting the reservoir.`)}` : `${TR(`Facteur limitant : `,`Limiting factor: `)}<b>${FACTOR_LABEL[limitingFactor]}</b> : ${FACTOR_EXPLAIN_BAD[limitingFactor]}.`;
     }
+    if(limitingFactor==='frac' && b.fracInfo){ detail.innerHTML = fracRevealHtml(b, success); if(!success && !techOk===false && b.fracInfo.why) sub.textContent = TR('Roche-mère non exploitable','Source rock not exploitable'); }
     if(calibHtml) detail.innerHTML += calibHtml;
     if(G.simple) detail.innerHTML += simpleLessonHtml(b, success);
     closeBtn.style.display = '';
@@ -5014,11 +5081,12 @@ function renderStudiesPanel(b){
     html+=`<div class="ps-section" style="margin-top:12px;">${TR(`Forage`,`Drilling`)}</div>
     <div class="drill-card">
       <select class="drill-select" id="drillMethod" onchange="updateDrillSummary(${b.id})">
-        ${Object.entries(METHODS).filter(([k])=>k!=='strati' && !(G.simple && k==='horizontal')).map(([k,m])=>`<option value="${k}" ${k==='vertical'?'selected':''}>${m.label}</option>`).join('')}
+        ${Object.entries(METHODS).filter(([k])=>k!=='strati' && !(G.simple && (k==='horizontal'||k==='frac')) && !(k==='frac' && b.isOffshore)).map(([k,m])=>`<option value="${k}" ${k==='vertical'?'selected':''}>${m.label}</option>`).join('')}
       </select>
       <select class="drill-select" id="drillEquip" onchange="updateDrillSummary(${b.id})">
         ${Object.entries(EQUIPMENT).map(([k,e])=>`<option value="${k}" ${k==='standard'?'selected':''}>${e.label} (max ${e.maxDepth}${TR(` m, fiab. `,` m, rel. `)}${(e.reliability*100).toFixed(0)}${TR(` % à mi-limite)`,` % at mid-limit)`)}</option>`).join('')}
       </select>
+      <select class="drill-select" id="fracLat" style="display:none" onchange="updateDrillSummary(${b.id})" aria-label="${TR('Longueur du drain horizontal','Horizontal lateral length')}">${FRAC_LATS.map(l=>`<option value="${l}" ${l===2000?'selected':''}>${TR(`Drain de ${l.toLocaleString()} m, ${fracStages(l)} étages`,`${l.toLocaleString()} m lateral, ${fracStages(l)} stages`)}</option>`).join('')}</select>
       <div class="drill-summary" id="drillSummary"></div>
       <div class="est-card">
         <div class="est-row"><span>${TR(`Votre estimation de succès`,`Your success estimate`)}</span><b id="estPVal">${ensureEst(b).p===null?TR(TR('non estimé','not estimated'),'not estimated'):Math.round(ensureEst(b).p*100)+' %'}</b></div>
@@ -5083,9 +5151,11 @@ function updateDrillSummary(blockId){
   const method=document.getElementById('drillMethod')?.value||'vertical';
   const equip=document.getElementById('drillEquip')?.value||'standard';
   const eq=EQUIPMENT[equip], me=METHODS[method];
-  const depth=drillDepthEstimate(b);
+  { const fl=document.getElementById('fracLat'); if(fl) fl.style.display = method==='frac' ? '' : 'none'; }
+  const depth = method==='frac' ? fracDepthEstimate(b) : drillDepthEstimate(b);
   const offMult=siteCost(b);
-  const cost=depth*eq.costM*me.costMult*offMult;
+  const lat = method==='frac' ? fracLat() : 0;
+  const cost=depth*eq.costM*me.costMult*offMult + (method==='frac' ? fracCompletion(lat) : 0);
   const deepOk=depth<=eq.maxDepth;
   const canAfford=G.budget>=cost||G.mode==='sandbox';
 
@@ -5098,6 +5168,20 @@ function updateDrillSummary(blockId){
   if(method==='strati'){
     summary.innerHTML=`<div class="tr"><span class="tl">${TR(`Coût du sondage`,`Survey hole cost`)}</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}${b.isOffshore?' (offshore)':''}</span></div><div class="ds-warn" style="margin-top:4px;">${TR(`Carottes et log : la lithologie de la colonne est dévoilée. Aucune production possible, aucune information sur les hydrocarbures. Carotte et Rock-Eval possibles ensuite. Le bloc reste forable.`,`Cores and log: the lithology of the column is revealed. No production possible, no information on hydrocarbons. Core analysis and Rock-Eval possible afterwards. The block can still be drilled.`)}</div>`;
     if(drillBtn) drillBtn.disabled=!canAfford;
+    return;
+  }
+  if(method==='frac'){
+    const se=shaleEstimate(b), ip=fracProdOf(se.q, se.thick, lat, b), gas=!!b.estimate.isGas, u=gas?'Mcf':TR('barils','barrels');
+    const proj=projectWell(ip, G.price, false, gas, G.mode==='sandbox'?0:cost, 120, SHALE_DECL);
+    const be=proj.payback, beClass=be===null?'ds-bad':be<18?'ds-good':be<36?'ds-warn':'ds-bad';
+    const known = se.known ? (se.ok ? TR(`Rock-Eval : TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, roche-mère exploitable.`,`Rock-Eval: TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, exploitable source rock.`) : TR(`Rock-Eval : TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, roche-mère NON exploitable (immature ou trop pauvre).`,`Rock-Eval: TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, source rock NOT exploitable (immature or too lean).`))
+      : TR('Roche-mère non mesurée : faites un sondage avec carotte puis une Rock-Eval avant de payer une frac. La fragilité reste inconnue jusqu\'au forage.','Source rock not measured: run a survey hole with core and a Rock-Eval before paying for a frac. Brittleness stays unknown until drilling.');
+    summary.innerHTML=`<div class="tr"><span class="tl">${TR(`Coût estimé (forage + ${fracStages(lat)} étages)`,`Estimated cost (drilling + ${fracStages(lat)} stages)`)}</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}</span></div>
+      <div class="tr"><span class="tl">${TR(`Débit initial si exploitable`,`Initial rate if exploitable`)}</span><span>~${Math.round(ip)} ${u}${TR('/mois','/month')}${se.known?'':TR(' (a priori, très incertain)',' (prior, very uncertain)')}</span></div>
+      <div class="tr"><span class="tl">${TR(`Déclin`,`Decline`)}</span><span>${TR('≈ −68 % la 1re année','≈ −68 % in year 1')}</span></div>
+      <div class="${beClass}" style="margin-top:4px;">${be===null?TR('Non rentabilisé en 10 ans à ce débit et à ce prix','Not paid back in 10 years at this rate and price'):TR(`Rentabilisé en ~${be} mois si la roche-mère est exploitable`,`Paid back in ~${be} months if the source rock is exploitable`)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">${known}</div>`;
+    if(drillBtn) drillBtn.disabled=!(canAfford && deepOk);
     return;
   }
   // Estimation de rentabilité
@@ -5523,9 +5607,9 @@ const stratiLogCost = b => G.mode==='sandbox' ? 0 : STRATI_LOG_COST*(b.isOffshor
 const stratiHasLog = b => b.studies.some(s=>s.type==='welllog');
 // matériel le moins cher qui atteint la profondeur estimée
 function drillPlan(b, method){
-  const depth = drillDepthEstimate(b); if(depth==null) return null;
-  const off = siteCost(b, drillCostFactor());
-  const opts = Object.entries(EQUIPMENT).filter(([k,e])=>depth<=e.maxDepth).map(([k,e])=>({equip:k, cost:depth*e.costM*METHODS[method].costMult*off})).sort((a,z)=>a.cost-z.cost);
+  const depth = method==='frac' ? fracDepthEstimate(b) : drillDepthEstimate(b); if(depth==null) return null;
+  const off = siteCost(b, drillCostFactor()), extra = method==='frac' ? fracCompletion(2000) : 0;
+  const opts = Object.entries(EQUIPMENT).filter(([k,e])=>depth<=e.maxDepth).map(([k,e])=>({equip:k, cost:depth*e.costM*METHODS[method].costMult*off + extra})).sort((a,z)=>a.cost-z.cost);
   return opts.length ? { depth, equip:opts[0].equip, cost:opts[0].cost } : { depth, equip:null, cost:null };
 }
 const stratiPlan = b => drillPlan(b, 'strati');

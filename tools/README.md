@@ -108,3 +108,7 @@ Tests : `anglais_reste.js` parcourt l'interface en anglais et liste ce qui reste
 ## Géostatistique (V4.91)
 
 Noyau `GEO` dans `index.html` (krigeage simple avec bruit par donnée, simulation conditionnelle de Matheron). Modèle du jeu : variogramme gaussien, portée pratique 3,3 blocs, mesuré sur la qualité réservoir réelle (moyenne et écart-type par bassin dans `GS_Q`). Trois usages : mini-jeu « Portée et variogramme » (indépendant d'une partie), couche « Incertitude » de la carte (variance de krigeage selon les mesures du joueur, Junior et Senior), fourchette P90 / P50 / P10 de production et gain net P90 / P50 / P10 d'une campagne de blocs planifiés. L'estimation du joueur et la vraie géologie ne sont jamais modifiées. Tests : `geostat.js` (noyau, mini-jeu, couche, campagne) et `geostat_calibration.js` (l'intervalle P90 à P10 couvre la vérité environ 80 % du temps sur 7 bassins).
+
+## Fracturation de la roche-mère (V4.92)
+
+Méthode `frac` (Horizontal + fracturation) à terre, hors Découverte. Qualité de la roche-mère = 0,40·√(TOC/8) + 0,30·maturité + 0,30·fragilité (`fracQ`) ; exploitable si mûre, TOC ≥ 1,5 %, épaisseur ≥ 15 m. Production `fracProdOf` (`SHALE_BASE`), déclin de shale `SHALE_DECL`, coût = forage horizontal à la profondeur de la roche-mère + étages (`FRAC_STAGE_COST`). La fragilité (`shaleBrittle`, bruit lissé par seed) n'est connue qu'au forage ; TOC et Tmax viennent de la Rock-Eval (donc d'une carotte). Une frac ne modifie pas l'effet de voisinage conventionnel. Test : `frac_roche_mere.js`.
