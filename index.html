@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.93</title>
+<title>GeoExplorer V4.94</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2843,9 +2843,15 @@ function gsCampaign(nSim=400){
   if(plans.length<2) return null;
   const rng=SR('gscamp', plans.map(p=>p.b.id).join(',')+'|'+D.pts.length);
   const sims=GEO.condSim(D.pts, D.vals, plans.map(p=>p.b), GS_MODEL.m, GS_MODEL.a, nSim, rng), tot=[];
-  for(const s of sims){ let g=0; plans.forEach((p,i)=>{ const q=clamp(D.mu+D.sd*s[i],0,100), b=p.b;
-    const ok = rng() < clamp(b.estimate.prob*p.rel, 0, 0.95), cost=G.mode==='sandbox'?0:p.pl.cost;
-    if(ok){ const prod=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b); g += projectWell(prod, G.price, b.isOffshore, b.estimate.isGas, cost, 120).cum - cost; } else g -= cost; });
+  // Dépendances entre puits : (1) l'effet de voisinage du jeu, appliqué dans l'ordre des blocs (un succès rend les voisins plus prometteurs, un puits sec utile moins) ; (2) un cours du brut commun à tout le programme (lognormal, 22 %).
+  // Les erreurs d'estimation de chaque bloc sont indépendantes dans le jeu : elles ne créent pas de corrélation.
+  const base = plans.map(p=>discoveryBoost(p.b)), near = plans.map((p,i)=>plans.map((q,j)=>{ if(j>=i) return 0; const d=Math.hypot(p.b.x-q.b.x, p.b.y-q.b.y); return d<=DISC_RADIUS ? Math.exp(-(d-1)/1.5) : 0; }));
+  for(const s of sims){ let g=0; const pr = G.price*Math.exp(0.22*GEO.gauss(rng) - 0.024), out = [];
+    plans.forEach((p,i)=>{ const q=clamp(D.mu+D.sd*s[i],0,100), b=p.b; let f=base[i];
+      for(let j=0;j<i;j++){ if(near[i][j]>0){ if(out[j]===1) f *= 1 + 0.6*near[i][j]; else if(out[j]===2) f *= 1 - 0.2*near[i][j]; } }
+      const geo = rng() < clamp(b.estimate.prob*clamp(f,0.5,2.2), 0, 0.95), tech = rng() < p.rel, ok = geo && tech, cost=G.mode==='sandbox'?0:p.pl.cost;
+      out[i] = ok ? 1 : (!geo ? 2 : 0);   // 1 : puits productif, 2 : sec utile (la géologie a été testée), 0 : échec technique (ne prouve rien)
+      if(ok){ const prod=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b); g += projectWell(prod, pr, b.isOffshore, b.estimate.isGas, cost, 120).cum - cost; } else g -= cost; });
     tot.push(g); }
   tot.sort((a,b)=>a-b); const at=f=>tot[Math.min(tot.length-1, Math.floor(f*tot.length))];
   return { n:plans.length, p90:at(0.10), p50:at(0.5), p10:at(0.90), ruin:tot.filter(v=>v<0).length/tot.length };

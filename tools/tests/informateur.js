@@ -24,12 +24,12 @@ const { chromium, devices } = require('playwright'); const path = require('path'
     G.wells.forEach(w=>{w.production=1000; w.comps=[{q0:1000,t0:w.monthsActive}];}); G.stormMonthsLeft=0; G.taxMonthsLeft=3; t = tick(); const taxRatio = t.rev / (t.price*(t.pr[0]+t.pr[1])); o.tax = Math.abs(taxRatio-(1-TAX_RATE))<0.02 && G.taxMonthsLeft===2; o.base = +base.toFixed(3);
     // 3. briefing : détection 75 %, rumeurs
     reset(); G.mode='sandbox'; G.budget=1e9; G.financeMode=true; let realBig=0, listedReal=0, fakeItems=0, briefs=0;
-    for(let m=1;m<=9000;m++){ G.month=m; stepPrice(); if(m%12===0){ const st=infoState(); const known=(G.marketEvents||[]).filter(ev=>{ const d=ev.at-G.month; return d>=1 && d<=INFO_BRIEF_H && infoIsBig(ev); }).length; realBig+=known; const nb=st.briefs.length; infoBuyBrief(); const br=infoState().briefs[nb]; briefs++; listedReal += br.items.filter(i=>i.real).length; fakeItems += br.items.filter(i=>!i.real).length; } }
+    for(let m=1;m<=40000;m++){ G.month=m; stepPrice(); if(m%12===0){ const st=infoState(); const known=(G.marketEvents||[]).filter(ev=>{ const d=ev.at-G.month; return d>=1 && d<=INFO_BRIEF_H && infoIsBig(ev); }).length; realBig+=known; const nb=st.briefs.length; infoBuyBrief(); const br=infoState().briefs[nb]; briefs++; listedReal += br.items.filter(i=>i.real).length; fakeItems += br.items.filter(i=>!i.real).length; } }
     const st3 = infoState(); o.brief = { detect:+(listedReal/realBig).toFixed(3), fakePerBrief:+(fakeItems/briefs).toFixed(3), judged:st3.total, hit:+(st3.hits/st3.total).toFixed(3), realBig };
     // 4. alertes : détection 80 %, fausses 0,07 par mois, 1 à 3 mois d'avance
     reset(); G.financeMode=true; const st4 = infoState(); st4.subUntil = 1e9; const evs=new Set(); let big=0;
-    for(let m=1;m<=9000;m++){ G.month=m; stepPrice(); (G.marketEvents||[]).forEach(e=>{ if(!evs.has(e)){ evs.add(e); if(infoIsBig(e)) big++; } }); }
-    o.al = { big, told:st4.alertHits, fakes:st4.fakes.length, detect:+(st4.alertHits/big).toFixed(3), fakeRate:+(st4.fakes.length/9000).toFixed(3) };
+    for(let m=1;m<=40000;m++){ G.month=m; stepPrice(); (G.marketEvents||[]).forEach(e=>{ if(!evs.has(e)){ evs.add(e); if(infoIsBig(e)) big++; } }); }
+    o.al = { big, told:st4.alertHits, fakes:st4.fakes.length, detect:+(st4.alertHits/big).toFixed(3), fakeRate:+(st4.fakes.length/40000).toFixed(3) };
     o.lead = st4.notes.every(n=>/dans [123] mois/.test(n.t));
     // 5. coût et interface
     reset(); G.mode='junior'; G.budget=1e6; const b0=G.budget; infoBuyBrief(); o.paid = Math.round(b0-G.budget)===INFO_BRIEF_COST;
