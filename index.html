@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.90</title>
+<title>GeoExplorer V4.91</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -144,6 +144,9 @@ main{flex:1; display:grid; grid-template-columns:1fr var(--right-w, 380px); over
 .lab-secchk{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;margin-right:6px;}
 .lab-secchk input{margin:0;}
 .axl{font-family:var(--mono); font-size:10px; color:var(--muted); display:flex; align-items:center; justify-content:center;}
+.block .unc{position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(45deg,rgba(40,40,40,.62) 0 2px,transparent 2px 6px);}
+#uncBtn.on{background:var(--text);color:var(--bg);}
+body.simple-ui #uncBtn{display:none !important;}
 .block{
   width:44px; height:44px; border:1px solid var(--line-strong); cursor:pointer;
   position:relative; display:flex; align-items:center; justify-content:center; border-radius:6px;
@@ -880,6 +883,11 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
         <div class="mode-desc">Une coupe sismique générée à partir d'une vraie géologie du jeu : suivez le toit du réservoir depuis un puits de calage jusqu'à une autre colonne, puis situez la faille. Les réflecteurs bleus marquent une hausse d'impédance, les rouges une baisse.</div>
         <div class="mode-stats">Durée <span>~4 min</span> · Format <span>Pointé</span></div>
       </div>
+      <div class="mode-card mg-card" id="gsOpenBtn" style="cursor:pointer;">
+        <div class="mode-name">📐 <span class="i18n" data-fr="Portée et variogramme" data-en="Range and variogram">Portée et variogramme</span></div>
+        <div class="mode-desc"><span class="i18n" data-fr="Un champ caché est mesuré en quelques puits : lisez le variogramme, réglez la portée et la pépite, et jugez la carte krigée contre la vérité. Pour comprendre jusqu'où un puits renseigne ses voisins." data-en="A hidden field is measured at a few wells: read the variogram, set the range and the nugget, and judge the kriged map against the truth. To understand how far a well informs its neighbours.">Un champ caché est mesuré en quelques puits : lisez le variogramme, réglez la portée et la pépite, et jugez la carte krigée contre la vérité. Pour comprendre jusqu'où un puits renseigne ses voisins.</span></div>
+        <div class="mode-stats"><span class="i18n" data-fr="Durée" data-en="Duration">Durée</span> <span>~4 min</span> · Format <span><span class="i18n" data-fr="Réglage" data-en="Tuning">Réglage</span></span></div>
+      </div>
       <div class="mode-card mg-card" id="cardGameOpenBtn" style="cursor:pointer;">
         <div class="mode-name">🃏 Assemble ton prospect</div>
         <div class="mode-desc">Choisissez une carte par facteur du système pétrolier (piège, réservoir, couverture, charge) et jouez les synergies entre elles avant de forer.</div>
@@ -1179,6 +1187,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
       </div>
       <span id="toolLabel">Mode : Sélection</span>
       <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
+        <button class="btn" id="uncBtn" aria-pressed="false"><span class="i18n" data-fr="Incertitude" data-en="Uncertainty">Incertitude</span></button>
         <label class="lab-secchk" title="Afficher ou masquer tous les traits de coupe sur la carte (la coupe affichée en trait plein, les autres en pointillé)"><input type="checkbox" id="secLineChk" checked onchange="labToggleSecLine(this.checked)"> Traits de coupe</label>
         <button class="btn" id="zoomOut" aria-label="Zoom arrière">−</button>
         <span id="zoomLbl" style="font-size:12px; color:var(--muted); min-width:40px; text-align:center; font-family:var(--mono);">100%</span>
@@ -2737,6 +2746,110 @@ function refreshNeighbors(b){
     updateBlockEstimate(o); renderBlock(o);
   });
 }
+// =====================================================================
+// GÉOSTATISTIQUE (V4.91)
+// Noyau : krigeage simple (bruit de mesure par donnée) et simulation conditionnelle par la règle de Matheron.
+// Modèle du jeu : variogramme gaussien de portée pratique 3,3 blocs, pépite nulle ; mesuré sur la qualité réservoir (vérité) de 12 cartes par bassin
+// (demi-variogramme normalisé 0,24 / 0,61 / 0,89 / 0,99 aux distances 1 / 2 / 3 / 4 blocs). L'estimation du joueur n'est jamais modifiée : seules
+// la confiance affichée et la fourchette de production en dépendent.
+// =====================================================================
+const GEO = (()=>{
+  const cov = (m,h,a)=> m==='sph' ? (h>=a ? 0 : 1-1.5*(h/a)+0.5*(h/a)**3) : m==='exp' ? Math.exp(-3*h/a) : Math.exp(-3*(h/a)*(h/a));
+  function chol(A,n){ const L=new Float64Array(n*n);
+    for(let i=0;i<n;i++) for(let j=0;j<=i;j++){ let s=A[i*n+j]; for(let k=0;k<j;k++) s-=L[i*n+k]*L[j*n+k]; if(i===j) L[i*n+i]=Math.sqrt(s>1e-12?s:1e-12); else L[i*n+j]=s/L[j*n+j]; }
+    return L; }
+  function fwd(L,n,b){ const y=new Float64Array(n); for(let i=0;i<n;i++){ let s=b[i]; for(let k=0;k<i;k++) s-=L[i*n+k]*y[k]; y[i]=s/L[i*n+i]; } return y; }
+  function bwd(L,n,y){ const x=new Float64Array(n); for(let i=n-1;i>=0;i--){ let s=y[i]; for(let k=i+1;k<n;k++) s-=L[k*n+i]*x[k]; x[i]=s/L[i*n+i]; } return x; }
+  // pts : [{x,y,noise}] (bruit en fraction du palier), tg : [{x,y}], palier partiel ps. Renvoie les poids et la variance (palier = 1) de chaque cible.
+  function krige(pts, tg, m, a, ps=1){
+    const n=pts.length, K=new Float64Array(n*n);
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++) K[i*n+j] = ps*cov(m, Math.hypot(pts[i].x-pts[j].x, pts[i].y-pts[j].y), a) + (i===j ? (pts[i].noise||0)+1e-6 : 0);
+    const L=chol(K,n), W=[], V=new Float64Array(tg.length), c=new Float64Array(n);
+    tg.forEach((t,ti)=>{ for(let i=0;i<n;i++) c[i]=ps*cov(m, Math.hypot(pts[i].x-t.x, pts[i].y-t.y), a);
+      const y=fwd(L,n,c); let s=0; for(let i=0;i<n;i++) s+=y[i]*y[i]; V[ti]=Math.max(0, ps-s); W.push(bwd(L,n,y)); });
+    return { W, V };
+  }
+  const gauss = rng => { let u=0; while(u<1e-12) u=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*rng()); };
+  // Champ gaussien non conditionnel sur des nœuds (Cholesky de la covariance complète)
+  function field(nodes, m, a, ps, rng){ const n=nodes.length, C=new Float64Array(n*n);
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++) C[i*n+j]=ps*cov(m, Math.hypot(nodes[i].x-nodes[j].x, nodes[i].y-nodes[j].y), a)+(i===j?1e-4:0);
+    const L=chol(C,n), z=new Float64Array(n), f=new Float64Array(n); for(let i=0;i<n;i++) z[i]=gauss(rng);
+    for(let i=0;i<n;i++){ let s=0; for(let k=0;k<=i;k++) s+=L[i*n+k]*z[k]; f[i]=s; } return f; }
+  // Simulation conditionnelle (Matheron) : nSim réalisations aux cibles, conditionnées aux données (valeurs centrées réduites, bruit par donnée).
+  function condSim(pts, vals, tg, m, a, nSim, rng, ps=1){
+    const n=pts.length, nt=tg.length, kr=krige(pts, tg, m, a, ps);
+    const kmean = kr.W.map(w=>{ let s=0; for(let i=0;i<n;i++) s+=w[i]*vals[i]; return s; });
+    const all=[...pts, ...tg], out=[];
+    for(let s=0;s<nSim;s++){ const f=field(all, m, a, ps, rng), dsim=new Float64Array(n);
+      for(let i=0;i<n;i++) dsim[i]=f[i]+Math.sqrt(pts[i].noise||0)*gauss(rng);   // donnée simulée avec son bruit de mesure
+      const r=new Float64Array(nt); for(let t=0;t<nt;t++){ let ks=0; for(let i=0;i<n;i++) ks+=kr.W[t][i]*dsim[i]; r[t]=kmean[t] + (f[n+t]-ks); }
+      out.push(r); }
+    return out;
+  }
+  return { cov, krige, field, condSim, gauss };
+})();
+const GS_MODEL = { m:'gauss', a:3.3 };
+const GS_Q = { paris:[40,14], rift:[29,10.5], aquitaine:[28,9.5], passive:[30,10.3], north_sea:[22,7.7], gulf_coast:[15.6,5.4], foreland:[32,12] };   // moyenne et écart-type de la qualité réservoir, mesurés par bassin
+const gsQStat = () => GS_Q[G.basinType] || [29,10];
+let GS_UNC_ON = false, GS_UNC_CACHE = { sig:'', v:null };
+// Bruit de mesure (fraction de la variance du champ) selon ce que le joueur a mesuré sur le bloc ; null : rien de mesuré sur ce bloc
+function gsInfoNoise(b){
+  const has = t => b.studies.some(s=>s.type===t);
+  if(b.well || b.dryHole || has('welllog')) return 0.04;
+  if(has('core')) return 0.12;
+  if(has('seismic3d')) return 0.35;
+  if(has('seismic2d')) return 0.6;
+  return null;
+}
+// Variance de krigeage normalisée (0 = connu, 1 = rien de mesuré) de chaque bloc, selon les mesures du joueur
+function gsUncertainty(){
+  const pts=[]; blocks.forEach(b=>{ const nz=gsInfoNoise(b); if(nz!==null) pts.push({x:b.x, y:b.y, noise:nz}); });
+  const sig = blocks.length+'|'+pts.map(p=>p.x+','+p.y+','+p.noise).join(';');
+  if(GS_UNC_CACHE.sig===sig) return GS_UNC_CACHE.v;
+  const v = new Float64Array(blocks.length).fill(1);
+  if(pts.length){ const r=GEO.krige(pts, blocks, GS_MODEL.m, GS_MODEL.a); for(let i=0;i<blocks.length;i++) v[i]=r.V[i]; }
+  GS_UNC_CACHE = { sig, v }; return v;
+}
+const gsConfidence = b => 1 - gsUncertainty()[b.id];
+// Données de qualité réservoir : chaque bloc dont on a une estimation, avec l'erreur de cette estimation (la qualité estimée est la vraie plus une erreur uniforme de demi-largeur qualErr)
+function gsQualityData(){
+  const [mu, sd] = gsQStat(), pts=[], vals=[];
+  blocks.forEach(b=>{ const e=b.estimate; if(!e || e.quality===undefined) return;
+    const sdE = Math.max(1, (e.qualErr||0)/Math.sqrt(3));
+    pts.push({ x:b.x, y:b.y, noise:Math.max(0.01,(sdE/sd)**2), id:b.id }); vals.push((e.quality-mu)/sd); });
+  return { pts, vals, mu, sd };
+}
+// Qualité réservoir d'un bloc (moyenne et écart-type a posteriori) : son estimation propre combinée à ce que disent les blocs voisins mesurés
+function gsQualityPosterior(b){
+  const e=b.estimate; if(!e || e.quality===undefined) return null;
+  const D=gsQualityData(); if(!D.pts.length) return null;
+  const r=GEO.krige(D.pts, [b], GS_MODEL.m, GS_MODEL.a), w=r.W[0]; let m=0; for(let i=0;i<w.length;i++) m+=w[i]*D.vals[i];
+  return { m: clamp(D.mu + D.sd*m, 0, 100), sd: D.sd*Math.sqrt(r.V[0]), prior: D.sd };
+}
+const GS_Z = { p10:1.2816, p90:-1.2816 };
+// Production si succès à trois quantiles (P90 prudent, P50, P10 optimiste), exacts : la loi conditionnelle d'un bloc est gaussienne
+function gsProdRange(b, estProd){
+  const post=gsQualityPosterior(b), q0=b.estimate?.quality; if(!post || !q0) return null;
+  const at = z => estProd * clamp(post.m + z*post.sd, 0, 100) / q0;
+  return { p90: at(GS_Z.p90), p50: at(0), p10: at(GS_Z.p10), sd: post.sd };
+}
+// Campagne planifiée : gain net sur 10 ans P90/P50/P10 par simulation conditionnelle (400 tirages, déterministes pour un plan donné)
+function gsCampaign(nSim=400){
+  const list = blocks.filter(b=>b.planned && !b.well && !b.dryHole && b.estimate?.prob!==undefined && b.estimate?.quality!==undefined);
+  if(list.length<2) return null;
+  const D=gsQualityData(), nomRes=STRAT.find(l=>l.role==='reservoir'), me=METHODS.vertical;
+  const plans=list.map(b=>{ const pl=drillPlan(b,'vertical'); return pl && pl.equip ? { b, pl, rel:eqReliability(EQUIPMENT[pl.equip], pl.depth) } : null; }).filter(Boolean);
+  if(plans.length<2) return null;
+  const rng=SR('gscamp', plans.map(p=>p.b.id).join(',')+'|'+D.pts.length);
+  const sims=GEO.condSim(D.pts, D.vals, plans.map(p=>p.b), GS_MODEL.m, GS_MODEL.a, nSim, rng), tot=[];
+  for(const s of sims){ let g=0; plans.forEach((p,i)=>{ const q=clamp(D.mu+D.sd*s[i],0,100), b=p.b;
+    const ok = rng() < clamp(b.estimate.prob*p.rel, 0, 0.95), cost=G.mode==='sandbox'?0:p.pl.cost;
+    if(ok){ const prod=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b); g += projectWell(prod, G.price, b.isOffshore, b.estimate.isGas, cost, 120).cum - cost; } else g -= cost; });
+    tot.push(g); }
+  tot.sort((a,b)=>a-b); const at=f=>tot[Math.min(tot.length-1, Math.floor(f*tot.length))];
+  return { n:plans.length, p90:at(0.10), p50:at(0.5), p10:at(0.90), ruin:tot.filter(v=>v<0).length/tot.length };
+}
+
 function updateBlockEstimate(b){
   const logStudy  = b.studies.find(s=>s.type==='welllog');
   const seis3dStudy = b.studies.find(s=>s.type==='seismic3d');
@@ -4255,6 +4368,7 @@ function renderBlock(b){
   else if(b.dryHole)  { div.insertAdjacentHTML('beforeend', icon('x','color:var(--red);stroke-width:2.4;')); }
   else if(!G.revealFieldsMode && est?.prob !== undefined) div.insertAdjacentHTML('beforeend', `<span class="pv">${Math.round(est.prob*100)}</span>`);
 
+  if(GS_UNC_ON && !G.revealFieldsMode && !G.simple){ const u=gsUncertainty()[b.id]; div.insertAdjacentHTML('beforeend', `<span class="unc" style="opacity:${(0.12+0.88*u).toFixed(2)}"></span>`); }
   if(selectedBlock===b.id) div.classList.add('selected');
   if(G.sectionA===b.id){ div.classList.add('section-a'); div.insertAdjacentHTML('beforeend','<span class="mk">A</span>'); }
   if(G.sectionB===b.id){ div.classList.add('section-b'); div.insertAdjacentHTML('beforeend','<span class="mk">B</span>'); }
@@ -5006,9 +5120,10 @@ function updateDrillSummary(blockId){
   summary.innerHTML=`
     <div class="tr"><span class="tl">${TR(`Coût forage estimé`,`Estimated drilling cost`)}</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}${b.isOffshore?' (offshore)':''}</span></div>
     <div class="tr"><span class="tl">${TR(`Probabilité de succès`,`Probability of success`)}</span><span>${probKnown?`${(prob*100).toFixed(0)}% × ${(relHere*100).toFixed(0)}${TR(`% (fiabilité du matériel à `,`% (equipment reliability at `)}${Math.round(depth)}${TR(` m, soit `,` m, i.e. `)}${Math.round(depth/eq.maxDepth*100)}${TR(`% de sa limite)`,`% of its limit)`)}`:TR('Inconnue : réalisez une sismique 3D pour l\'estimer','Unknown: run a 3D seismic survey to estimate it')}</span></div>
-    <div class="tr"><span class="tl">${TR(`Production si succès`,`Production if successful`)}</span><span>~${Math.round(estProd)} ${b.estimate.isGas?'Mcf':TR('barils','barrels')}${TR(`${TR(`/mois`,`/month`)}`,`/month`)}</span></div>
+    <div class="tr"><span class="tl">${TR(`Production si succès`,`Production if successful`)}</span><span>${(()=>{ const u=b.estimate.isGas?'Mcf':TR('barils','barrels'), pm=TR(`/mois`,`/month`), rg=G.simple?null:gsProdRange(b, estProd); return rg ? `~${Math.round(rg.p50)} ${u}${pm}<br><span style="font-size:10.5px;color:var(--muted);" title="${TR('Fourchette conditionnée par les blocs voisins mesurés (géostatistique)','Range conditioned on the measured neighbouring blocks (geostatistics)')}">P90 ${Math.round(rg.p90)} · P10 ${Math.round(rg.p10)}</span>` : `~${Math.round(estProd)} ${u}${pm}`; })()}</span></div>
     <div class="tr"><span class="tl">${TR(`Profit mensuel net au départ`,`Net monthly profit at start`)}</span><span style="color:${netMonth>0?'var(--green)':'var(--red)'};">${formatM(netMonth)}${TR(`${TR(`/mois`,`/month`)}`,`/month`)}</span></div>
     ${evNet===null?'':`<div class="tr"><span class="tl">${TR(`Gain net espéré sur 10 ans`,`Expected net gain over 10 years`)}</span><span style="color:${evNet>0?'var(--green)':'var(--red)'};">${formatM(evNet)}</span></div>`}
+    ${(()=>{ if(G.simple) return ''; const c=gsCampaign(); return c ? `<div class="tr"><span class="tl">${TR(`Campagne planifiée (${c.n} blocs), gain net sur 10 ans`,`Planned campaign (${c.n} blocks), net gain over 10 years`)}</span><span style="text-align:right;">P90 ${formatM(c.p90)}<br>P50 ${formatM(c.p50)}<br>P10 ${formatM(c.p10)}<br><span style="font-size:10.5px;color:var(--muted);">${TR(`Perte dans ${Math.round(c.ruin*100)} % des tirages`,`Loss in ${Math.round(c.ruin*100)} % of draws`)}</span></span></div>` : ''; })()}
     <div class="${beClass}" style="margin-top:4px;">${beText}${probKnown?'':TR(' (projection à prendre avec prudence : la probabilité de succès n\'est pas encore estimée sur ce bloc)',' (projection to be taken with caution: the probability of success is not yet estimated on this block)')}</div>
   `;
   if(drillBtn) drillBtn.disabled=!canAfford;
@@ -6458,6 +6573,7 @@ function showTip(b,e){
   else if(b.dryHole) h+=`<div class="tr"><span class="tl">Statut</span><span style="color:var(--red);">${TR(`Puits sec ✗`,`Dry hole ✗`)}</span></div>`;
   else if(b.estimate?.prob!==undefined) h+=`<div class="tr"><span class="tl">Prob.</span><span>${(b.estimate.prob*100).toFixed(0)}% ±${(b.estimate.probErr*100).toFixed(0)}%</span></div>`;
   { const pd = labShownDepth(b); if(pd!==null) h+=`<div class="tr"><span class="tl">${G.labPick==null?TR('Prof. réservoir','Reservoir depth'):TR('Prof. cible H','Target depth H')+(G.labPick+1)}</span><span>${Math.round(pd)} m</span></div>`; }
+  if(!G.simple && b.studyLevel>0) h+=`<div class="tr"><span class="tl">${TR(`Confiance (mesures)`,`Confidence (measurements)`)}</span><span>${Math.round(gsConfidence(b)*100)} %</span></div>`;
   if(b.estimate?.structPos!==undefined) h+=`<div class="tr"><span class="tl">${TR(`Position struct.`,`Struct. position`)}</span><span>${b.estimate.structPos>.1?TR('Haut structural','Structural high'):b.estimate.structPos<-.1?TR('Bas structural','Structural low'):TR('Intermédiaire','Intermediate')}</span></div>`;
   if(b.studyLevel===0) h+=`<div style="color:var(--muted);font-size:10px;">Non exploré</div>`;
   tipEl.innerHTML=h; tipEl.style.display='block'; moveTip(e);
@@ -6499,6 +6615,7 @@ function drawSparkline(){
 // HUD & JOURNAL
 // =====================================================================
 function updateHud(){
+  if(GS_UNC_ON && typeof blocks!=='undefined' && blocks.length && !G.simple){ const before=GS_UNC_CACHE; gsUncertainty(); if(before!==GS_UNC_CACHE) blocks.forEach(renderBlock); }
   if(typeof renderGisementsPanel==='function') renderGisementsPanel();
   if(typeof renderEndGisementsPanel==='function') renderEndGisementsPanel();
   const m=MODES[G.mode];
@@ -7040,6 +7157,8 @@ function fitMapWidth(){
   zoomIdx = idx; rerenderAllBlocks(); document.getElementById('zoomLbl').textContent = Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';
 }
 document.getElementById('zoomFit').addEventListener('click', fitMap);
+document.getElementById('uncBtn').title = TR('Incertitude : les cases hachurées sont celles où vos mesures ne disent presque rien (krigeage, portée 3,3 blocs)','Uncertainty: hatched blocks are those where your measurements say almost nothing (kriging, range 3.3 blocks)');
+document.getElementById('uncBtn').addEventListener('click', ()=>{ GS_UNC_ON = !GS_UNC_ON; const u=document.getElementById('uncBtn'); u.classList.toggle('on', GS_UNC_ON); u.setAttribute('aria-pressed', GS_UNC_ON?'true':'false'); blocks.forEach(renderBlock); });
 document.getElementById('zoomIn').addEventListener('click',()=>{ if(zoomIdx<CELL_SIZES.length-1){zoomIdx++;rerenderAllBlocks();document.getElementById('zoomLbl').textContent=Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';} });
 document.getElementById('zoomOut').addEventListener('click',()=>{ if(zoomIdx>0){zoomIdx--;rerenderAllBlocks();document.getElementById('zoomLbl').textContent=Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';} });
 
@@ -8714,7 +8833,7 @@ function _doStartGame(){
       for(let k=0;k<4;k++){
         const target = targets[k], wantNone = (target==='none');
         let done = false;
-        for(let gen=0; gen<30 && !done; gen++){
+        for(let gen=0; gen<(target==='renforce' ? 150 : 30) && !done; gen++){
           generateGeology(12, QZ_BT[Math.floor(Math.random()*QZ_BT.length)], false, (Math.random()*1e9)|0);
           for(const b of qzShuffled(blocks.filter(x=>!x.inSalt && (target!=='renforce' || x.topOfReservoir>=3300)))){
             if(done) break;
@@ -9660,6 +9779,149 @@ function _doStartGame(){
   window.__sei = { makeRound, open, answer, judge, xOf, yOf, zOfY, get rounds(){ return rounds; }, get cur(){ return cur; }, state:()=>({ ri, qi, score, asked, answered }), VBW, VBH, TOL_Z, NCOL };
 })();
 </script>
+<style>
+#gsGameModal{position:fixed;inset:0;z-index:1200;background:var(--bg);display:none;flex-direction:column;align-items:center;overflow-y:auto;padding:14px 12px max(14px, env(safe-area-inset-bottom));}
+#gsGameModal.open{display:flex;}
+.gs-body{width:100%;max-width:560px;display:flex;flex-direction:column;gap:8px;margin-top:6px;}
+.gs-q{font-size:13px;line-height:1.5;padding:8px 11px;border:1px solid var(--line);border-radius:10px;background:var(--panel);}
+.gs-maps{display:grid;grid-template-columns:1fr;gap:8px;}
+.gs-maps.two{grid-template-columns:1fr 1fr;}
+.gs-wrap{border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:4px;}
+.gs-wrap svg{width:100%;height:auto;display:block;}
+.gs-cap{font-size:11px;color:var(--muted);text-align:center;margin-top:2px;}
+.gs-ctl{display:grid;grid-template-columns:auto 1fr auto;gap:6px 10px;align-items:center;font-size:12.5px;}
+.gs-ctl input[type=range]{width:100%;min-height:32px;}
+.gs-fb{font-size:12.5px;line-height:1.55;padding:8px 11px;border-radius:10px;display:none;background:var(--panel);border:1px solid var(--line);}
+.gs-fb.show{display:block;}
+.gs-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.gs-foot button{min-height:44px;padding:8px 16px;border-radius:8px;border:1px solid var(--text);background:var(--text);color:var(--bg);font-size:13px;cursor:pointer;}
+.gs-hint{font-size:11.5px;color:var(--muted);line-height:1.5;}
+</style>
+<div id="gsGameModal" role="dialog" aria-modal="true">
+  <div class="qz-header" style="max-width:560px;width:100%;">
+    <div class="qz-title" id="gsTitle"></div>
+    <button class="cg-close" id="gsClose"></button>
+  </div>
+  <div class="gs-body">
+    <div class="gs-q" id="gsQ"></div>
+    <div class="gs-maps" id="gsMaps"><div><div class="gs-wrap"><svg id="gsMapEst" viewBox="0 0 300 300"></svg></div><div class="gs-cap" id="gsCapEst"></div></div><div id="gsTrueBox" style="display:none"><div class="gs-wrap"><svg id="gsMapTrue" viewBox="0 0 300 300"></svg></div><div class="gs-cap" id="gsCapTrue"></div></div></div>
+    <div class="gs-wrap"><svg id="gsVario" viewBox="0 0 360 200"></svg></div>
+    <div class="gs-ctl">
+      <label for="gsRange" id="gsLblRange"></label><input type="range" id="gsRange" min="1" max="9" step="0.5" value="4"><b id="gsValRange"></b>
+      <label for="gsNug" id="gsLblNug"></label><input type="range" id="gsNug" min="0" max="50" step="5" value="0"><b id="gsValNug"></b>
+    </div>
+    <div class="gs-fb" id="gsFb"></div>
+    <div class="gs-foot"><span style="font-size:11px;color:var(--muted);" id="gsScore"></span><button id="gsAct"></button></div>
+    <details class="gs-hint"><summary id="gsHelpSum"></summary><div id="gsHelp"></div></details>
+  </div>
+</div>
+<script>
+// =====================================================================
+// MINI-JEU : PORTÉE ET VARIOGRAMME (V4.91)
+// Un champ caché de 10×10 cases (covariance sphérique, portée et pépite tirées au sort) est mesuré en 14 puits (bruités). Le joueur lit le variogramme
+// expérimental, règle la portée et la pépite de son modèle, et voit en direct la carte krigée. À la validation, la vérité apparaît : erreur de sa carte,
+// erreur de la meilleure carte possible (vrais paramètres) et erreur d'une carte sans modèle (moyenne partout).
+// Entièrement indépendant d'une partie : il n'écrit rien dans G ni dans blocks.
+// =====================================================================
+(function(){
+  const N = 10, NOBS = 14, ROUNDS = 3, $ = id => document.getElementById(id);
+  const nodes = []; for(let y=0;y<N;y++) for(let x=0;x<N;x++) nodes.push({x,y});
+  let rounds = [], ri = 0, R = null, validated = false, scores = [];
+  const fmt = v => String(v).replace('.', TR(',','.'));
+  function makeRound(rng = Math.random){
+    const aT = 2 + Math.floor(rng()*9)/2, nuT = [0,0.1,0.2,0.3][Math.floor(rng()*4)];
+    const f = GEO.field(nodes, 'sph', aT, 1-nuT, rng), idx = nodes.map((_,i)=>i).sort(()=>rng()-.5).slice(0,NOBS);
+    const obs = idx.map(i=>({ x:nodes[i].x, y:nodes[i].y, i, v:f[i] + Math.sqrt(nuT)*GEO.gauss(rng) }));
+    return { aT, nuT, truth:f, obs };
+  }
+  function krigedMap(R, a, nug){
+    const pts = R.obs.map(o=>({ x:o.x, y:o.y, noise:nug })), r = GEO.krige(pts, nodes, 'sph', a, 1-nug);
+    return nodes.map((_,t)=>{ let s=0; for(let i=0;i<pts.length;i++) s+=r.W[t][i]*R.obs[i].v; return s; });
+  }
+  const rmse = (m, t) => Math.sqrt(m.reduce((s,v,i)=>s+(v-t[i])**2,0)/m.length);
+  function empirical(R){
+    const bins = Array.from({length:9},()=>({ s:0, n:0 }));
+    for(let i=0;i<R.obs.length;i++) for(let j=i+1;j<R.obs.length;j++){
+      const d = Math.hypot(R.obs[i].x-R.obs[j].x, R.obs[i].y-R.obs[j].y), k = Math.round(d); if(k<1||k>9) continue;
+      bins[k-1].s += 0.5*(R.obs[i].v-R.obs[j].v)**2; bins[k-1].n++; }
+    return bins.map((b,k)=>({ h:k+1, g:b.n ? b.s/b.n : null, n:b.n }));
+  }
+  const col = v => { const t = Math.max(-1, Math.min(1, v/2)); const a = Math.abs(t); return t>=0 ? `rgb(${Math.round(245-30*a)},${Math.round(245-120*a)},${Math.round(245-160*a)})` : `rgb(${Math.round(245-150*a)},${Math.round(245-100*a)},${Math.round(245-30*a)})`; };
+  function drawMap(svg, vals, showObs){
+    const c = 300/N; let h = '';
+    vals.forEach((v,i)=>{ h += `<rect x="${(nodes[i].x*c).toFixed(1)}" y="${(nodes[i].y*c).toFixed(1)}" width="${c.toFixed(1)}" height="${c.toFixed(1)}" fill="${col(v)}"/>`; });
+    if(showObs) R.obs.forEach(o=>{ h += `<circle cx="${((o.x+.5)*c).toFixed(1)}" cy="${((o.y+.5)*c).toFixed(1)}" r="6" fill="${col(o.v)}" stroke="#222" stroke-width="1.6"/>`; });
+    svg.innerHTML = h;
+  }
+  const sph = (h,a) => h>=a ? 0 : 1-1.5*(h/a)+0.5*(h/a)**3;
+  function drawVario(){
+    const W=360, H=200, XL=34, XR=346, YT=12, YB=170, GM=1.6, X = h => XL+(XR-XL)*h/9, Y = g => YB-(YB-YT)*Math.min(g,GM)/GM;
+    let h = `<line x1="${XL}" y1="${YB}" x2="${XR}" y2="${YB}" stroke="var(--muted)"/><line x1="${XL}" y1="${YT}" x2="${XL}" y2="${YB}" stroke="var(--muted)"/>`;
+    h += `<line x1="${XL}" y1="${Y(1)}" x2="${XR}" y2="${Y(1)}" stroke="var(--muted)" stroke-dasharray="3 3"/><text x="${XR}" y="${Y(1)-3}" font-size="9" text-anchor="end" fill="var(--muted)">${TR('variance totale','total variance')}</text>`;
+    for(let k=1;k<=9;k++) h += `<text x="${X(k)}" y="${YB+12}" font-size="9" text-anchor="middle" fill="var(--muted)">${k}</text>`;
+    h += `<text x="${(XL+XR)/2}" y="${H-6}" font-size="10" text-anchor="middle" fill="var(--muted)">${TR('distance entre deux puits (cases)','distance between two wells (blocks)')}</text><text x="10" y="${(YT+YB)/2}" font-size="10" fill="var(--muted)" transform="rotate(-90 10 ${(YT+YB)/2})" text-anchor="middle">${TR('demi-variogramme','semivariogram')}</text>`;
+    const a = +$('gsRange').value, nug = +$('gsNug').value/100; let d = '';
+    for(let k=0;k<=90;k++){ const x = k/10, g = x===0 ? 0 : nug + (1-nug)*(1-sph(x,a)); d += (k?'L':'M') + X(x).toFixed(1) + ' ' + Y(g).toFixed(1); }
+    h += `<path d="${d}" fill="none" stroke="var(--accent,#c0392b)" stroke-width="2"/>`;
+    empirical(R).forEach(p=>{ if(p.g!==null && p.n>=3) h += `<circle cx="${X(p.h).toFixed(1)}" cy="${Y(p.g).toFixed(1)}" r="${(2.5+Math.sqrt(p.n)*0.55).toFixed(1)}" fill="var(--text)" opacity=".75"><title>${p.n} ${TR('paires','pairs')}</title></circle>`; });
+    $('gsVario').innerHTML = h;
+  }
+  function refresh(){
+    const a = +$('gsRange').value, nug = +$('gsNug').value/100;
+    $('gsValRange').textContent = fmt(a) + ' ' + TR('cases','blocks'); $('gsValNug').textContent = Math.round(nug*100) + ' %';
+    drawMap($('gsMapEst'), krigedMap(R, a, nug), true); drawVario();
+  }
+  function render(){
+    R = rounds[ri]; validated = false;
+    $('gsQ').innerHTML = TR(`Manche ${ri+1} sur ${ROUNDS}. Un champ caché est mesuré en ${NOBS} puits (ronds, bruités). Les points noirs du variogramme montrent comment deux puits se ressemblent selon leur distance : où la courbe se met à plat, les puits ne se parlent plus. Réglez la portée et la pépite pour que la courbe rouge suive les points, et regardez la carte se redessiner.`,
+      `Round ${ri+1} of ${ROUNDS}. A hidden field is measured at ${NOBS} wells (circles, noisy). The black points of the variogram show how two wells resemble each other with distance: where the curve flattens, wells no longer talk to each other. Set the range and the nugget so the red curve follows the points, and watch the map redraw.`);
+    $('gsTrueBox').style.display = 'none'; $('gsMaps').classList.remove('two'); $('gsFb').classList.remove('show');
+    $('gsRange').disabled = $('gsNug').disabled = false; $('gsAct').textContent = TR('Valider mon modèle','Check my model'); $('gsCapEst').textContent = TR('Votre carte krigée','Your kriged map');
+    $('gsScore').textContent = scores.length ? TR('Score : ','Score: ') + scores.join(' · ') : '';
+    refresh();
+  }
+  function validate(){
+    const a = +$('gsRange').value, nug = +$('gsNug').value/100, mine = krigedMap(R, a, nug), best = krigedMap(R, R.aT, R.nuT);
+    const eMine = rmse(mine, R.truth), eBest = rmse(best, R.truth), eNaive = rmse(R.truth.map(()=>0), R.truth);
+    const score = Math.max(0, Math.min(100, Math.round(100*(eNaive-eMine)/Math.max(1e-9, eNaive-eBest))));
+    scores.push(score); validated = true;
+    $('gsMaps').classList.add('two'); $('gsTrueBox').style.display = ''; drawMap($('gsMapTrue'), R.truth, false);
+    $('gsCapTrue').textContent = TR('La vérité (cachée)','The truth (hidden)'); $('gsCapEst').textContent = TR('Votre carte','Your map');
+    $('gsRange').disabled = $('gsNug').disabled = true;
+    let t = TR(`<b>${score} %</b> du chemin entre « moyenne partout » et la meilleure carte possible. Erreur de votre carte : ${eMine.toFixed(2)}, meilleure carte : ${eBest.toFixed(2)}, sans modèle : ${eNaive.toFixed(2)}. Vrais paramètres : portée ${fmt(R.aT)} cases, pépite ${Math.round(R.nuT*100)} %. `,
+      `<b>${score} %</b> of the way between “mean everywhere” and the best possible map. Error of your map: ${eMine.toFixed(2)}, best map: ${eBest.toFixed(2)}, no model: ${eNaive.toFixed(2)}. True parameters: range ${fmt(R.aT)} blocks, nugget ${Math.round(R.nuT*100)} %. `);
+    if(a < R.aT-1) t += TR('Votre portée est trop courte : la carte retombe vite à la moyenne entre les puits et laisse des taches isolées autour de chacun. ','Your range is too short: the map falls back to the mean between wells and leaves isolated spots around each one. ');
+    else if(a > R.aT+1) t += TR('Votre portée est trop longue : la carte lisse trop et efface des contrastes réels entre les puits. ','Your range is too long: the map smooths too much and erases real contrasts between wells. ');
+    else t += TR('Votre portée est dans la bonne zone. ','Your range is in the right zone. ');
+    if(nug > R.nuT+0.15) t += TR('Votre pépite est trop forte : le krigeage se méfie de puits qui disent vrai, et la carte colle mal aux mesures.','Your nugget is too high: kriging distrusts wells that tell the truth, and the map fits the measurements poorly.');
+    else if(nug < R.nuT-0.15) t += TR('Votre pépite est trop faible : vous faites confiance à des mesures bruitées, et la carte s\'accroche à leur bruit.','Your nugget is too low: you trust noisy measurements, and the map clings to their noise.');
+    $('gsFb').innerHTML = t; $('gsFb').classList.add('show');
+    $('gsScore').textContent = TR('Score : ','Score: ') + scores.join(' · ');
+    $('gsAct').textContent = ri < ROUNDS-1 ? TR('Manche suivante →','Next round →') : TR('Terminer','Finish');
+  }
+  function finish(){
+    const avg = Math.round(scores.reduce((a,b)=>a+b,0)/scores.length); let best = 0; try{ best = +(localStorage.getItem('geoexplorer_best_gs')||0); if(avg>best){ best = avg; localStorage.setItem('geoexplorer_best_gs', String(avg)); } }catch(e){}
+    $('gsFb').innerHTML = TR(`Score moyen : <b>${avg} %</b> (meilleur : ${best} %). Avec 14 puits, la courbe expérimentale reste bruitée : c'est le vrai problème du métier, et la raison pour laquelle on fixe souvent la portée par bassin plutôt que de l'ajuster sur trop peu de données.`,
+      `Average score: <b>${avg} %</b> (best: ${best} %). With 14 wells the experimental curve stays noisy: that is the real problem of the trade, and why the range is often fixed per basin rather than fitted on too little data.`);
+    $('gsFb').classList.add('show'); $('gsAct').textContent = TR('Rejouer','Play again'); ri = ROUNDS;
+  }
+  function open(){
+    rounds = Array.from({length:ROUNDS}, ()=>makeRound()); ri = 0; scores = [];
+    $('gsTitle').textContent = '📐 ' + TR('Portée et variogramme','Range and variogram'); $('gsClose').textContent = TR('✕ Fermer','✕ Close');
+    $('gsLblRange').textContent = TR('Portée','Range'); $('gsLblNug').textContent = TR('Pépite','Nugget');
+    $('gsHelpSum').textContent = TR('Aide','Help');
+    $('gsHelp').innerHTML = TR(`Le variogramme mesure, pour chaque distance, à quel point deux puits diffèrent (en moyenne, la moitié du carré de leur écart). Il monte avec la distance puis se stabilise : la distance où il se stabilise est la <b>portée</b>. Une mesure répétée au même endroit ne donne pas toujours la même valeur : cette part de bruit est la <b>pépite</b>. Le krigeage donne ensuite à chaque case une moyenne pondérée des puits, avec des poids qui dépendent de ce modèle. Ici le champ est mesuré sans tendance, avec une moyenne connue (krigeage simple).`,
+      `The variogram measures, for each distance, how much two wells differ (on average, half the squared difference). It rises with distance and then levels off: the distance where it levels off is the <b>range</b>. A measurement repeated at the same place does not always give the same value: that share of noise is the <b>nugget</b>. Kriging then gives each cell a weighted average of the wells, with weights that depend on this model. Here the field is measured without trend and with a known mean (simple kriging).`);
+    $('gsGameModal').classList.add('open'); render();
+  }
+  $('gsOpenBtn').addEventListener('click', open);
+  $('gsClose').addEventListener('click', ()=>$('gsGameModal').classList.remove('open'));
+  $('gsRange').addEventListener('input', ()=>{ if(!validated) refresh(); }); $('gsNug').addEventListener('input', ()=>{ if(!validated) refresh(); });
+  $('gsAct').addEventListener('click', ()=>{ if(ri>=ROUNDS){ open(); return; } if(!validated) validate(); else if(ri<ROUNDS-1){ ri++; render(); } else finish(); });
+  window.__gs = { makeRound, krigedMap, rmse, empirical, open, get R(){ return R; }, set rounds(v){ rounds = v; } };
+})();
+</script>
+
 
 
 <style>

@@ -104,3 +104,7 @@ Outils (`tools/i18n/`, Python) :
 - `hbatch.py`, `hmerge.py`, `apply_html.py` : même chaîne pour le HTML statique ; `apply_html.py` réécrit le bloc `HTML_EN` de `index.html` à partir de `dict/h_*.json`, `shorts.json` et `dict/x_extra.json`.
 
 Tests : `anglais_reste.js` parcourt l'interface en anglais et liste ce qui reste en français ; `langue_equivalence.js` vérifie que 24 cartes (8 bassins, 3 graines) donnent exactement la même géologie, les mêmes probabilités et les mêmes logs de puits dans les deux langues.
+
+## Géostatistique (V4.91)
+
+Noyau `GEO` dans `index.html` (krigeage simple avec bruit par donnée, simulation conditionnelle de Matheron). Modèle du jeu : variogramme gaussien, portée pratique 3,3 blocs, mesuré sur la qualité réservoir réelle (moyenne et écart-type par bassin dans `GS_Q`). Trois usages : mini-jeu « Portée et variogramme » (indépendant d'une partie), couche « Incertitude » de la carte (variance de krigeage selon les mesures du joueur, Junior et Senior), fourchette P90 / P50 / P10 de production et gain net P90 / P50 / P10 d'une campagne de blocs planifiés. L'estimation du joueur et la vraie géologie ne sont jamais modifiées. Tests : `geostat.js` (noyau, mini-jeu, couche, campagne) et `geostat_calibration.js` (l'intervalle P90 à P10 couvre la vérité environ 80 % du temps sur 7 bassins).
