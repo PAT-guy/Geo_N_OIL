@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.97</title>
+<title>GeoExplorer V4.98</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3331,8 +3331,9 @@ function resolveDrillingCore(d){
     if(isFrac) b.fracInfo = { ...sh, lat:d.lat||2000, ip:initProd };
     const well = {blockId:d.blockId, method:d.method, equip:d.equip, cost:d.cost,
                   studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month,
-                  production:initProd, comps:[isFrac ? {q0:initProd, t0:0, dc:SHALE_DECL} : {q0:initProd, t0:0}], wp: G.simple ? null : waterParams(b, isFrac), fp: G.simple ? null : fluidParams(b, isFrac), monthsActive:0, status:'producing',
+                  production:initProd, comps:[isFrac ? {q0:initProd, t0:0, dc:SHALE_DECL} : {q0:initProd, t0:0}], wp: G.simple ? null : waterParams(b, isFrac), fp: G.simple ? null : fluidParams(b, isFrac), rd: null, cum:0, monthsActive:0, status:'producing',
                   isGas:b.isGas, offshore:b.isOffshore, eorActive:false, eorMonthsLeft:0};
+    if(!G.simple){ well.rd = driveParams(b, well.fp, isFrac); if(!isFrac && well.rd.mech!=='gasdep') well.comps[0].dc = { Di: DECL.Di*DRIVE[well.rd.mech].di, b: DECL.b }; }
     G.wells.push(well);
     prodOut = initProd;
     b.well = well;
@@ -3467,6 +3468,7 @@ function bswAt(p, t){
 const wellBsw = w => bswAt(w.wp, w.monthsActive||0);
 const bswToWor = (f, gas) => f<=0 ? 0 : f/(1-f) * (gas ? WATER.gasBblPerMcf : 1);
 function waterUnit(w){
+  if(w.maint && !w.offshore) return MAINT.inject;
   if(w.offshore) return WATER.offshore; const st = waterState();
   return st.mode==='swd' && st.swd ? WATER.swd : st.mode==='recycle' && st.plant ? WATER.recycle : WATER.truck;
 }
@@ -3566,15 +3568,69 @@ const wellFluidRows = w => { if(!w.fp) return ''; const e = wellEconomics(w);
     ? infoRow(TR('Huile','Oil'), `${w.fp.api.toFixed(1)} °API · ${TR('soufre','sulphur')} ${w.fp.sulfur.toFixed(2)} % · GOR ${w.fp.gor.toLocaleString()} scf/bbl`) + infoRow(TR('Prix réalisé','Realised price'), `${Math.round(e.pf*100)} % ${TR('du brut','of benchmark')}${e.assocMcf>0 ? ' · '+(e.gasRev>0 ? TR('gaz vendu','gas sold') : TR('gaz brûlé','gas flared'))+' '+Math.round(e.assocMcf).toLocaleString()+' Mcf/'+TR('mois','month') : ''}`)
     : infoRow(TR('Gaz','Gas'), `${TR('condensat','condensate')} ${w.fp.cgr.toFixed(0)} bbl/MMcf${w.fp.sour ? ' · '+TR('gaz acide (H2S)','sour gas (H2S)') : ''}`); };
 
+// =====================================================================
+// PRESSION DE RÉSERVOIR ET MÉCANISMES DE DRAINAGE (V4.98) : chaque puits porte son mécanisme (`w.rd`) : gaz dissous (la pression chute vite, le GOR monte sous la pression de bulle),
+// chapeau de gaz (chute modérée, GOR qui monte), aquifère actif (pression soutenue, eau tôt) ; frac : épuisement rapide. La pression relative p/pi = 1 − k·(cumul / volume équivalent) ;
+// k et le déclin initial dépendent du mécanisme (déclin ×1,20 / ×1,00 / ×0,85, de moyenne voisine de 1 pour ne pas déséquilibrer). La maintien de pression (réinjection de l'eau
+// produite, 1,2 M$ par puits) ralentit la chute et ajoute +15 % / +8 % / +3 % selon le mécanisme : diagnostiquer le mécanisme avant de payer. Règles de jeu simplifiées, non sourcées.
+// =====================================================================
+const DRIVE = { solgas:{ k:0.9, di:1.20, pb:0.7, boost:1.15 }, gascap:{ k:0.45, di:1.0, pb:1.0, boost:1.08 }, aquifer:{ k:0.15, di:0.85, pb:0.5, boost:1.03 }, tight:{ k:1.0, di:1.0, pb:0.75, boost:1.0 }, gasdep:{ k:0.7, di:1.0, pb:0, boost:1.0 } };
+const MAINT = { capex:1.2e6, inject:0.8, minWater:300, equivMonths:60 };
+function driveParams(b, fp, isFrac){
+  if(b.isGas && !isFrac) return { mech:'gasdep', pi: Math.round(b.pressureRes*100)/10 };
+  if(isFrac) return { mech:'tight', pi: Math.round(b.pressureRes*100)/10 };
+  const r = SR('drive', b.id), hf = hcFracOf(b), pAq = clamp(0.95-hf, 0.1, 0.55), pGc = clamp((fp?.gor ?? 600)/5000, 0.05, 0.4), u = r();
+  return { mech: u<pAq ? 'aquifer' : u<pAq+pGc ? 'gascap' : 'solgas', pi: Math.round(b.pressureRes*100)/10 };   // pi en bar (MPa × 10)
+}
+const driveDi = (w) => w.rd ? DRIVE[w.rd.mech].di : 1;
+function pressureFrac(w){
+  if(!w.rd) return 1; const d = DRIVE[w.rd.mech], q0 = (w.comps||[{q0:w.production}]).reduce((s,c)=>s+c.q0,0), N = Math.max(1, q0*MAINT.equivMonths);
+  return clamp(1 - d.k*(w.maint ? 0.4 : 1)*((w.cum||0)/N), 0.12, 1);
+}
+function gorNow(w){
+  if(!w.fp || w.fp.kind!=='oil' || !w.rd) return w.fp?.gor ?? 0; const p = pressureFrac(w), d = DRIVE[w.rd.mech], g0 = w.fp.gor;
+  if(w.rd.mech==='gascap') return g0*(1 + 1.2*(1-p));
+  if(w.rd.mech==='aquifer') return g0;
+  return g0*(1 + 3*Math.max(0, (d.pb - p)/Math.max(0.05, d.pb)));
+}
+const maintBoost = w => w.maint && w.rd ? DRIVE[w.rd.mech].boost : 1;
+// Ce que le joueur peut déduire après 18 mois de production : la chute de pression rapportée au volume produit
+function driveGuess(w){
+  if(!w.rd || (w.monthsActive||0) < 18) return null; if(w.rd.mech==='tight') return 'tight';
+  // chute de pression par fraction du volume produit (observable) : gaz dissous ~0,9, chapeau de gaz ~0,45, aquifère ~0,15
+  const q0 = (w.comps||[{q0:w.production}]).reduce((s,c)=>s+c.q0,0), cf = (w.cum||0)/Math.max(1, q0*MAINT.equivMonths); if(cf < 0.1) return null;
+  const kobs = (1 - pressureFrac(w))/cf/(w.maint ? 0.4 : 1);
+  return kobs > 0.65 ? 'solgas' : kobs > 0.3 ? 'gascap' : 'aquifer';
+}
+const DRIVE_NAME = () => ({ solgas:TR('gaz dissous','solution gas'), gascap:TR('chapeau de gaz','gas cap'), aquifer:TR('aquifère actif','active aquifer'), tight:TR('épuisement (shale)','depletion (shale)'), gasdep:TR('épuisement du gaz','gas depletion') });
+function maintBuy(blockId){
+  const b = blocks[blockId], w = b && b.well; if(!w || w.status!=='producing' || !w.rd || w.maint || w.offshore || w.rd.mech==='tight' || w.rd.mech==='gasdep') return;
+  if(wellEconomics(w).waterBbl < MAINT.minWater){ toast(TR('Pas assez d\'eau produite à réinjecter.','Not enough produced water to reinject.')); return; }
+  if(G.budget < MAINT.capex && G.mode!=='sandbox'){ toast(TR('Budget insuffisant.','Insufficient budget.')); return; }
+  if(G.mode!=='sandbox') G.budget -= MAINT.capex; w.maint = true; w.maintCost = MAINT.capex;
+  addLog(TR(`💧 Maintien de pression sur le puits (${b.x},${b.y}) : ${formatM(MAINT.capex)}. L'eau produite est réinjectée (${MAINT.inject.toFixed(1)} $/bbl).`,`💧 Pressure maintenance on well (${b.x},${b.y}): ${formatM(MAINT.capex)}. Produced water is reinjected (${MAINT.inject.toFixed(1)} $/bbl).`), 'ev');
+  updateHud(); renderStudiesPanel(b); renderGisementsPanel();
+}
+function wellPressureRows(w){
+  if(!w.rd) return ''; const b = blocks[w.blockId], p = pressureFrac(w), g = driveGuess(w), nm = DRIVE_NAME(), rh = b.horizons.find(h=>h.role==='reservoir');
+  let h = infoRow(TR('Pression du réservoir','Reservoir pressure'), `${Math.round(w.rd.pi*p)} bar · ${Math.round(p*100)} % ${TR('de la pression initiale','of the initial pressure')} (${Math.round(w.rd.pi)} bar)`);
+  if(w.fp && w.fp.kind==='oil') h += infoRow(TR('GOR actuel','Current GOR'), `${Math.round(gorNow(w)).toLocaleString()} scf/bbl ${gorNow(w)>w.fp.gor*1.05 ? '▲' : ''}`);
+  if(rh && !w.isGas){ const th = rh.thicknessLocal ?? rh.thickness, owc = rh.top + hcFracOf(b)*th; h += infoRow(TR('Contact eau-huile','Water-oil contact'), `${Math.round(owc)} m · ${TR('colonne d\'huile','oil column')} ${Math.round(hcFracOf(b)*th)} m / ${Math.round(th)} m`); }
+  h += infoRow(TR('Mécanisme de drainage','Drive mechanism'), g ? `${nm[g]} ${TR('(déduit)','(inferred)')}` : (w.rd.mech==='gasdep' ? nm.gasdep : (w.monthsActive||0) < 18 ? TR('pas encore lisible (18 mois de production nécessaires)','not readable yet (18 months of production needed)') : TR('indéterminé','undetermined')));
+  if(w.maint) h += infoRow(TR('Maintien de pression','Pressure maintenance'), TR(`actif : +${Math.round((DRIVE[w.rd.mech].boost-1)*100)} % de production`,`active: +${Math.round((DRIVE[w.rd.mech].boost-1)*100)} % production`));
+  else if(!w.offshore && w.rd.mech!=='tight' && w.rd.mech!=='gasdep') h += `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" ${G.budget>=MAINT.capex||G.mode==='sandbox'?'':'disabled'} onclick="maintBuy(${b.id})">${TR('💧 Maintenir la pression','💧 Maintain pressure')} · ${formatM(MAINT.capex)}</button></div>`;
+  return h;
+}
+
 function wellEconomicsRaw(w){
-  const prodEffective = w.production * (w.eorActive ? 1.35 : 1.0);
+  const prodEffective = w.production * (w.eorActive ? 1.35 : 1.0) * maintBoost(w);
   const priceWell = w.isGas ? G.price*.18 : (G.financeMode && G.hedgeContract?.monthsLeft>0 ? G.hedgeContract.lockedPrice : G.price);
   const fixedOp = w.offshore ? OFFSHORE_OPEX : 8000;
   const varOp   = (w.offshore?14:4) + 6;
   const pf = fluidPf(w.fp), st = gasState();
   const oilRev = prodEffective * priceWell * pf;
   let gasRev = 0, assocMcf = 0, fluidCost = 0;
-  if(w.fp && w.fp.kind==='oil'){ assocMcf = prodEffective*w.fp.gor/1000; if(st.mode==='sell' && st.plant) gasRev = assocMcf*gasNetPrice(); else fluidCost = assocMcf*FLUID.flareFee; }
+  if(w.fp && w.fp.kind==='oil'){ assocMcf = prodEffective*gorNow(w)/1000; if(st.mode==='sell' && st.plant) gasRev = assocMcf*gasNetPrice(); else fluidCost = assocMcf*FLUID.flareFee; }
   else if(w.fp && w.fp.kind==='gas'){ gasRev = prodEffective/1000*w.fp.cgr*G.price*FLUID.condPremium; if(w.fp.sour) fluidCost = prodEffective*FLUID.sweeten; }
   const revenue = oilRev + gasRev;
   const bsw = w.wp ? wellBsw(w) : 0, waterBbl = prodEffective*bswToWor(bsw, w.isGas), waterCost = waterBbl*waterUnit(w);
@@ -3723,6 +3779,7 @@ function monthTick(){
       addLog(TR(`⚠ Puits (${blocks[w.blockId].x},${blocks[w.blockId].y}) : les coûts d'exploitation dépassent maintenant les revenus (${formatM(econ.net)}/mois). Envisagez de le fermer depuis son panneau.`,`⚠ Well (${blocks[w.blockId].x},${blocks[w.blockId].y}): operating costs now exceed revenue (${formatM(econ.net)}/month). Consider closing it from its panel.`),'bad');
     }
 
+    if(w.rd) w.cum = (w.cum||0) + econ.prodEffective;
     w.production = wellRate(w);
     if(w.production<5){ w.status='depleted'; const ab = payAbandon(w); addLog(TR(`Puits (${blocks[w.blockId].x},${blocks[w.blockId].y}) épuisé après ${w.monthsActive} mois.${ab>0?' Coût d\'abandon : '+formatM(ab)+'.':''}`,`Well (${blocks[w.blockId].x},${blocks[w.blockId].y}) depleted after ${w.monthsActive} months.${ab>0?' Abandonment cost: '+formatM(ab)+'.':''}`)); }
   });
@@ -5439,6 +5496,7 @@ function renderStudiesPanel(b){
     html+=infoRow(TR('En production','In production'),TR(`${w.monthsActive} mois`,`${w.monthsActive} months`));
     html+=wellFluidRows(w);
     html+=wellWaterRows(w);
+    html+=wellPressureRows(w);
     html+=infoRow(TR('Revenu brut/mois','Gross revenue/month'),formatM(econ.revenue));
     html+=infoRow(TR('Coûts d\'exploitation/mois','Operating costs/month'),formatM(econ.opex));
     html+=`<div class="tr"><span class="tl">${TR(`${TR(`Net/mois`,`Net/month`)}`,`Net/month`)}</span><span style="color:${econ.net>=0?'var(--green)':'var(--red)'};font-weight:bold;">${formatM(econ.net)}</span></div>`;
