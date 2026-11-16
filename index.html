@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.94</title>
+<title>GeoExplorer V4.95</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2845,13 +2845,13 @@ function gsCampaign(nSim=400){
   const sims=GEO.condSim(D.pts, D.vals, plans.map(p=>p.b), GS_MODEL.m, GS_MODEL.a, nSim, rng), tot=[];
   // Dépendances entre puits : (1) l'effet de voisinage du jeu, appliqué dans l'ordre des blocs (un succès rend les voisins plus prometteurs, un puits sec utile moins) ; (2) un cours du brut commun à tout le programme (lognormal, 22 %).
   // Les erreurs d'estimation de chaque bloc sont indépendantes dans le jeu : elles ne créent pas de corrélation.
-  const base = plans.map(p=>discoveryBoost(p.b)), near = plans.map((p,i)=>plans.map((q,j)=>{ if(j>=i) return 0; const d=Math.hypot(p.b.x-q.b.x, p.b.y-q.b.y); return d<=DISC_RADIUS ? Math.exp(-(d-1)/1.5) : 0; }));
+  const wcs = plans.map(p=>waterCfg(p.b,false)), base = plans.map(p=>discoveryBoost(p.b)), near = plans.map((p,i)=>plans.map((q,j)=>{ if(j>=i) return 0; const d=Math.hypot(p.b.x-q.b.x, p.b.y-q.b.y); return d<=DISC_RADIUS ? Math.exp(-(d-1)/1.5) : 0; }));
   for(const s of sims){ let g=0; const pr = G.price*Math.exp(0.22*GEO.gauss(rng) - 0.024), out = [];
     plans.forEach((p,i)=>{ const q=clamp(D.mu+D.sd*s[i],0,100), b=p.b; let f=base[i];
       for(let j=0;j<i;j++){ if(near[i][j]>0){ if(out[j]===1) f *= 1 + 0.6*near[i][j]; else if(out[j]===2) f *= 1 - 0.2*near[i][j]; } }
       const geo = rng() < clamp(b.estimate.prob*clamp(f,0.5,2.2), 0, 0.95), tech = rng() < p.rel, ok = geo && tech, cost=G.mode==='sandbox'?0:p.pl.cost;
       out[i] = ok ? 1 : (!geo ? 2 : 0);   // 1 : puits productif, 2 : sec utile (la géologie a été testée), 0 : échec technique (ne prouve rien)
-      if(ok){ const prod=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b); g += projectWell(prod, pr, b.isOffshore, b.estimate.isGas, cost, 120).cum - cost; } else g -= cost; });
+      if(ok){ const prod=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b); g += projectWell(prod, pr, b.isOffshore, b.estimate.isGas, cost, 120, undefined, wcs[i]).cum - cost; } else g -= cost; });
     tot.push(g); }
   tot.sort((a,b)=>a-b); const at=f=>tot[Math.min(tot.length-1, Math.floor(f*tot.length))];
   return { n:plans.length, p90:at(0.10), p50:at(0.5), p10:at(0.90), ruin:tot.filter(v=>v<0).length/tot.length };
@@ -2954,11 +2954,11 @@ function wellRate(w){
 }
 // Projection d'un puits neuf : cumul net sur `months` mois (arrêt si le net devient négatif) et
 // délai de remboursement du coût de forage. Mêmes coûts d'exploitation que wellEconomics().
-function projectWell(q0, price, offshore, gas, cost, months, dc){
+function projectWell(q0, price, offshore, gas, cost, months, dc, wc){
   const fixed = offshore?OFFSHORE_OPEX:8000, varOp = (offshore?14:4)+6, pr = gas?price*.18:price;
   let cum = 0, payback = null;
   for(let m=0; m<(months||120); m++){
-    const q = q0*declineFactor(m, dc), net = q*(pr-varOp) - fixed;
+    const q = q0*declineFactor(m, dc), net = q*(pr-varOp) - fixed - (wc ? q*bswToWor(wc.fn(m), wc.gas)*wc.unit : 0);
     if(net<=0) break;
     cum += net; if(payback===null && cum>=cost) payback = m+1;
   }
@@ -2992,7 +2992,7 @@ const METHODS = {
 const SHALE_BASE = 190, SHALE_DECL = { Di:0.17, b:1.1 }, FRAC_STAGE_COST = 85000, FRAC_LATS = [1000, 2000, 3000];
 const fracLat = () => { const v = +document.getElementById('fracLat')?.value; return FRAC_LATS.includes(v) ? v : 2000; };
 const fracStages = lat => Math.max(1, Math.round(lat/60));
-const fracCompletion = (lat, cf) => fracStages(lat) * FRAC_STAGE_COST * (cf ?? drillCostFactor());
+const fracCompletion = (lat, cf) => fracStages(lat) * FRAC_STAGE_COST * (cf ?? drillCostFactor()) + fracWater(lat).cost;   // étages + eau de frac
 const fracQ = (toc, matF, brit) => 100 * clamp(0.40*Math.sqrt(clamp(toc/8, 0, 1)) + 0.30*matF + 0.30*brit, 0, 1);
 const fracProdOf = (q, thick, lat, b) => (q/100) * Math.min(thick, 60) * SHALE_BASE * Math.pow(lat/2000, 0.8) * prodSite(b);
 let _britCache = { seed:null, m:new Map() };
@@ -3262,6 +3262,7 @@ function drillBlock(blockId, method, equip, est, prog){
   const cost = depth * eq.costM * me.costMult * offMult * (pf ? pf.mult : 1) + (pf ? pf.casing : 0) + (method==='frac' ? fracCompletion(lat, cf) : 0);
   if(G.budget < cost && G.mode!=='sandbox'){addLog(TR('Budget insuffisant pour ce forage.','Insufficient budget for this well.'),'bad');return;}
   G.budget -= cost;
+  if(method==='frac'){ const fw = fracWater(lat); waterState().pool -= fw.fromPool; }
   b.planned = false; b.estAtDrill = (b.playerEst && b.playerEst.p!==null && b.playerEst.p!==undefined) ? {p:b.playerEst.p, own:true} : (b.estimate?.prob!==undefined ? {p:b.estimate.prob, own:false} : null);
 
   const drillingMonths = method==='strati' ? Math.max(1, Math.round(depth/1200)) : Math.max(2, Math.round(depth/600*(1 + (prog ? 0.12*prog.shoes.length : 0))));
@@ -3330,7 +3331,7 @@ function resolveDrillingCore(d){
     if(isFrac) b.fracInfo = { ...sh, lat:d.lat||2000, ip:initProd };
     const well = {blockId:d.blockId, method:d.method, equip:d.equip, cost:d.cost,
                   studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month,
-                  production:initProd, comps:[isFrac ? {q0:initProd, t0:0, dc:SHALE_DECL} : {q0:initProd, t0:0}], monthsActive:0, status:'producing',
+                  production:initProd, comps:[isFrac ? {q0:initProd, t0:0, dc:SHALE_DECL} : {q0:initProd, t0:0}], wp: G.simple ? null : waterParams(b, isFrac), monthsActive:0, status:'producing',
                   isGas:b.isGas, offshore:b.isOffshore, eorActive:false, eorMonthsLeft:0};
     G.wells.push(well);
     prodOut = initProd;
@@ -3443,14 +3444,81 @@ function getSecondReservoirInfo(b){
   return { horizon:h2, trueProbability2, trueQuality2, depth:h2.top };
 }
 
+// =====================================================================
+// EAU ET BSW (V4.95) : BSW = eau et sédiments de base dans le liquide produit. La production du jeu reste le débit d'huile (ou de gaz) ; l'eau produite est un coût : levage,
+// traitement, évacuation. Conventionnel : BSW de départ faible, percée d'eau logistique, d'autant plus tardive que la colonne d'huile au-dessus du contact est épaisse
+// (même `hcFrac` que les logs). Puits fracturé : reflux (flowback) très aqueux au départ qui retombe, puis lente remontée. Règles de jeu simplifiées, valeurs non sourcées.
+// Gestion de l'eau : camion, injection (puits SWD à construire) ou recyclage (usine à construire, l'eau alimente les fracs suivantes). Absent en Découverte.
+// =====================================================================
+const WATER = { truck:2.8, swd:1.0, recycle:1.5, offshore:2.0, swdCapex:2.0e6, plantCapex:1.0e6, poolCap:3e6, freshFrac:1.5, poolFrac:0.2, fracBbl:300000, gasBblPerMcf:0.25 };
+function waterState(){ if(!G.water) G.water = { mode:'truck', swd:false, plant:false, pool:0, total:0, month:0, spent:0 }; return G.water; }
+const hcFracOf = b => clamp(0.35 + 0.6*(b.trapFactor ?? 0.5), 0.35, 0.95);   // part du réservoir au-dessus du contact : même formule que les logs
+function waterParams(b, isFrac){
+  const r = SR('water', b.id), j = () => r()*2-1;
+  if(isFrac) return { kind:'frac', b0: clamp(0.65+0.10*j(), 0.5, 0.8), binf: clamp(0.35+0.08*j(), 0.2, 0.5), slope: 0.004 };
+  const hf = hcFracOf(b), gas = !!b.isGas;
+  return { kind:'conv', b0: clamp(0.01 + 0.10*(1-hf) + 0.01*j(), 0.005, 0.2), tb: Math.round(clamp((12 + 100*Math.pow(hf,1.5))*(1+0.2*j()), 10, 130)), bmax: clamp((gas ? 0.10 : 0.55) + (gas ? 0.3 : 0.4)*(1-hf) + 0.05*j(), 0.08, 0.95) };
+}
+function bswAt(p, t){
+  if(!p) return 0;
+  if(p.kind==='frac') return clamp(p.binf + (p.b0-p.binf)*Math.exp(-t/6) + p.slope*t, 0, 0.85);
+  const sc = 8 + 0.1*p.tb; return clamp(p.b0 + (p.bmax-p.b0)/(1+Math.exp(-(t-p.tb)/sc)), 0, 0.95);
+}
+const wellBsw = w => bswAt(w.wp, w.monthsActive||0);
+const bswToWor = (f, gas) => f<=0 ? 0 : f/(1-f) * (gas ? WATER.gasBblPerMcf : 1);
+function waterUnit(w){
+  if(w.offshore) return WATER.offshore; const st = waterState();
+  return st.mode==='swd' && st.swd ? WATER.swd : st.mode==='recycle' && st.plant ? WATER.recycle : WATER.truck;
+}
+// Ce que le joueur peut prévoir d'un puits à forer : a priori régional, affiné par les puits déjà forés à moins de 3,5 blocs (leur BSW et leur percée sont connus)
+function waterPrior(b, isFrac){
+  const near = G.wells.filter(w=>w.wp && w.wp.kind===(isFrac?'frac':'conv') && blocks[w.blockId] && Math.hypot(blocks[w.blockId].x-b.x, blocks[w.blockId].y-b.y)<=3.5);
+  if(isFrac) return near.length ? { ...near[0].wp } : { kind:'frac', b0:0.65, binf:0.35, slope:0.004, prior:true };
+  if(near.length){ const m = k => near.reduce((s,w)=>s+w.wp[k],0)/near.length; return { kind:'conv', b0:m('b0'), tb:Math.round(m('tb')), bmax:m('bmax'), informed:near.length }; }
+  return { kind:'conv', b0:0.03, tb:60, bmax:b.estimate?.isGas ? 0.2 : 0.8, prior:true };
+}
+const waterCfg = (b, isFrac) => { if(G.simple) return undefined; const p = waterPrior(b, isFrac); return { fn: t=>bswAt(p,t), unit: b.isOffshore ? WATER.offshore : WATER.truck, gas: !!b.estimate?.isGas }; };
+function fracWater(lat){
+  const st = waterState(), vol = WATER.fracBbl*lat/2000, fromPool = (st.mode==='recycle' && st.plant) ? Math.min(st.pool, vol) : 0;
+  return { vol, fromPool, cost: fromPool*WATER.poolFrac + (vol-fromPool)*WATER.freshFrac };
+}
+function waterSetMode(m){ const st = waterState(); if((m==='swd' && !st.swd) || (m==='recycle' && !st.plant)) return; st.mode = m; renderGisementsPanel(); }
+function waterBuild(kind){
+  const st = waterState(), cost = kind==='swd' ? WATER.swdCapex : WATER.plantCapex;
+  if(G.budget < cost && G.mode!=='sandbox'){ toast(TR('Budget insuffisant.','Insufficient budget.')); return; }
+  if(G.mode!=='sandbox') G.budget -= cost; st.spent += cost; if(kind==='swd') st.swd = true; else st.plant = true; st.mode = kind;
+  addLog(kind==='swd' ? TR(`💧 Puits d'injection d'eau usée (SWD) construit : ${formatM(cost)}. L'eau produite à terre coûte maintenant ${WATER.swd.toFixed(1)} $/bbl.`,`💧 Saltwater disposal (SWD) well built: ${formatM(cost)}. Onshore produced water now costs ${WATER.swd.toFixed(1)} $/bbl.`)
+    : TR(`💧 Usine de recyclage construite : ${formatM(cost)}. L'eau produite à terre est traitée (${WATER.recycle.toFixed(1)} $/bbl) et stockée pour les fracs.`,`💧 Recycling plant built: ${formatM(cost)}. Onshore produced water is treated (${WATER.recycle.toFixed(1)} $/bbl) and stored for fracs.`), 'ev');
+  updateHud(); renderGisementsPanel();
+}
+function waterCardHtml(){
+  const st = waterState(), prod = G.wells.filter(w=>w.status==='producing' && w.wp);
+  const oil = prod.reduce((s,w)=>s+w.production*(w.eorActive?1.35:1),0), wat = prod.reduce((s,w)=>s+wellEconomics(w).waterBbl,0);
+  const unit = (m, ok, name, capex, rate, extra) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;margin:3px 0;"><span>${st.mode===m?'● ':''}<b>${name}</b> <span style="color:var(--muted);">${rate.toFixed(1)} $/bbl${extra||''}</span></span>${ok ? `<button class="cg-close" style="padding:2px 8px;" ${st.mode===m?'disabled':''} onclick="waterSetMode('${m}')">${st.mode===m?TR('Actif','Active'):TR('Choisir','Select')}</button>` : `<button class="cg-close" style="padding:2px 8px;" ${G.budget>=capex||G.mode==='sandbox'?'':'disabled'} onclick="waterBuild('${m}')">${TR('Construire','Build')} · ${formatM(capex)}</button>`}</div>`;
+  return `<div class="ps-section" style="margin-top:0;">${TR('💧 Eau et BSW','💧 Water and BSW')}</div>
+    <div class="study-card" style="padding:8px 10px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">${TR('Eau produite ce mois','Water produced this month')}</span><span>${Math.round(wat).toLocaleString()} ${TR('barils','barrels')}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);" title="${TR('BSW : eau et sédiments dans le liquide produit','BSW: basic sediment and water in the produced liquid')}">${TR('BSW moyen','Average BSW')}</span><span>${oil+wat>0 ? Math.round(wat/(oil+wat)*100) : 0} %</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">${TR('Coût de l\'eau ce mois','Water cost this month')}</span><span>${formatM(prod.reduce((s,w)=>s+wellEconomics(w).waterCost,0))}</span></div>
+      <div style="font-size:11px;margin:6px 0 2px;color:var(--muted);">${TR('Gestion de l\'eau produite (à terre)','Produced water management (onshore)')}</div>
+      ${unit('truck', true, TR('Camion','Trucking'), 0, WATER.truck)}
+      ${unit('swd', st.swd, TR('Injection (SWD)','Injection (SWD)'), WATER.swdCapex, WATER.swd)}
+      ${unit('recycle', st.plant, TR('Recyclage','Recycling'), WATER.plantCapex, WATER.recycle, st.plant ? ` · ${TR('stock','stock')} ${Math.round(st.pool/1000).toLocaleString()} k${TR('bbl','bbl')}` : '')}
+      <div class="lab-note" style="margin-top:4px;">${TR(`Une frac consomme environ ${(WATER.fracBbl/1000).toLocaleString()} k barils pour 2 000 m de drain : ${WATER.freshFrac.toFixed(1)} $/bbl d'eau neuve, ${WATER.poolFrac.toFixed(1)} $/bbl depuis le stock recyclé.`,`A frac uses about ${(WATER.fracBbl/1000).toLocaleString()} k barrels per 2,000 m of lateral: ${WATER.freshFrac.toFixed(1)} $/bbl for fresh water, ${WATER.poolFrac.toFixed(1)} $/bbl from the recycled stock.`)}</div>
+    </div>`;
+}
+const wellWaterRows = w => { if(!w.wp) return ''; const f = wellBsw(w), e = wellEconomics(w);
+  return infoRow('BSW', `${Math.round(f*100)} %${w.wp.kind==='conv' ? TR(` (percée vers le mois ${w.wp.tb})`,` (breakthrough around month ${w.wp.tb})`) : TR(' (reflux puis remontée lente)',' (flowback then slow rise)')}`) + infoRow(TR('Eau produite/mois','Water produced/month'), `${Math.round(e.waterBbl).toLocaleString()} ${TR('barils','barrels')} · ${formatM(e.waterCost)}`); };
+
 function wellEconomics(w){
   const prodEffective = w.production * (w.eorActive ? 1.35 : 1.0);
   const priceWell = w.isGas ? G.price*.18 : (G.financeMode && G.hedgeContract?.monthsLeft>0 ? G.hedgeContract.lockedPrice : G.price);
   const fixedOp = w.offshore ? OFFSHORE_OPEX : 8000;
   const varOp   = (w.offshore?14:4) + 6;
   const revenue = prodEffective * priceWell;
-  const opex    = fixedOp + prodEffective*varOp;
-  return {prodEffective, priceWell, fixedOp, varOp, revenue, opex, net:revenue-opex};
+  const bsw = w.wp ? wellBsw(w) : 0, waterBbl = prodEffective*bswToWor(bsw, w.isGas), waterCost = waterBbl*waterUnit(w);
+  const opex    = fixedOp + prodEffective*varOp + waterCost;
+  return {prodEffective, priceWell, fixedOp, varOp, revenue, opex, net:revenue-opex, bsw, waterBbl, waterCost};
 }
 
 // Abandon d'un puits (bouchons de ciment, remise en état du site) : 12 % du coût de forage à terre, 18 % en mer. Payé une seule fois,
@@ -3490,6 +3558,7 @@ function monthTick(){
   const strikeActive = (G.strikeMonthsLeft||0) > 0;
   const stormActive = (G.stormMonthsLeft||0) > 0, taxMult = (G.taxMonthsLeft||0) > 0 ? 1 - TAX_RATE : 1;
 
+  let waterAll = 0, waterOn = 0;
   G.wells.forEach(w=>{
     // Blowout : puits à l'arrêt pendant blowoutMonthsLeft mois (pas de
     // revenu, coûts fixes maintenus, pas de déclin), puis remise en service.
@@ -3523,6 +3592,7 @@ function monthTick(){
         revenue += econ.revenue * taxMult;
       }
       opex += econ.opex;
+      if(econ.waterBbl>0){ waterAll += econ.waterBbl; if(!w.offshore) waterOn += econ.waterBbl; }
     }
 
     // Avertir UNE FOIS quand un puits devient déficitaire (coûts fixes +
@@ -3538,6 +3608,8 @@ function monthTick(){
     if(w.production<5){ w.status='depleted'; const ab = payAbandon(w); addLog(TR(`Puits (${blocks[w.blockId].x},${blocks[w.blockId].y}) épuisé après ${w.monthsActive} mois.${ab>0?' Coût d\'abandon : '+formatM(ab)+'.':''}`,`Well (${blocks[w.blockId].x},${blocks[w.blockId].y}) depleted after ${w.monthsActive} months.${ab>0?' Abandonment cost: '+formatM(ab)+'.':''}`)); }
   });
 
+  { const st = waterState(); st.total += waterAll; st.month = waterAll;
+    if(st.mode==='recycle' && st.plant && waterOn>0){ st.pool += waterOn; if(st.pool > WATER.poolCap){ const ex = st.pool - WATER.poolCap; st.pool = WATER.poolCap; opex += ex*(WATER.truck - WATER.recycle); } } }
   if(strikeActive){
     G.strikeMonthsLeft--;
     if(G.strikeMonthsLeft<=0) addLog(TR('🪧 Fin de la grève : la production reprend.','🪧 End of the strike: production resumes.'),'ev');
@@ -3718,9 +3790,10 @@ function renderGisementsPanel(){
     return;
   }
   const producing = wells.filter(w=>w.status==='producing');
+  const waterCard = (!G.simple && producing.some(w=>w.wp)) ? waterCardHtml() : '';
   const statusLabel = {producing:'● Producteur', closed:TR('🔧 Fermé','🔧 Closed'), depleted:TR('✕ Épuisé','✕ Depleted'), blowout:'💥 Blowout'};
   const statusColor = {producing:'var(--green)', closed:'var(--muted)', depleted:'var(--muted)', blowout:'var(--red)'};
-  let html = `<div class="ps-section" style="margin-top:0;">${TR(`${TR(`Gisements (`,`Fields (`)}`,`Fields (`)}${wells.length}${TR(`${TR(` puits, `,` wells, `)}`,` wells, `)}${producing.length}${TR(`${TR(` actifs)`,` active)`)}`,` active)`)}</div>`;
+  let html = waterCard + `<div class="ps-section" style="margin-top:${waterCard?'14px':'0'};">${TR(`${TR(`Gisements (`,`Fields (`)}`,`Fields (`)}${wells.length}${TR(`${TR(` puits, `,` wells, `)}`,` wells, `)}${producing.length}${TR(`${TR(` actifs)`,` active)`)}`,` active)`)}</div>`;
   wells.slice().sort((a,z)=>(z.status==='producing')-(a.status==='producing')).forEach(w=>{
     const b = blocks[w.blockId];
     if(!b) return;
@@ -3733,6 +3806,7 @@ function renderGisementsPanel(){
       const econ = econ0;
       const peak = (w.comps||[{q0:w.production}]).reduce((sum,c)=>sum+c.q0,0);
       body = `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;"><span style="color:var(--muted);">Production</span><span>${Math.round(w.production)} ${w.isGas?'Mcf':TR('barils','barrels')}${TR(`${TR(`/mois (`,`/month (`)}`,`/month (`)}${Math.round(w.production/peak*100)}${TR(`${TR(` % du débit initial)`,`% of initial rate)`)}`,`${TR(`% of initial rate)`,`of initial rate)`)}`)}</span></div>
+        ${w.wp ? `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;"><span style="color:var(--muted);">BSW</span><span>${Math.round(econ.bsw*100)} % · ${Math.round(econ.waterBbl).toLocaleString()} ${TR('bbl d\'eau/mois','bbl water/month')}</span></div>` : ''}
         <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">${TR(`${TR(`Net/mois`,`Net/month`)}`,`Net/month`)}</span><span style="color:${econ.net>=0?'var(--green)':'var(--red)'};">${formatM(econ.net)}</span></div>
         <div style="text-align:right;margin-top:6px;"><button class="cg-close" style="padding:2px 8px;" onclick="confirmCloseWell(${b.id})">${TR(`${TR(`🔧 Fermer`,`🔧 Close`)}`,`🔧 Close`)}</button></div>`;
     } else {
@@ -5243,6 +5317,7 @@ function renderStudiesPanel(b){
     html+=`<div class="ps-section" style="margin-top:12px;">${TR(`Puits actif`,`Active well`)}</div>`;
     html+=infoRow('Production',TR(`${Math.round(w.production)} ${w.isGas?'Mcf':'barils'}/mois`,`${Math.round(w.production)} ${w.isGas?'Mcf':'barrels'}/month`));
     html+=infoRow(TR('En production','In production'),TR(`${w.monthsActive} mois`,`${w.monthsActive} months`));
+    html+=wellWaterRows(w);
     html+=infoRow(TR('Revenu brut/mois','Gross revenue/month'),formatM(econ.revenue));
     html+=infoRow(TR('Coûts d\'exploitation/mois','Operating costs/month'),formatM(econ.opex));
     html+=`<div class="tr"><span class="tl">${TR(`${TR(`Net/mois`,`Net/month`)}`,`Net/month`)}</span><span style="color:${econ.net>=0?'var(--green)':'var(--red)'};font-weight:bold;">${formatM(econ.net)}</span></div>`;
@@ -5311,12 +5386,14 @@ function updateDrillSummary(blockId){
   }
   if(method==='frac'){
     const se=shaleEstimate(b), ip=fracProdOf(se.q, se.thick, lat, b), gas=!!b.estimate.isGas, u=gas?'Mcf':TR('barils','barrels');
-    const proj=projectWell(ip, G.price, false, gas, G.mode==='sandbox'?0:cost, 120, SHALE_DECL);
+    const proj=projectWell(ip, G.price, false, gas, G.mode==='sandbox'?0:cost, 120, SHALE_DECL, waterCfg(b, true)), fw=fracWater(lat);
     const be=proj.payback, beClass=be===null?'ds-bad':be<18?'ds-good':be<36?'ds-warn':'ds-bad';
     const known = se.known ? (se.ok ? TR(`Rock-Eval : TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, roche-mère exploitable.`,`Rock-Eval: TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, exploitable source rock.`) : TR(`Rock-Eval : TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, roche-mère NON exploitable (immature ou trop pauvre).`,`Rock-Eval: TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, source rock NOT exploitable (immature or too lean).`))
       : TR('Roche-mère non mesurée : faites un sondage avec carotte puis une Rock-Eval avant de payer une frac. La fragilité reste inconnue jusqu\'au forage.','Source rock not measured: run a survey hole with core and a Rock-Eval before paying for a frac. Brittleness stays unknown until drilling.');
     summary.innerHTML=`<div class="tr"><span class="tl">${TR(`Coût estimé (forage + ${fracStages(lat)} étages)`,`Estimated cost (drilling + ${fracStages(lat)} stages)`)}</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}</span></div>
       <div class="tr"><span class="tl">${TR(`Débit initial si exploitable`,`Initial rate if exploitable`)}</span><span>~${Math.round(ip)} ${u}${TR('/mois','/month')}${se.known?'':TR(' (a priori, très incertain)',' (prior, very uncertain)')}</span></div>
+      <div class="tr"><span class="tl">${TR('Eau de frac','Frac water')}</span><span>${Math.round(fw.vol/1000).toLocaleString()} k${TR('barils','bbl')} · ${formatM(fw.cost)}${fw.fromPool>0?TR(` (dont ${Math.round(fw.fromPool/1000)} k du stock recyclé)`,` (incl. ${Math.round(fw.fromPool/1000)} k from the recycled stock)`):''}</span></div>
+      <div class="tr"><span class="tl">${TR('BSW attendu','Expected BSW')}</span><span>${TR('reflux ~65 % puis ~35-60 %','flowback ~65 % then ~35-60 %')}</span></div>
       <div class="tr"><span class="tl">${TR(`Déclin`,`Decline`)}</span><span>${TR('≈ −68 % la 1re année','≈ −68 % in year 1')}</span></div>
       <div class="${beClass}" style="margin-top:4px;">${be===null?TR('Non rentabilisé en 10 ans à ce débit et à ce prix','Not paid back in 10 years at this rate and price'):TR(`Rentabilisé en ~${be} mois si la roche-mère est exploitable`,`Paid back in ~${be} months if the source rock is exploitable`)}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:4px;">${known}</div>`;
@@ -5332,7 +5409,7 @@ function updateDrillSummary(blockId){
   // l'épaisseur nominale de la colonne de référence.
   const nomRes=STRAT.find(l=>l.role==='reservoir');
   const estProd=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b);
-  const proj=projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, G.mode==='sandbox'?0:cost, 120);
+  const wcv = waterCfg(b, false), proj=projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, G.mode==='sandbox'?0:cost, 120, undefined, wcv);
   const netMonth=estProd*(b.estimate.isGas?G.price*.18:G.price)-(b.isOffshore?OFFSHORE_OPEX:8000)-estProd*((b.isOffshore?14:4)+6);
   const breakeven=proj.payback;
   const beClass=breakeven===null?'ds-bad':breakeven<18?'ds-good':breakeven<36?'ds-warn':'ds-bad';
@@ -5344,6 +5421,7 @@ function updateDrillSummary(blockId){
     <div class="tr"><span class="tl">${TR(`Coût forage estimé`,`Estimated drilling cost`)}</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}${b.isOffshore?' (offshore)':''}</span></div>
     <div class="tr"><span class="tl">${TR(`Probabilité de succès`,`Probability of success`)}</span><span>${probKnown?`${(prob*100).toFixed(0)}% × ${(relHere*100).toFixed(0)}${TR(`% (fiabilité du matériel à `,`% (equipment reliability at `)}${Math.round(depth)}${TR(` m, soit `,` m, i.e. `)}${Math.round(depth/eq.maxDepth*100)}${TR(`% de sa limite)`,`% of its limit)`)}`:TR('Inconnue : réalisez une sismique 3D pour l\'estimer','Unknown: run a 3D seismic survey to estimate it')}</span></div>
     <div class="tr"><span class="tl">${TR(`Production si succès`,`Production if successful`)}</span><span>${(()=>{ const u=b.estimate.isGas?'Mcf':TR('barils','barrels'), pm=TR(`/mois`,`/month`), rg=G.simple?null:gsProdRange(b, estProd); return rg ? `~${Math.round(rg.p50)} ${u}${pm}<br><span style="font-size:10.5px;color:var(--muted);" title="${TR('Fourchette conditionnée par les blocs voisins mesurés (géostatistique)','Range conditioned on the measured neighbouring blocks (geostatistics)')}">P90 ${Math.round(rg.p90)} · P10 ${Math.round(rg.p10)}</span>` : `~${Math.round(estProd)} ${u}${pm}`; })()}</span></div>
+    ${G.simple ? '' : (()=>{ const p=waterPrior(b,false); return `<div class="tr"><span class="tl">${TR('BSW attendu','Expected BSW')}</span><span>${Math.round(bswAt(p,0)*100)} % ${TR('au départ','at start')}, ~${Math.round(bswAt(p,60)*100)} % ${TR('à 5 ans','at 5 years')}<br><span style="font-size:10.5px;color:var(--muted);">${p.informed ? TR(`d'après ${p.informed} puits voisin(s) : percée vers le mois ${p.tb}`,`from ${p.informed} neighbouring well(s): breakthrough around month ${p.tb}`) : TR('a priori régional : un puits voisin ou le log précisent le contact eau-huile','regional prior: a neighbouring well or the log pins down the water-oil contact')}</span></span></div>`; })()}
     <div class="tr"><span class="tl">${TR(`Profit mensuel net au départ`,`Net monthly profit at start`)}</span><span style="color:${netMonth>0?'var(--green)':'var(--red)'};">${formatM(netMonth)}${TR(`${TR(`/mois`,`/month`)}`,`/month`)}</span></div>
     ${evNet===null?'':`<div class="tr"><span class="tl">${TR(`Gain net espéré sur 10 ans`,`Expected net gain over 10 years`)}</span><span style="color:${evNet>0?'var(--green)':'var(--red)'};">${formatM(evNet)}</span></div>`}
     ${(()=>{ if(G.simple) return ''; const c=gsCampaign(); return c ? `<div class="tr"><span class="tl">${TR(`Campagne planifiée (${c.n} blocs), gain net sur 10 ans`,`Planned campaign (${c.n} blocks), net gain over 10 years`)}</span><span style="text-align:right;">P90 ${formatM(c.p90)}<br>P50 ${formatM(c.p50)}<br>P10 ${formatM(c.p10)}<br><span style="font-size:10.5px;color:var(--muted);">${TR(`Perte dans ${Math.round(c.ruin*100)} % des tirages`,`Loss in ${Math.round(c.ruin*100)} % of draws`)}</span></span></div>` : ''; })()}
@@ -7632,6 +7710,8 @@ const GLOSSARY_ENTRIES = [
 // Réel ou simplifié : pour chaque mécanisme, loi physique, approximation ou réglage de jeu (honnêteté sur ce que le jeu enseigne)
 const REALITY_TAGS = { loi:TR('Loi physique','Physical law'), approx:'Approximation', jeu:TR('Réglage de jeu','Game setting') };
 const REALITY_ENTRIES = [
+  {tag:'jeu', term:'BSW', def:TR('Basic Sediment and Water : part d\'eau et de sédiments dans le liquide produit. Le rapport eau-huile (WOR) vaut BSW / (1 − BSW) : à 50 % de BSW, un baril d\'huile s\'accompagne d\'un baril d\'eau, à 90 % de neuf. Dans le jeu, l\'eau produite coûte du levage, du traitement et de l\'évacuation, et le BSW monte avec le temps (percée d\'eau). Valeurs de jeu, non sourcées.','Basic Sediment and Water: share of water and sediment in the produced liquid. The water-oil ratio (WOR) equals BSW / (1 − BSW): at 50 % BSW one barrel of oil comes with one barrel of water, at 90 % nine. In the game, produced water costs lifting, treatment and disposal, and BSW rises over time (water breakthrough). Game values, not sourced.')},
+  {tag:'jeu', term:TR('Injection d\'eau usée (SWD)','Saltwater disposal (SWD)'), def:TR('Puits qui réinjecte l\'eau produite dans une formation profonde. Coûteux à construire, bon marché à exploiter : il vaut le coup quand le volume d\'eau est grand, comme sur un bassin de shale.','A well that reinjects produced water into a deep formation. Costly to build, cheap to run: worth it when water volumes are large, as in a shale basin.')},
   {tag:'loi', term:TR('Saturation en eau (Archie)','Water saturation (Archie)'), def:TR('Loi d\'Archie avec a = 1, m = n = 2, utilisée telle quelle dans les logs et les calculs de saturation.','Archie\'s law with a = 1, m = n = 2, used as is in the logs and saturation calculations.')},
   {tag:'loi', term:TR('Porosité-densité et croisement densité-neutron','Density porosity and density-neutron crossover'), def:TR('φ = (ρma − ρb) / (ρma − ρf). Un neutron nettement sous la porosité-densité signe le gaz.','φ = (ρma − ρb) / (ρma − ρf). A neutron reading clearly below density porosity signals gas.')},
   {tag:'loi', term:'Rock-Eval', def:TR('Tmax sous 435 °C : immature ; de 435 à 455 °C : fenêtre à huile ; au-dessus : gaz. Le HI part d\'une valeur propre au type de kérogène (I lacustre, II marin, III charbon) puis baisse avec la maturité.','Tmax below 435 °C: immature; from 435 to 455 °C: oil window; above: gas. HI starts from a value specific to the kerogen type (I lacustrine, II marine, III coal) then falls with maturity.')},
