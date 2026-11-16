@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.4</title>
+<title>GeoExplorer V5.5</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2395,8 +2395,13 @@ function generateGeology(gridSize, basinType, offshore, seed){
 // exp 2,8 (3 avant la V4.73) : le mélange rang et référence resserre la distribution ; cette valeur garde la probabilité moyenne des cartes à environ 24 %
 // Probabilité géologique de succès (méthode de Rose) : Pg = P(piège) × P(réservoir) × P(couverture) × P(charge). Le piège est une fermeture : sa qualité vaut sa probabilité.
 // Réservoir, couverture et charge sont des qualités de 0 à 1 converties en probabilité d'être efficace (25 % même pour un faciès médiocre, 95 % au mieux : un élément « bon » vaut 0,8 à 0,9 dans la pratique de l'industrie).
-const roseEff = q => 0.25 + 0.7*Math.sqrt(Math.max(0, Math.min(1, q)));
-const roseP = (t, r, se, c) => Math.max(0.01, Math.min(0.95, Math.min(0.95, 1.15*t) * roseEff(r) * roseEff(se) * roseEff(c)));
+// Version de l'échelle de Rose : 1 (V4.89 à V5.4) donnait au meilleur bloc d'une carte environ 43 % ; 2 (V5.5) relève les facteurs pour qu'une carte ait une province vraiment productive
+// (meilleur bloc d'environ 79 %, 6 % des blocs à 50 % ou plus). Les sauvegardes gardent la version de leur création (G.roseV).
+let ROSE_V = 2;
+// Échelle 2 : chaque facteur passe par une sigmoïde (pente 10, milieu à 0,30) : un facteur bon (0,6) vaut 0,95, un facteur faible (0,1) vaut 0,12, donc un piège sans charge reste vide
+const ROSE_PAR = { 1:{ a:0.25, b:0.7, tk:1.15, cx:1 }, 2:{ sig:true, k:10, q0:0.30, tk:1.6, cx:1 } };
+const roseEff = q => { const p = ROSE_PAR[ROSE_V] || ROSE_PAR[1], x = Math.max(0, Math.min(1, q)); return p.sig ? 1/(1 + Math.exp(-p.k*(x - p.q0))) : p.a + p.b*Math.sqrt(x); };
+const roseP = (t, r, se, c) => { const p = ROSE_PAR[ROSE_V] || ROSE_PAR[1]; return Math.max(0.01, Math.min(0.95, Math.min(0.95, p.tk*t) * roseEff(r) * roseEff(se) * roseEff(Math.pow(Math.max(0, c), p.cx)))); };
 const TRAP_CLOSURE_FRAC = 0.3; // hauteur de fermeture d'un anticlinal / relief de sa crête
 const PCAL = { pmin:0.03, pmax:0.85, exp:2.8, abs:1.0, floorShare:0.01 };
 // Distribution de référence des probabilités brutes (401 quantiles, 800 cartes de tous les bassins et tailles) : sert à situer un bloc par
@@ -2418,7 +2423,7 @@ let _pRawFor = null, _pRawSorted = null;
 function mapRichness(){
   const n = blocks.length || 1, mean = blocks.reduce((t,b)=>t+b.trueProbability,0)/n;
   const rose = PCAL_MODE==='rose';
-  const label = rose ? (mean < 0.044 ? 'pauvre' : mean > 0.07 ? 'riche' : 'moyen') : (mean < 0.175 ? 'pauvre' : mean > 0.33 ? 'riche' : 'moyen'); // seuils aux 20e et 80e centiles de 400 cartes
+  const label = rose ? (ROSE_V===2 ? (mean < 0.075 ? 'pauvre' : mean > 0.13 ? 'riche' : 'moyen') : (mean < 0.044 ? 'pauvre' : mean > 0.07 ? 'riche' : 'moyen')) : (mean < 0.175 ? 'pauvre' : mean > 0.33 ? 'riche' : 'moyen'); // seuils aux 20e et 80e centiles de 400 cartes
   const top = [...blocks].sort((a,z)=>z.trueProbability-a.trueProbability).slice(0, Math.max(1, Math.round(n*0.1))); // meilleurs blocs : ce que visent les forages
   return { mean:+mean.toFixed(3), label, hi:+(blocks.filter(b=>b.trueProbability>=0.6).length/n).toFixed(3), top: rose ? +(top.reduce((t,b)=>t+b.trueProbability,0)/top.length).toFixed(3) : undefined };
 }
@@ -2466,6 +2471,7 @@ function gauss(rng){
   return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
 }
 // Estimation de la probabilité par la sismique 3D : a priori régional (moyenne en cotes = celle du potentiel régional de la carte moins 0,39 ; écart-type 1,29 à l'intérieur d'une carte, mesurés).
+const SEIS3D_PAR = { 1:{ off:0.61, tau2:1.75 }, 2:{ off:0.35, tau2:3.2 } };   // décalage de la moyenne a priori (cotes) et variance a priori, par version de l'échelle de Rose
 const SEIS3D_MU = -3.3, SEIS3D_TAU2 = 1.75; // repli (anciennes parties) ; la moyenne a priori suit en fait le potentiel régional de la carte
 const STUDIES = {
   gravity: {
@@ -2587,8 +2593,8 @@ const STUDIES = {
       // les plus gonflées par le hasard (« malédiction du gagnant ») : le meilleur décile était annoncé à 78 % pour 66 % réel. On ramène donc
       // la mesure vers la moyenne régionale dans l'espace des cotes (estimateur bayésien : moyenne a priori −1,6 en cotes, écart a priori 1,44,
       // bruit effectif = bruit nominal + risque de faux signal). L'écart annoncé est l'écart-type de cette estimation.
-      const sig2 = Math.pow(0.35*um, 2) + pFalse*2.013, kShr = SEIS3D_TAU2/(SEIS3D_TAU2 + sig2), sdPost = Math.sqrt(SEIS3D_TAU2*sig2/(SEIS3D_TAU2 + sig2));
-      const muMap = (G.richness && G.richness.mean>0.01 && G.richness.mean<0.99) ? Math.log(G.richness.mean/(1-G.richness.mean)) - (PCAL_MODE==='rose' ? 0.61 : 0.39) : SEIS3D_MU; // le potentiel régional est public : a priori propre à la carte
+      const sig2 = Math.pow(0.35*um, 2) + pFalse*2.013, SP = SEIS3D_PAR[ROSE_V] || SEIS3D_PAR[1], kShr = SP.tau2/(SP.tau2 + sig2), sdPost = Math.sqrt(SP.tau2*sig2/(SP.tau2 + sig2));
+      const muMap = (G.richness && G.richness.mean>0.01 && G.richness.mean<0.99) ? Math.log(G.richness.mean/(1-G.richness.mean)) - (PCAL_MODE==='rose' ? SP.off : 0.39) : SEIS3D_MU; // le potentiel régional est public : a priori propre à la carte
       const logitShown = muMap + kShr*(logit - muMap);
       const probEst = clamp(1/(1+Math.exp(-logitShown)), 0.005, 0.95);
       const probErr = clamp(probEst*(1-probEst)*sdPost, 0.01, 0.25);
@@ -2963,8 +2969,8 @@ function updateBlockEstimate(b){
 // fois plus de barils sur sa vie qu'avec l'ancien déclin exponentiel à 35 %/an : le débit initial
 // a donc été ramené de 165 à 63, valeur retenue par simulation de parties (le joueur parfaitement
 // informé gagne environ une partie sur deux, le tireur au hasard presque jamais).
-const PROD_BASE = 130;           // puits neuf (63 avant le produit de Rose : les probabilités honnêtes sont plus basses, la production par puits est relevée pour garder des forages rentables)
-const PROD_BASE_SIDETRACK = 105;  // side-track sur un 2e réservoir
+const PROD_BASE = 75;            // puits neuf : 63 avant le produit de Rose, 130 en V4.89 à V5.4 (probabilités basses), 48 en V5.5 (provinces productives : la probabilité remonte, la production par puits redescend)
+const PROD_BASE_SIDETRACK = 61;  // side-track sur un 2e réservoir
 // Un puits en mer produit beaucoup plus qu'un puits à terre : réservoirs plus épais et plus perméables, puits
 // complétés pour de gros débits (en vrai de 500 à 3 000 bbl/j sur la plateforme continentale, contre quelques dizaines
 // à quelques centaines à terre). Ici ×8 (environ 340 bbl/j médian), pour un coût ×6 et 80 k$ de charges fixes par
@@ -2983,7 +2989,7 @@ const siteCost = (b, cf) => (b && b.isOffshore ? OFFSHORE_COST_MULT : 1) * (cf ?
 // À terre : ×1,2 depuis la V4.38 (environ 55 bbl/j médian au lieu de 46). Un puits conventionnel de bassin mature donne
 // plutôt de 30 à 150 bbl/j ; l'ancienne valeur était dans le bas de la fourchette.
 let ONSHORE_PROD_MULT = 1.2;
-const prodSite = b => (b && b.isOffshore) ? OFFSHORE_PROD_MULT : ONSHORE_PROD_MULT;
+const prodSite = b => ((b && b.isOffshore) ? OFFSHORE_PROD_MULT : ONSHORE_PROD_MULT) * (G.simple ? 1.3 : 1);   // Découverte : puits plus généreux (mode d'initiation)
 
 // Déclin de production : loi hyperbolique d'Arps, q(t) = q0 · (1 + b·Di·t)^(-1/b), t en mois.
 // Avant, le déclin était exponentiel à 3,5 %/mois, soit 35 %/an en continu : un profil de gaz de
@@ -8500,10 +8506,11 @@ function loadGame(){
   document.getElementById('menu').classList.add('hidden');
   document.getElementById('endScreen').style.display = 'none';
   Object.assign(G, payload.G);
+  G.advOn = payload.G.advOn; G.roseV = payload.G.roseV;   // Object.assign garde la valeur de la partie en cours quand la sauvegarde n'a pas la clé : on lit la sauvegarde seule
   advMigrate(G);
   if(G.labOpt) LABOPT = labNormOpt(G.labOpt); else LABOPT = labNormOpt({ ...LAB_PRESETS.decouverte.o }); // sauvegarde d'avant V4.33 : règles d'origine
   blocks = payload.blocks.map(b => ({ ...b, el: null })); // .el sera réattaché par buildGrid()
-  PCAL_MODE = G.pmode==='rose' ? 'rose' : 'rank'; PCAL_W = G.pcalW ?? 0; PCAL_E = G.pcalW===undefined ? 3 : PCAL.exp; // anciennes sauvegardes : étalonnage par rang seul et exposant 3, comme à leur création
+  ROSE_V = G.roseV || 1; PCAL_MODE = G.pmode==='rose' ? 'rose' : 'rank'; PCAL_W = G.pcalW ?? 0; PCAL_E = G.pcalW===undefined ? 3 : PCAL.exp; // anciennes sauvegardes : étalonnage par rang seul et exposant 3, comme à leur création
   _pRawFor = null;
   // Bug V4.1 : JSON.stringify/parse transforme l'objet puits partagé entre
   // G.wells et b.well en deux copies indépendantes. On remet b.well sur
@@ -8603,8 +8610,9 @@ function _doStartGame(){
   G.seedShown = seedShown;
   const seedNum = seedToInt(seedShown);
   G.seedNum = seedNum;
+  ROSE_V = 2;   // nouvelle partie : échelle de Rose de la V5.5
   generateGeology(menuConfig.gridSize, menuConfig.basinType, menuConfig.offshore, seedNum);
-  G.pcalW = PCAL_W; G.pmode = PCAL_MODE;
+  G.pcalW = PCAL_W; G.pmode = PCAL_MODE; G.roseV = ROSE_V;
   { const ri = mapRichness(); G.richness = ri; }
   // défi du jour : valable seulement si les réglages sont ceux du jour (le joueur a pu les changer entre-temps)
   { const dc = dailyConfig(); G.daily = (menuConfig.daily === dc.date && menuConfig.gridSize===dc.gridSize && menuConfig.basinType===dc.basinType && menuConfig.mode===dc.mode && String(menuConfig.seed)===String(dc.seed)) ? dc.date : null; }

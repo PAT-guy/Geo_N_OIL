@@ -23,7 +23,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(T.floorBad===0, 'jouabilité : au moins un bloc à 20 % ou plus sur chaque carte (province productive garantie par la génération)');
   ok(T.hiMax-T.hiMin>=0.03, 'la part de blocs à 25 % ou plus varie d\'une carte à l\'autre : de '+Math.round(T.hiMin*100)+' % à '+Math.round(T.hiMax*100)+' %');
   ok(T.meanMax-T.meanMin>=0.03, 'la probabilité moyenne varie : de '+Math.round(T.meanMin*100)+' % à '+Math.round(T.meanMax*100)+' %');
-  ok(T.hiAvg>=0.02 && T.hiAvg<=0.15 && T.meanAvg>=0.03 && T.meanAvg<=0.10, 'produit de Rose : '+Math.round(T.hiAvg*1000)/10+' % de blocs à 25 % ou plus (visé 2 à 15 %), probabilité moyenne '+Math.round(T.meanAvg*1000)/10+' % (visé 3 à 10 %)');
+  ok(T.hiAvg>=0.08 && T.hiAvg<=0.25 && T.meanAvg>=0.08 && T.meanAvg<=0.18, 'produit de Rose (échelle 2, V5.5) : '+Math.round(T.hiAvg*1000)/10+' % de blocs à 25 % ou plus (visé 8 à 25 %), probabilité moyenne '+Math.round(T.meanAvg*1000)/10+' % (visé 8 à 18 %)');
   const gen=['random','rift','passive','foreland'].reduce((x,k)=>x+T.bt[k],0)/4;
   ok(T.bt.north_sea>=0.55*gen && T.bt.gulf_coast>=0.55*gen && T.bt.aquitaine>=0.55*gen, 'les bassins à gaz ne sont plus pénalisés : Mer du Nord '+Math.round(T.bt.north_sea*1000)/10+' %, Gulf Coast '+Math.round(T.bt.gulf_coast*1000)/10+' %, Aquitaine '+Math.round(T.bt.aquitaine*1000)/10+' % de bons blocs, contre '+Math.round(gen*1000)/10+' % pour les bassins génériques');
   ok(T.labels.pauvre>=40 && T.labels.moyen>=150 && T.labels.riche>=40, 'les trois étiquettes de richesse existent : '+JSON.stringify(T.labels));
