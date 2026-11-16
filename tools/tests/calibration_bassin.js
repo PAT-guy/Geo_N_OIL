@@ -5,7 +5,7 @@ const { chromium } = require('playwright'); const path = require('path');
   const pg=await br.newPage(); const errs=[]; pg.on('pageerror',e=>errs.push(e.message)); await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}});
   await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(500);
   const T = await pg.evaluate(()=>{ const o={maps:0,orderBad:0,low:0,floorBad:0,means:[],his:[],byBt:{},labels:{pauvre:0,moyen:0,riche:0},nan:0,wUsed:{}};
-    for(const bt of ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast']) for(let s=1;s<=50;s++){
+    for(const bt of ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast','permian']) for(let s=1;s<=50;s++){
       generateGeology(s%5===0?20:12, bt, true, s*6151+29); o.maps++;
       const bs=[...blocks].sort((a,z)=>a.pRaw-z.pRaw); for(let i=1;i<bs.length;i++) if(bs[i].trueProbability < bs[i-1].trueProbability - 1e-12) { o.orderBad++; break; }
       const n=blocks.length, m=blocks.reduce((t,b)=>t+b.trueProbability,0)/n, hi=blocks.filter(b=>b.trueProbability>=0.25).length/n, n50=blocks.filter(b=>b.trueProbability>=0.2).length;
