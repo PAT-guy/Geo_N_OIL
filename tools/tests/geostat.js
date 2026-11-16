@@ -56,6 +56,13 @@ const { chromium } = require('playwright'); const path = require('path');
     // campagne : au moins deux blocs planifiés, déterministe, ordre des quantiles
     A.planned=true; B.planned=true; ensureEst(B).p=0.4; const c1=gsCampaign(), c2=gsCampaign(); o.camp = c1 && c1.p90<=c1.p50 && c1.p50<=c1.p10 && c1.n===2; o.det = JSON.stringify(c1)===JSON.stringify(c2);
     A.planned=false; B.planned=false; o.one = gsCampaign()===null;
+    // quatre blocs contigus contre quatre blocs éloignés, estimations identiques : le groupe contigu doit montrer plus de risque (voisinage, qualité corrélée) et un P90 plus bas
+    const land=blocks.filter(x=>!x.inSalt&&!x.isOffshore), set=x=>{ x.studyLevel=3; x.estimate={prob:0.3,probErr:0.05,quality:50,qualErr:5,depth:2000,isGas:false}; x.planned=false; x.studies=[]; };
+    land.forEach(set); const c0=land.find(x=>land.some(y=>y.x===x.x+1&&y.y===x.y)&&land.some(y=>y.x===x.x&&y.y===x.y+1)&&land.some(y=>y.x===x.x+1&&y.y===x.y+1));
+    const clus=[c0, land.find(y=>y.x===c0.x+1&&y.y===c0.y), land.find(y=>y.x===c0.x&&y.y===c0.y+1), land.find(y=>y.x===c0.x+1&&y.y===c0.y+1)];
+    const far=[]; for(const x of land){ if(far.every(y=>Math.hypot(x.x-y.x,x.y-y.y)>=6)) far.push(x); if(far.length===4) break; }
+    clus.forEach(x=>x.planned=true); const cc=gsCampaign(1500); clus.forEach(x=>x.planned=false); far.forEach(x=>x.planned=true); const cf=gsCampaign(1500); far.forEach(x=>x.planned=false);
+    o.farN=far.length; o.cl=cc&&[cc.p90,cc.p50,cc.ruin]; o.fr=cf&&[cf.p90,cf.p50,cf.ruin]; o.clustered = !!(cc&&cf&&far.length===4&&cc.p50<cf.p50&&cc.ruin>cf.ruin);
     // le panneau de forage affiche la fourchette
     selectedBlock=A.id; renderGeoPanel(A); renderStudiesPanel(A); updateDrillSummary(A.id); o.panel = /P90/.test(document.getElementById('drillSummary')?.textContent||'');
     o.same = snap===blocks.map(b=>b.trueProbability+'|'+b.trueQuality).join(','); return o; });
@@ -64,6 +71,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(J.post && J.rg, 'fourchette de production : P90 < P50 < P10');
   ok(J.tight, 'un voisin mesuré resserre l\'écart-type de la qualité du bloc '+JSON.stringify(J.sd));
   ok(J.camp && J.det && J.one, 'campagne planifiée : P90 ≤ P50 ≤ P10, déterministe, absente avec un seul bloc');
+  ok(J.clustered, 'campagne : quatre blocs contigus ont un gain médian plus bas et plus de chances de perdre que quatre blocs éloignés, à estimations identiques (contigus '+JSON.stringify(J.cl)+', éloignés '+JSON.stringify(J.fr)+')');
   ok(J.panel, 'le panneau de forage affiche la fourchette P90 / P10');
   ok(J.same, 'la vraie géologie (probabilité et qualité de chaque bloc) est inchangée');
   // 4. Découverte : couche et fourchette absentes
