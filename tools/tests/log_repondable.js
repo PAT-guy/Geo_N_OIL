@@ -7,7 +7,7 @@ const { chromium } = require('playwright'); const path = require('path');
   const r = await pg.evaluate((N)=>{ const t0=performance.now(); const out={n:0,nul:0,faux:[],cnt:{eau:0,huile:0,gaz:0},sansTable:0,verdictFaux:0}; 
     for(let i=0;i<N;i++){ const f=['eau','huile','gaz'][i%3]; const l=window.__lgm.makeLog(f,[],{vsh:i%2===0, calc:(i%6<3)?'sw':'contact'}); if(!l){out.nul++; continue;} out.n++; out.cnt[l.fluid]++;
       const rt=l.rB.rt, gap=l.rB.gap; const pred = rt<10 ? 'eau' : (gap>7 ? 'gaz' : 'huile'); if(pred!==l.fluid) out.faux.push([l.fluid,pred,+rt.toFixed(1),+gap.toFixed(1)]);
-      if(!l.qs.every(q=>q.type==='contact' || /<table class="lgm-read"/.test(q.table||''))) out.sansTable++;
+      if(!l.qs.every(q=>q.type==='contact' || q.type==='bsw' || /<table class="lgm-read"/.test(q.table||''))) out.sansTable++;
       if(l.qs[1].good!==l.fluid) out.verdictFaux++;
       if(!(l.rng.zA>=l.rng.z0 && l.rng.zA<=l.rng.z1-10 && l.rng.zB>=l.rng.z0 && l.rng.zB<=l.rng.z1-10)) out.horsLog=(out.horsLog||0)+1; }
     out.msParLog=(performance.now()-t0)/N; return out; }, 300);
@@ -15,7 +15,8 @@ const { chromium } = require('playwright'); const path = require('path');
   const v = await pg.evaluate(()=>{ const o={n:0,types:{},q1:{},bad:[]}; const spaced=(opts)=>{ const a=opts.map(x=>+x.k).sort((x,y)=>x-y); for(let i=1;i<a.length;i++) if(a[i]-a[i-1]<3) return false; return new Set(opts.map(x=>x.k)).size===opts.length; };
     for(let i=0;i<240;i++){ const f=['eau','huile','gaz'][i%3]; const l=window.__lgm.makeLog(f,[],{vsh:i%2===0, trap:i%3===1, calc:(i%6<3)?'sw':'contact'}); if(!l) continue; o.n++; o.types[l.calc]=(o.types[l.calc]||0)+1; o.q1[l.q1type]=(o.q1[l.q1type]||0)+1;
       const q1=l.qs[0], q3=l.qs[2];
-      if(l.qs.length!==3) o.bad.push(['nb', l.qs.length]);
+      if(l.qs.length !== (q3.type==='contact' && l.qs[3] ? 4 : 3)) o.bad.push(['nb', l.qs.length]);
+      if(l.qs[3]){ const q4=l.qs[3], m=q4.meta; o.q4=(o.q4||0)+1; const tb=12+100*Math.pow(Math.max(0.35,Math.min(0.95,m.hf)),1.5), bin=tb<40?0:tb<60?1:tb<85?2:3; if(q4.type!=='bsw' || q4.good!==String(bin) || Math.abs(tb-m.tb)>1e-9 || q4.opts.length!==4 || new Set(q4.opts.map(x=>x.t)).size!==4 || ![40,60,85].every(c=>Math.abs(tb-c)>=4) || !q4.text.includes(m.contact+' m')) o.bad.push(['q4', tb, q4.good]); }
       if(l.fluid==='eau' && q3.type!=='poro') o.bad.push(['eau', q3.type]); if(l.fluid!=='eau' && q3.type==='poro') o.bad.push(['hc', q3.type]);
       if(q1.type==='vsh'){ const m=q1.meta, p=Math.round(Math.max(0,Math.min(1,(m.gr-m.clean)/(115-m.clean)))*100); if(String(p)!==q1.good || p<10 || p>90 || !spaced(q1.opts) || !q1.text.includes(m.gr+' API')) o.bad.push(['vsh',p,q1.good]); }
       else if(q1.type==='piege'){ const m1=q1.meta; if(q1.good!=='compact' || m1.rt<30 || m1.nphi>6 || !q1.text.includes(m1.rt+' Ω·m') || new Set(q1.opts.map(x=>x.k)).size!==4 || !q1.facts.some(f=>f[1].includes(String(m1.rt)))) o.bad.push(['piege',m1.rt,m1.nphi]); }
@@ -27,6 +28,7 @@ const { chromium } = require('playwright'); const path = require('path');
         if(Math.abs(c-l.rng.hcBase)>2.6 || !gap || !q3.opts.some(x=>+x.k===c) || c<=m.top || c>=m.base) o.bad.push(['contact',c,Math.round(l.rng.hcBase)]); } }
     return o; });
   ok(v.bad.length===0, 'questions variées : volume d\'argile, porosité, saturation en eau et contact recalculés depuis les valeurs affichées, options distinctes et espacées ('+v.bad.length+' erreurs sur '+v.n+') '+JSON.stringify(v.bad.slice(0,3)));
+  ok(v.q4>=10, 'la question « du log au BSW » est posée sur les logs avec contact (' + v.q4 + ' sur 80), bonne réponse recalculée depuis la colonne lue');
   ok(v.types.poro>=60 && v.types.sw>=30 && v.types.contact>=30 && v.q1.vsh>=20 && v.q1.piege>=15, 'les types de questions sont tous présents '+JSON.stringify(v.types)+' '+JSON.stringify(v.q1));
   console.log(JSON.stringify({n:r.n,nul:r.nul,cnt:r.cnt,faux:r.faux.length,msParLog:Math.round(r.msParLog)}));
   ok(r.nul===0, 'aucun log introuvable (génération par rejet) : '+r.nul+' échecs sur 300');
