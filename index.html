@@ -9276,7 +9276,11 @@ function _doStartGame(){
   }
 
   // Un log complet + ses deux questions, dans un état de jeu isolé. `fluid` : 'eau', 'huile' ou 'gaz' (équilibré sur la manche).
+  // Génération par rejet : dans de rares cas (environ 1 sur 300) aucun puits ne satisfait toutes les contraintes ; on retente alors sans les options facultatives (piège, volume d'argile).
   function makeLog(fluid, avoid, opt){
+    return makeLogOnce(fluid, avoid, opt) || makeLogOnce(fluid, [], {});
+  }
+  function makeLogOnce(fluid, avoid, opt){
     avoid = avoid || []; opt = opt || {};
     fluid = fluid || ['eau','huile','gaz'][Math.floor(Math.random()*3)];
     // 3e question : calcul sur le réservoir. Porosité-densité (puits aquifère : le fluide est connu), saturation en eau par Archie ou contact

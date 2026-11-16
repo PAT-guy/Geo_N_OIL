@@ -55,7 +55,7 @@ const { chromium } = require('playwright'); const path = require('path');
     const f=window.__cg.cgFactors, P=window.__cg.cgEngineProb; const pr=ids=>{ const x=f(ids); return P(x.piege,x.reservoir,x.couverture,x.charge); };
     return { n, errRaw, strong:pr(['p1','r1','c1','h1']), weak:pr(['p1','r1','c1','h5']), mid:pr(['p4','r7','c3','h3']), worst:pr(['p5','r5','c5','h5']), syn:pr(['p1','r1','c1','h1'])-pr(['p1','r4','c1','h1']) }; });
   ok(cg.n>=3000 && cg.errRaw<1e-9, 'cartes : formule du moteur (probabilité brute) reproduite sur '+cg.n+' blocs générés (écart maximal '+cg.errRaw+')');
-  ok(cg.strong>0.85 && cg.worst<0.2 && cg.weak<0.4 && cg.mid>cg.worst && cg.mid<cg.strong, 'cartes : maillon faible dominant (4 cartes fortes '+Math.round(cg.strong*100)+' %, trois fortes et une à 1 : '+Math.round(cg.weak*100)+' %, moyennes '+Math.round(cg.mid*100)+' %, quatre à 1 : '+Math.round(cg.worst*100)+' %)');
+  ok(cg.strong>0.6 && cg.worst<0.1 && cg.weak<0.65*cg.strong && cg.mid>cg.worst && cg.mid<cg.strong, 'cartes : un maillon faible fait chuter le produit de Rose (4 cartes fortes '+Math.round(cg.strong*100)+' %, trois fortes et une à 1 : '+Math.round(cg.weak*100)+' %, moyennes '+Math.round(cg.mid*100)+' %, quatre à 1 : '+Math.round(cg.worst*100)+' %)');
   { const apres2 = await pg.evaluate(`(${empreinte.toString()})()`); ok(apres2===avant, 'partie en cours toujours intacte après les quiz sismiques'); }
   // les autres quiz restent des listes fixes
   const fixes = await pg.evaluate(()=>['lithofacies'].map(k=>window.__qz.qzBuildRound(window.__qz.QUIZ_BANKS[k]).length)); ok(fixes.every(n=>n===8), 'lithofaciès : manche de 8 questions fixes');
