@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.95</title>
+<title>GeoExplorer V4.96</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2845,13 +2845,13 @@ function gsCampaign(nSim=400){
   const sims=GEO.condSim(D.pts, D.vals, plans.map(p=>p.b), GS_MODEL.m, GS_MODEL.a, nSim, rng), tot=[];
   // Dépendances entre puits : (1) l'effet de voisinage du jeu, appliqué dans l'ordre des blocs (un succès rend les voisins plus prometteurs, un puits sec utile moins) ; (2) un cours du brut commun à tout le programme (lognormal, 22 %).
   // Les erreurs d'estimation de chaque bloc sont indépendantes dans le jeu : elles ne créent pas de corrélation.
-  const wcs = plans.map(p=>waterCfg(p.b,false)), base = plans.map(p=>discoveryBoost(p.b)), near = plans.map((p,i)=>plans.map((q,j)=>{ if(j>=i) return 0; const d=Math.hypot(p.b.x-q.b.x, p.b.y-q.b.y); return d<=DISC_RADIUS ? Math.exp(-(d-1)/1.5) : 0; }));
+  const wcs = plans.map(p=>waterCfg(p.b,false)), fcs = plans.map(p=>fluidCfg(p.b,false)), base = plans.map(p=>discoveryBoost(p.b)), near = plans.map((p,i)=>plans.map((q,j)=>{ if(j>=i) return 0; const d=Math.hypot(p.b.x-q.b.x, p.b.y-q.b.y); return d<=DISC_RADIUS ? Math.exp(-(d-1)/1.5) : 0; }));
   for(const s of sims){ let g=0; const pr = G.price*Math.exp(0.22*GEO.gauss(rng) - 0.024), out = [];
     plans.forEach((p,i)=>{ const q=clamp(D.mu+D.sd*s[i],0,100), b=p.b; let f=base[i];
       for(let j=0;j<i;j++){ if(near[i][j]>0){ if(out[j]===1) f *= 1 + 0.6*near[i][j]; else if(out[j]===2) f *= 1 - 0.2*near[i][j]; } }
       const geo = rng() < clamp(b.estimate.prob*clamp(f,0.5,2.2), 0, 0.95), tech = rng() < p.rel, ok = geo && tech, cost=G.mode==='sandbox'?0:p.pl.cost;
       out[i] = ok ? 1 : (!geo ? 2 : 0);   // 1 : puits productif, 2 : sec utile (la géologie a été testée), 0 : échec technique (ne prouve rien)
-      if(ok){ const prod=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b); g += projectWell(prod, pr, b.isOffshore, b.estimate.isGas, cost, 120, undefined, wcs[i]).cum - cost; } else g -= cost; });
+      if(ok){ const prod=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b); g += projectWell(prod, pr, b.isOffshore, b.estimate.isGas, cost, 120, undefined, wcs[i], fcs[i]).cum - cost; } else g -= cost; });
     tot.push(g); }
   tot.sort((a,b)=>a-b); const at=f=>tot[Math.min(tot.length-1, Math.floor(f*tot.length))];
   return { n:plans.length, p90:at(0.10), p50:at(0.5), p10:at(0.90), ruin:tot.filter(v=>v<0).length/tot.length };
@@ -2954,11 +2954,11 @@ function wellRate(w){
 }
 // Projection d'un puits neuf : cumul net sur `months` mois (arrêt si le net devient négatif) et
 // délai de remboursement du coût de forage. Mêmes coûts d'exploitation que wellEconomics().
-function projectWell(q0, price, offshore, gas, cost, months, dc, wc){
+function projectWell(q0, price, offshore, gas, cost, months, dc, wc, fl){
   const fixed = offshore?OFFSHORE_OPEX:8000, varOp = (offshore?14:4)+6, pr = gas?price*.18:price;
   let cum = 0, payback = null;
   for(let m=0; m<(months||120); m++){
-    const q = q0*declineFactor(m, dc), net = q*(pr-varOp) - fixed - (wc ? q*bswToWor(wc.fn(m), wc.gas)*wc.unit : 0);
+    const q = q0*declineFactor(m, dc), net = q*(pr*(fl ? fl.pf : 1) + (fl ? fl.gasPerBbl : 0) - varOp) - fixed - (wc ? q*bswToWor(wc.fn(m), wc.gas)*wc.unit : 0);
     if(net<=0) break;
     cum += net; if(payback===null && cum>=cost) payback = m+1;
   }
@@ -3331,7 +3331,7 @@ function resolveDrillingCore(d){
     if(isFrac) b.fracInfo = { ...sh, lat:d.lat||2000, ip:initProd };
     const well = {blockId:d.blockId, method:d.method, equip:d.equip, cost:d.cost,
                   studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month,
-                  production:initProd, comps:[isFrac ? {q0:initProd, t0:0, dc:SHALE_DECL} : {q0:initProd, t0:0}], wp: G.simple ? null : waterParams(b, isFrac), monthsActive:0, status:'producing',
+                  production:initProd, comps:[isFrac ? {q0:initProd, t0:0, dc:SHALE_DECL} : {q0:initProd, t0:0}], wp: G.simple ? null : waterParams(b, isFrac), fp: G.simple ? null : fluidParams(b, isFrac), monthsActive:0, status:'producing',
                   isGas:b.isGas, offshore:b.isOffshore, eorActive:false, eorMonthsLeft:0};
     G.wells.push(well);
     prodOut = initProd;
@@ -3510,15 +3510,76 @@ function waterCardHtml(){
 const wellWaterRows = w => { if(!w.wp) return ''; const f = wellBsw(w), e = wellEconomics(w);
   return infoRow('BSW', `${Math.round(f*100)} %${w.wp.kind==='conv' ? TR(` (percée vers le mois ${w.wp.tb})`,` (breakthrough around month ${w.wp.tb})`) : TR(' (reflux puis remontée lente)',' (flowback then slow rise)')}`) + infoRow(TR('Eau produite/mois','Water produced/month'), `${Math.round(e.waterBbl).toLocaleString()} ${TR('barils','barrels')} · ${formatM(e.waterCost)}`); };
 
+// =====================================================================
+// QUALITÉ DU BRUT ET DU GAZ (V4.96) : chaque puits porte les fluides de son gisement (`w.fp`) : densité API, soufre, GOR (gaz dissous) pour l'huile ; rendement en condensat
+// et gaz acide (H2S) pour le gaz. Les réservoirs froids (moins de 60 °C) sont biodégradés : huile lourde et soufrée ; plus la roche-mère est mûre, plus l'huile est légère
+// et riche en gaz. Le prix réalisé suit la qualité (+1,2 % par °API au-dessus de 30, −4 % par point de soufre au-dessus de 0,7 %). Le gaz associé (GOR) est brûlé (taxe) ou vendu
+// si une unité de traitement est construite. Règles de jeu simplifiées, valeurs non sourcées. Absent en Découverte ; les anciens puits gardent leur économie.
+// =====================================================================
+const FLUID = { gasPlantCapex:1.5e6, flareFee:0.25, gasShare:0.55, gasProc:0.6, sweeten:0.8, condPremium:1.05 };
+function gasState(){ if(!G.gas) G.gas = { mode:'flare', plant:false, spent:0, soldMcf:0, flaredMcf:0 }; return G.gas; }
+const gasNetPrice = () => Math.max(0, G.price*0.18*FLUID.gasShare - FLUID.gasProc);   // $/Mcf net de traitement
+const fluidPf = fp => fp && fp.kind==='oil' ? clamp(1 + 0.012*(fp.api-30) - 0.04*(fp.sulfur-0.7), 0.6, 1.12) : 1;   // référence du jeu : 30 °API, 0,7 % de soufre
+function fluidParams(b, isFrac){
+  const r = SR('fluid', b.id), j = () => r()*2-1, temp = b.tempAtRes ?? 60, mat = clamp(b.maturity ?? 0.5, 0.05, 1);
+  const rh = b.horizons?.find(h=>h.role==='reservoir'), carb = /calcaire|dolomi|limestone|carbonat/i.test(`${FRN(rh?.name||'')} ${FRN(rh?.lith||'')}`);
+  if(b.isGas) return { kind:'gas', cgr: clamp(40*(1-mat)+3+3*j(), 1, 50), sour: r() < (carb ? 0.35 : 0.12) };
+  if(isFrac) return { kind:'oil', api: Math.round(clamp(38 + 6*(mat-0.5) + 3*j(), 33, 50)*10)/10, sulfur: Math.round(clamp(0.2 + 0.15*j(), 0.05, 0.6)*100)/100, gor: Math.round(clamp(600 + 1500*mat + 150*j(), 300, 3000)) };
+  const bio = clamp((60-temp)/40, 0, 1);
+  const api = clamp(30 + 14*(mat-0.45) - 10*bio + 3*j(), 10, 50);
+  return { kind:'oil', api: Math.round(api*10)/10, sulfur: Math.round(clamp(0.25 + 1.0*bio + (carb?0.4:0) + (api<22?0.5:0) + 0.15*j(), 0.05, 3.5)*100)/100, gor: Math.round(clamp(150 + 2200*mat*mat + 150*j(), 60, 3500)) };
+}
+// Ce que le joueur peut prévoir : a priori régional, affiné par les puits voisins (moins de 3,5 blocs)
+function fluidPrior(b, isFrac){
+  const gas = !!b.estimate?.isGas, kind = gas ? 'gas' : 'oil';
+  const near = G.wells.filter(w=>w.fp && w.fp.kind===kind && blocks[w.blockId] && Math.hypot(blocks[w.blockId].x-b.x, blocks[w.blockId].y-b.y)<=3.5);
+  if(near.length){ const m = k => near.reduce((s,w)=>s+(+w.fp[k]),0)/near.length; return kind==='gas' ? { kind, cgr:m('cgr'), sour:near.some(w=>w.fp.sour), informed:near.length } : { kind, api:m('api'), sulfur:m('sulfur'), gor:m('gor'), informed:near.length }; }
+  return kind==='gas' ? { kind, cgr:20, sour:false, prior:true } : isFrac ? { kind, api:40, sulfur:0.2, gor:1200, prior:true } : { kind, api:30, sulfur:0.7, gor:700, prior:true };
+}
+const fluidCfg = (b, isFrac) => { if(G.simple) return undefined; const p = fluidPrior(b, isFrac), st = gasState(); if(p.kind==='gas') return { pf:1, gasPerBbl: p.cgr/1000*G.price*FLUID.condPremium - (p.sour ? FLUID.sweeten : 0) }; return { pf: fluidPf(p), gasPerBbl: (st.mode==='sell' && st.plant) ? p.gor/1000*gasNetPrice() : -(st.mode==='flare' ? p.gor/1000*FLUID.flareFee : 0) }; };
+function gasSetMode(m){ const st = gasState(); if(m==='sell' && !st.plant) return; st.mode = m; renderGisementsPanel(); }
+function gasBuild(){
+  const st = gasState(); if(st.plant) return;
+  if(G.budget < FLUID.gasPlantCapex && G.mode!=='sandbox'){ toast(TR('Budget insuffisant.','Insufficient budget.')); return; }
+  if(G.mode!=='sandbox') G.budget -= FLUID.gasPlantCapex; st.spent += FLUID.gasPlantCapex; st.plant = true; st.mode = 'sell';
+  addLog(TR(`🔥 Unité de collecte et de traitement du gaz construite : ${formatM(FLUID.gasPlantCapex)}. Le gaz associé est vendu (${gasNetPrice().toFixed(1)} $/Mcf net) au lieu d'être brûlé.`,`🔥 Gas gathering and processing unit built: ${formatM(FLUID.gasPlantCapex)}. Associated gas is sold (${gasNetPrice().toFixed(1)} $/Mcf net) instead of being flared.`), 'ev');
+  updateHud(); renderGisementsPanel();
+}
+function fluidCardHtml(){
+  const st = gasState(), prod = G.wells.filter(w=>w.status==='producing' && w.fp), oil = prod.filter(w=>w.fp.kind==='oil');
+  const bbl = oil.reduce((s,w)=>s+w.production*(w.eorActive?1.35:1),0), mcf = oil.reduce((s,w)=>s+wellEconomics(w).assocMcf,0), pf = bbl>0 ? oil.reduce((s,w)=>s+wellEconomics(w).pf*w.production,0)/oil.reduce((s,w)=>s+w.production,0) : 1;
+  const wapi = oil.length ? oil.reduce((s,w)=>s+w.fp.api*w.production,0)/oil.reduce((s,w)=>s+w.production,0) : null;
+  const btn = (m, ok, name, capex, desc) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;margin:3px 0;"><span>${st.mode===m?'● ':''}<b>${name}</b> <span style="color:var(--muted);">${desc}</span></span>${ok ? `<button class="cg-close" style="padding:2px 8px;" ${st.mode===m?'disabled':''} onclick="gasSetMode('${m}')">${st.mode===m?TR('Actif','Active'):TR('Choisir','Select')}</button>` : `<button class="cg-close" style="padding:2px 8px;" ${G.budget>=capex||G.mode==='sandbox'?'':'disabled'} onclick="gasBuild()">${TR('Construire','Build')} · ${formatM(capex)}</button>`}</div>`;
+  return `<div class="ps-section" style="margin-top:14px;">${TR('🔥 Qualité et gaz associé','🔥 Quality and associated gas')}</div>
+    <div class="study-card" style="padding:8px 10px;">
+      ${wapi!==null ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">${TR('Densité moyenne (pondérée)','Average gravity (weighted)')}</span><span>${wapi.toFixed(1)} °API</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">${TR('Prix réalisé moyen','Average realised price')}</span><span>${Math.round(pf*100)} % ${TR('du brut de référence','of the benchmark')}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">${TR('Gaz associé ce mois','Associated gas this month')}</span><span>${Math.round(mcf).toLocaleString()} Mcf</span></div>` : ''}
+      <div style="font-size:11px;margin:6px 0 2px;color:var(--muted);">${TR('Gaz associé','Associated gas')}</div>
+      ${btn('flare', true, TR('Brûler','Flare'), 0, `${FLUID.flareFee.toFixed(2)} $/Mcf ${TR('de taxe','tax')}`)}
+      ${btn('sell', st.plant, TR('Vendre','Sell'), FLUID.gasPlantCapex, `${gasNetPrice().toFixed(1)} $/Mcf ${TR('net','net')}`)}
+      <div class="lab-note" style="margin-top:4px;">${TR('Le prix de l\'huile suit sa qualité : plus lourde ou plus soufrée, elle se vend moins cher. Un puits à fort GOR produit beaucoup de gaz : l\'unité de traitement se rentabilise surtout sur les puits fracturés.','Oil price follows its quality: heavier or more sulphurous oil sells for less. A high-GOR well produces a lot of gas: the processing unit mostly pays off on fracked wells.')}</div>
+    </div>`;
+}
+const wellFluidRows = w => { if(!w.fp) return ''; const e = wellEconomics(w);
+  return w.fp.kind==='oil'
+    ? infoRow(TR('Huile','Oil'), `${w.fp.api.toFixed(1)} °API · ${TR('soufre','sulphur')} ${w.fp.sulfur.toFixed(2)} % · GOR ${w.fp.gor.toLocaleString()} scf/bbl`) + infoRow(TR('Prix réalisé','Realised price'), `${Math.round(e.pf*100)} % ${TR('du brut','of benchmark')}${e.assocMcf>0 ? ' · '+(e.gasRev>0 ? TR('gaz vendu','gas sold') : TR('gaz brûlé','gas flared'))+' '+Math.round(e.assocMcf).toLocaleString()+' Mcf/'+TR('mois','month') : ''}`)
+    : infoRow(TR('Gaz','Gas'), `${TR('condensat','condensate')} ${w.fp.cgr.toFixed(0)} bbl/MMcf${w.fp.sour ? ' · '+TR('gaz acide (H2S)','sour gas (H2S)') : ''}`); };
+
 function wellEconomics(w){
   const prodEffective = w.production * (w.eorActive ? 1.35 : 1.0);
   const priceWell = w.isGas ? G.price*.18 : (G.financeMode && G.hedgeContract?.monthsLeft>0 ? G.hedgeContract.lockedPrice : G.price);
   const fixedOp = w.offshore ? OFFSHORE_OPEX : 8000;
   const varOp   = (w.offshore?14:4) + 6;
-  const revenue = prodEffective * priceWell;
+  const pf = fluidPf(w.fp), st = gasState();
+  const oilRev = prodEffective * priceWell * pf;
+  let gasRev = 0, assocMcf = 0, fluidCost = 0;
+  if(w.fp && w.fp.kind==='oil'){ assocMcf = prodEffective*w.fp.gor/1000; if(st.mode==='sell' && st.plant) gasRev = assocMcf*gasNetPrice(); else fluidCost = assocMcf*FLUID.flareFee; }
+  else if(w.fp && w.fp.kind==='gas'){ gasRev = prodEffective/1000*w.fp.cgr*G.price*FLUID.condPremium; if(w.fp.sour) fluidCost = prodEffective*FLUID.sweeten; }
+  const revenue = oilRev + gasRev;
   const bsw = w.wp ? wellBsw(w) : 0, waterBbl = prodEffective*bswToWor(bsw, w.isGas), waterCost = waterBbl*waterUnit(w);
-  const opex    = fixedOp + prodEffective*varOp + waterCost;
-  return {prodEffective, priceWell, fixedOp, varOp, revenue, opex, net:revenue-opex, bsw, waterBbl, waterCost};
+  const opex    = fixedOp + prodEffective*varOp + waterCost + fluidCost;
+  return {prodEffective, priceWell, fixedOp, varOp, revenue, opex, net:revenue-opex, bsw, waterBbl, waterCost, pf, oilRev, gasRev, assocMcf, fluidCost};
 }
 
 // Abandon d'un puits (bouchons de ciment, remise en état du site) : 12 % du coût de forage à terre, 18 % en mer. Payé une seule fois,
@@ -3587,7 +3648,9 @@ function monthTick(){
       opex += econ.fixedOp; // production arrêtée (grève, ou tempête pour les puits en mer) : seuls les coûts fixes courent
     } else {
       if(G.financeMode && G.sellMode==='stock'){
+        const add = Math.min(G.stockMax - G.stock, econ.prodEffective); G.stockPf = ((G.stockPf ?? 1)*G.stock + econ.pf*add)/Math.max(1e-9, G.stock + add);
         G.stock = Math.min(G.stockMax, G.stock + econ.prodEffective);
+        revenue += econ.gasRev * taxMult;
       } else {
         revenue += econ.revenue * taxMult;
       }
@@ -3608,6 +3671,7 @@ function monthTick(){
     if(w.production<5){ w.status='depleted'; const ab = payAbandon(w); addLog(TR(`Puits (${blocks[w.blockId].x},${blocks[w.blockId].y}) épuisé après ${w.monthsActive} mois.${ab>0?' Coût d\'abandon : '+formatM(ab)+'.':''}`,`Well (${blocks[w.blockId].x},${blocks[w.blockId].y}) depleted after ${w.monthsActive} months.${ab>0?' Abandonment cost: '+formatM(ab)+'.':''}`)); }
   });
 
+  { const gs = gasState(); G.wells.forEach(w=>{ if(w.status==='producing' && w.fp && w.fp.kind==='oil'){ const e = wellEconomics(w); if(gs.mode==='sell' && gs.plant) gs.soldMcf += e.assocMcf; else gs.flaredMcf += e.assocMcf; } }); }
   { const st = waterState(); st.total += waterAll; st.month = waterAll;
     if(st.mode==='recycle' && st.plant && waterOn>0){ st.pool += waterOn; if(st.pool > WATER.poolCap){ const ex = st.pool - WATER.poolCap; st.pool = WATER.poolCap; opex += ex*(WATER.truck - WATER.recycle); } } }
   if(strikeActive){
@@ -3735,11 +3799,11 @@ function repayLoan(i){
 
 function sellStock(){
   if(G.stock<=0){ addLog(TR('Aucun stock à vendre.','No stock to sell.')); return; }
-  const revenue = G.stock * G.price;
+  const revenue = G.stock * G.price * (G.stockPf ?? 1);
   G.budget += revenue;
   G.totalRevenue = (G.totalRevenue||0) + revenue;
   addLog(TR(`📦 Vente de ${Math.round(G.stock).toLocaleString()} barils à $${G.price.toFixed(1)}/bbl = ${formatM(revenue)}.`,`📦 Sale of ${Math.round(G.stock).toLocaleString()} barrels at $${G.price.toFixed(1)}/bbl = ${formatM(revenue)}.`), 'ev');
-  G.stock = 0;
+  G.stock = 0; G.stockPf = 1;
   updateHud(); renderFinancePanel();
 }
 
@@ -3790,7 +3854,7 @@ function renderGisementsPanel(){
     return;
   }
   const producing = wells.filter(w=>w.status==='producing');
-  const waterCard = (!G.simple && producing.some(w=>w.wp)) ? waterCardHtml() : '';
+  const waterCard = (!G.simple && producing.some(w=>w.wp)) ? waterCardHtml() + (producing.some(w=>w.fp) ? fluidCardHtml() : '') : '';
   const statusLabel = {producing:'● Producteur', closed:TR('🔧 Fermé','🔧 Closed'), depleted:TR('✕ Épuisé','✕ Depleted'), blowout:'💥 Blowout'};
   const statusColor = {producing:'var(--green)', closed:'var(--muted)', depleted:'var(--muted)', blowout:'var(--red)'};
   let html = waterCard + `<div class="ps-section" style="margin-top:${waterCard?'14px':'0'};">${TR(`${TR(`Gisements (`,`Fields (`)}`,`Fields (`)}${wells.length}${TR(`${TR(` puits, `,` wells, `)}`,` wells, `)}${producing.length}${TR(`${TR(` actifs)`,` active)`)}`,` active)`)}</div>`;
@@ -5317,6 +5381,7 @@ function renderStudiesPanel(b){
     html+=`<div class="ps-section" style="margin-top:12px;">${TR(`Puits actif`,`Active well`)}</div>`;
     html+=infoRow('Production',TR(`${Math.round(w.production)} ${w.isGas?'Mcf':'barils'}/mois`,`${Math.round(w.production)} ${w.isGas?'Mcf':'barrels'}/month`));
     html+=infoRow(TR('En production','In production'),TR(`${w.monthsActive} mois`,`${w.monthsActive} months`));
+    html+=wellFluidRows(w);
     html+=wellWaterRows(w);
     html+=infoRow(TR('Revenu brut/mois','Gross revenue/month'),formatM(econ.revenue));
     html+=infoRow(TR('Coûts d\'exploitation/mois','Operating costs/month'),formatM(econ.opex));
@@ -5386,7 +5451,7 @@ function updateDrillSummary(blockId){
   }
   if(method==='frac'){
     const se=shaleEstimate(b), ip=fracProdOf(se.q, se.thick, lat, b), gas=!!b.estimate.isGas, u=gas?'Mcf':TR('barils','barrels');
-    const proj=projectWell(ip, G.price, false, gas, G.mode==='sandbox'?0:cost, 120, SHALE_DECL, waterCfg(b, true)), fw=fracWater(lat);
+    const proj=projectWell(ip, G.price, false, gas, G.mode==='sandbox'?0:cost, 120, SHALE_DECL, waterCfg(b, true), fluidCfg(b, true)), fw=fracWater(lat);
     const be=proj.payback, beClass=be===null?'ds-bad':be<18?'ds-good':be<36?'ds-warn':'ds-bad';
     const known = se.known ? (se.ok ? TR(`Rock-Eval : TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, roche-mère exploitable.`,`Rock-Eval: TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, exploitable source rock.`) : TR(`Rock-Eval : TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, roche-mère NON exploitable (immature ou trop pauvre).`,`Rock-Eval: TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, source rock NOT exploitable (immature or too lean).`))
       : TR('Roche-mère non mesurée : faites un sondage avec carotte puis une Rock-Eval avant de payer une frac. La fragilité reste inconnue jusqu\'au forage.','Source rock not measured: run a survey hole with core and a Rock-Eval before paying for a frac. Brittleness stays unknown until drilling.');
@@ -5409,7 +5474,7 @@ function updateDrillSummary(blockId){
   // l'épaisseur nominale de la colonne de référence.
   const nomRes=STRAT.find(l=>l.role==='reservoir');
   const estProd=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b);
-  const wcv = waterCfg(b, false), proj=projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, G.mode==='sandbox'?0:cost, 120, undefined, wcv);
+  const wcv = waterCfg(b, false), flv = fluidCfg(b, false), proj=projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, G.mode==='sandbox'?0:cost, 120, undefined, wcv, flv);
   const netMonth=estProd*(b.estimate.isGas?G.price*.18:G.price)-(b.isOffshore?OFFSHORE_OPEX:8000)-estProd*((b.isOffshore?14:4)+6);
   const breakeven=proj.payback;
   const beClass=breakeven===null?'ds-bad':breakeven<18?'ds-good':breakeven<36?'ds-warn':'ds-bad';
@@ -5421,6 +5486,7 @@ function updateDrillSummary(blockId){
     <div class="tr"><span class="tl">${TR(`Coût forage estimé`,`Estimated drilling cost`)}</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}${b.isOffshore?' (offshore)':''}</span></div>
     <div class="tr"><span class="tl">${TR(`Probabilité de succès`,`Probability of success`)}</span><span>${probKnown?`${(prob*100).toFixed(0)}% × ${(relHere*100).toFixed(0)}${TR(`% (fiabilité du matériel à `,`% (equipment reliability at `)}${Math.round(depth)}${TR(` m, soit `,` m, i.e. `)}${Math.round(depth/eq.maxDepth*100)}${TR(`% de sa limite)`,`% of its limit)`)}`:TR('Inconnue : réalisez une sismique 3D pour l\'estimer','Unknown: run a 3D seismic survey to estimate it')}</span></div>
     <div class="tr"><span class="tl">${TR(`Production si succès`,`Production if successful`)}</span><span>${(()=>{ const u=b.estimate.isGas?'Mcf':TR('barils','barrels'), pm=TR(`/mois`,`/month`), rg=G.simple?null:gsProdRange(b, estProd); return rg ? `~${Math.round(rg.p50)} ${u}${pm}<br><span style="font-size:10.5px;color:var(--muted);" title="${TR('Fourchette conditionnée par les blocs voisins mesurés (géostatistique)','Range conditioned on the measured neighbouring blocks (geostatistics)')}">P90 ${Math.round(rg.p90)} · P10 ${Math.round(rg.p10)}</span>` : `~${Math.round(estProd)} ${u}${pm}`; })()}</span></div>
+    ${G.simple ? '' : (()=>{ const p=fluidPrior(b,false); return p.kind==='gas' ? `<div class="tr"><span class="tl">${TR('Fluide attendu','Expected fluid')}</span><span>${TR('gaz','gas')} · ${TR('condensat','condensate')} ~${Math.round(p.cgr)} bbl/MMcf</span></div>` : `<div class="tr"><span class="tl">${TR('Huile attendue','Expected oil')}</span><span>~${Math.round(p.api)} °API, ${TR('soufre','sulphur')} ~${p.sulfur.toFixed(1)} %, ${TR('prix','price')} ~${Math.round(fluidPf(p)*100)} %<br><span style="font-size:10.5px;color:var(--muted);">${p.informed ? TR(`d'après ${p.informed} puits voisin(s)`,`from ${p.informed} neighbouring well(s)`) : TR('a priori régional : un puits voisin le précise (les réservoirs froids donnent une huile lourde et soufrée)','regional prior: a neighbouring well pins it down (cold reservoirs give heavy sulphurous oil)')}</span></span></div>`; })()}
     ${G.simple ? '' : (()=>{ const p=waterPrior(b,false); return `<div class="tr"><span class="tl">${TR('BSW attendu','Expected BSW')}</span><span>${Math.round(bswAt(p,0)*100)} % ${TR('au départ','at start')}, ~${Math.round(bswAt(p,60)*100)} % ${TR('à 5 ans','at 5 years')}<br><span style="font-size:10.5px;color:var(--muted);">${p.informed ? TR(`d'après ${p.informed} puits voisin(s) : percée vers le mois ${p.tb}`,`from ${p.informed} neighbouring well(s): breakthrough around month ${p.tb}`) : TR('a priori régional : un puits voisin ou le log précisent le contact eau-huile','regional prior: a neighbouring well or the log pins down the water-oil contact')}</span></span></div>`; })()}
     <div class="tr"><span class="tl">${TR(`Profit mensuel net au départ`,`Net monthly profit at start`)}</span><span style="color:${netMonth>0?'var(--green)':'var(--red)'};">${formatM(netMonth)}${TR(`${TR(`/mois`,`/month`)}`,`/month`)}</span></div>
     ${evNet===null?'':`<div class="tr"><span class="tl">${TR(`Gain net espéré sur 10 ans`,`Expected net gain over 10 years`)}</span><span style="color:${evNet>0?'var(--green)':'var(--red)'};">${formatM(evNet)}</span></div>`}
