@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.98</title>
+<title>GeoExplorer V4.99</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3622,6 +3622,44 @@ function wellPressureRows(w){
   return h;
 }
 
+// =====================================================================
+// LECTURE DES FLUIDES AU LOG (V4.99) : à partir des courbes réelles du puits (résistivité profonde, densité, neutron), interprétation faite comme le joueur la ferait :
+// porosité-densité, saturation en eau d'Archie (a = 1, m = n = 2), croisement densité-neutron (typage : l'écart densité-neutron des hydrocarbures est comparé à celui de l'aquifère sous le contact ; sans aquifère lu, on ne tranche que les cas francs), contact eau-hydrocarbures là où la résistivité s'effondre, colonne d'hydrocarbures,
+// puis percée d'eau attendue avec la loi du jeu (12 + 100 × (colonne / épaisseur)^1,5 mois, à ±20 % près). Pour un puits producteur, on compare avec ce que le puits fait vraiment.
+// =====================================================================
+function logFluidReading(b){
+  const g = wlGrid(b, false); if(!g || g.firstRes<0) return null;
+  const hr = g.H[g.firstRes], th = hr.thicknessLocal ?? hr.thickness, L = WL_LITH[wlLithClass(hr)]; if(!L || L.rhoMa==null) return null;
+  const grad = (b.tempAtRes-14)/Math.max(0.3, b.topOfReservoir/1000); let n = 0, hc = 0, swSum = 0, last = null, cnt = 0; const gaps = [], phis = [], wgaps = [], phiAll = [];
+  for(let k=0;k<=g.n;k++){ const z = g.z[k]; if(z < hr.top || z > hr.top+th) continue; cnt++;
+    const phi = clamp((L.rhoMa - g.rho[k])/(L.rhoMa - 1.0), 0.01, 0.4), Rw = 0.12*(25+21.5)/((14 + z/1000*grad)+21.5), sw = clamp(Math.sqrt(Rw/(phi*phi*Math.max(0.1, g.rt[k]))), 0, 1);
+    phiAll.push(phi);
+    if(sw < 0.7){ hc++; swSum += sw; phis.push(phi); gaps.push((2.71 - g.rho[k])/1.71 - g.nphi[k]); last = z; } else if(sw >= 0.9 && z > (last ?? Infinity)) wgaps.push((2.71 - g.rho[k])/1.71 - g.nphi[k]); n++; }   // écart densité-neutron en unités calcaire, seuil du jeu : 7 points
+  if(!n) return null; const dz = g.dz, column = hc*dz;
+  if(hc < 3){ const pm = [...phiAll].sort((x,y)=>x-y)[Math.floor(phiAll.length/2)]; return pm < 0.09 ? { fluid:'incertain', phi:pm, column:0, th, hf:0, sw:1, owc:null, tb:null } : { fluid:'eau', column:0, th, hf:0, sw:1, owc:null, tb:null }; }
+  const hf = clamp(column/th, 0.35, 0.95), med = a => { const c = [...a].sort((x,y)=>x-y); return c[Math.floor(c.length/2)]; }, mgap = med(gaps), mphi = med(phis), base = wgaps.length >= 3 ? med(wgaps) : null;   // médianes : les bords de couche mélangent les voisins
+  // typage : l'écart densité-neutron de la zone à hydrocarbures est comparé à celui de l'aquifère sous le contact (le gaz l'élargit de 2 points ou plus) ; sans jambe aquifère lue, seuls les cas francs se tranchent
+  const fluid = base !== null ? (mgap - base > 0.02 ? 'gaz' : mphi < 0.09 ? 'ambigu' : 'huile') : mgap > 0.07 ? 'gaz' : (mgap < -0.01 && mphi >= 0.12) ? 'huile' : 'ambigu';   // porosité sous 9 % : l'effet gaz est trop faible pour exclure le gaz
+  return { fluid, phi: mphi, gap: mgap, gapW: base, column, th, hf, sw: swSum/hc, owc: last + dz/2, tb: Math.round(12 + 100*Math.pow(hf, 1.5)) };
+}
+function logFluidCardHtml(b){
+  if(G.simple || (!b.well && !b.dryHole)) return ''; let r = null; try { r = logFluidReading(b); } catch(e){} if(!r) return '';
+  const nm = { eau:TR('eau salée (aquifère)','salt water (aquifer)'), huile:TR('huile','oil'), gaz:TR('gaz','gas'), incertain:TR('indéterminé (réservoir serré)','undetermined (tight reservoir)'), ambigu:TR('hydrocarbures, huile ou gaz (aquifère non lu ou porosité trop faible pour trancher)','hydrocarbons, oil or gas (water leg not read or porosity too low to tell)') };
+  let h = `<div class="ps-section" style="margin-top:12px;">${TR('Lecture des fluides au log','Fluid reading from the log')}</div><div class="study-card" style="padding:8px 10px;">`;
+  h += infoRow(TR('Fluide du réservoir','Reservoir fluid'), nm[r.fluid]);
+  if(r.fluid==='incertain') h += `<div class="lab-note">${TR(`Porosité d'environ ${Math.round(r.phi*100)} % : trop faible pour qu'Archie distingue l'eau des hydrocarbures. Un réservoir serré peut cacher son pétrole : ce log ne tranche pas.`,`Porosity of about ${Math.round(r.phi*100)} %: too low for Archie to tell water from hydrocarbons. A tight reservoir can hide its oil: this log cannot settle it.`)}</div>`;
+  else if(r.fluid==='eau') h += `<div class="lab-note">${TR('Résistivité basse et saturation en eau proche de 100 % : le réservoir est poreux mais aquifère, il manque les hydrocarbures.','Low resistivity and water saturation near 100 %: the reservoir is porous but water-bearing, the hydrocarbons are missing.')}</div>`;
+  else {
+    h += infoRow(TR('Saturation en eau (Archie)','Water saturation (Archie)'), `${Math.round(r.sw*100)} %`);
+    h += infoRow(TR('Contact vers','Contact at about'), `${Math.round(r.owc)} m`);
+    h += infoRow(TR('Colonne d\'hydrocarbures','Hydrocarbon column'), `${Math.round(r.column)} m ${TR('sur','of')} ${Math.round(r.th)} m (${Math.round(r.hf*100)} %)`);
+    h += infoRow(TR('Percée d\'eau attendue','Expected water breakthrough'), TR(`vers le mois ${r.tb} (±20 %)`,`around month ${r.tb} (±20 %)`));
+    if(b.well && b.well.wp && b.well.wp.kind==='conv') h += infoRow(TR('Percée réelle du puits','Well\'s actual breakthrough'), TR(`mois ${b.well.wp.tb}`,`month ${b.well.wp.tb}`) + ` · ${Math.abs(b.well.wp.tb-r.tb)/r.tb <= 0.25 ? '✓' : '≠'}`);
+    h += `<div class="lab-note">${TR('Plus la colonne est épaisse au-dessus du contact, plus l\'eau met de temps à arriver. Voir le mini-jeu « Lire un log ».','The thicker the column above the contact, the longer water takes to arrive. See the “Read a log” mini-game.')}</div>`;
+  }
+  return h + '</div>';
+}
+
 function wellEconomicsRaw(w){
   const prodEffective = w.production * (w.eorActive ? 1.35 : 1.0) * maintBoost(w);
   const priceWell = w.isGas ? G.price*.18 : (G.financeMode && G.hedgeContract?.monthsLeft>0 ? G.hedgeContract.lockedPrice : G.price);
@@ -5462,6 +5500,8 @@ function renderStudiesPanel(b){
       ?TR('<div style="font-size:11px;color:var(--red);">Nécessite un forage réel sur ce bloc (cuttings ou carotte).</div>','<div style="font-size:11px;color:var(--red);">Requires an actual well on this block (cuttings or core).</div>')
       :`<button class="study-btn study-btn-compact" ${canRockeval?'':'disabled'} onclick="performStudy(${b.id},'rockeval')">${TR(`🧪 Rock-Eval : `,`🧪 Rock-Eval: `)}${G.mode==='sandbox'?'Gratuit':formatM(rockevalCost)}</button>`}
   </div>`;
+
+  if(b.well || b.dryHole) html += logFluidCardHtml(b);
 
   // SONDAGE STRATIGRAPHIQUE (carte à part, toujours proposée)
   if(!G.simple && b.studyLevel>=1&&!b.well&&!b.dryHole&&!G.drilling.some(d=>d.blockId===b.id)) html+=stratiCardHtml(b);
@@ -9970,7 +10010,7 @@ function _doStartGame(){
         } else { q1.type = 'lith'; }
         // question 3 : calcul sur le réservoir
         const hr = H[ri], thr = hr.thicknessLocal ?? hr.thickness, Lres = WL_LITH[wlLithClass(hr)] || WL_LITH.sandstone;
-        let q3 = null;
+        let q3 = null, q4 = null;
         if(calc==='poro'){
           const rb = Math.round(rB.rho*100)/100, rma = Lres.rhoMa, phi = (rma-rb)/(rma-1.0), pct = pctFmt(phi*100);
           const wrongFluid = pctFmt((rma-rb)/rma*100), wrongMat = pctFmt((2.71-rb)/(2.71-1.0)*100 + (rma===2.71 ? 6 : 0));
@@ -9999,6 +10039,13 @@ function _doStartGame(){
           q3 = { text:TR('Le réservoir s\'étend de ','The reservoir extends from ')+Math.round(topR/5)*5+TR(' à ',' to ')+Math.round(baseR/5)*5+TR(' m. À quelle profondeur est le contact entre les hydrocarbures et l\'eau ?',' m. At what depth is the hydrocarbon-water contact?'), opts, good:String(c5), y:ys(cd), type:'contact', meta:{contact:c5, top:topR, base:baseR},
             chip:TR('Lecture du log','Log reading'), facts:[[TR('Toit du réservoir','Reservoir top'),Math.round(topR/5)*5+' m'],[TR('Base du réservoir','Reservoir base'),Math.round(baseR/5)*5+' m']], ask:TR('À quelle profondeur est le contact hydrocarbures-eau ?','At what depth is the hydrocarbon-water contact?'), note:TR('Sous le contact, la roche contient de l\'eau salée seule : la résistivité chute nettement.','Below the contact, the rock contains salt water only: the resistivity drops sharply.'),
             why:`${TR(`Le contact est à environ `,`The contact is at about `)}<b>${c5} m</b>${TR(` : au-dessus, la résistivité reste élevée (environ `,` : above it, the resistivity stays high (about `)}${f0(above)}${TR(` Ω·m), en dessous elle tombe à environ `,` Ω·m), below it falls to about `)}${f1(below)}${TR(` Ω·m. L'épaisseur d'hydrocarbures est donc d'environ `,` Ω·m. The hydrocarbon thickness is therefore about `)}${Math.round(cd-topR)} m. ${fluid==='gaz' ? TR('Dans un gaz, le croisement jaune densité-neutron s\'arrête lui aussi au contact.','In a gas, the yellow density-neutron crossover also stops at the contact.') : TR('La saturation en hydrocarbures est constante au-dessus du contact dans ce modèle.','Hydrocarbon saturation is constant above the contact in this model.')}`, table: '' };
+          // 4e question (liée au BSW) : la colonne d'hydrocarbures lue au log annonce la percée d'eau (même loi que le jeu : 12 + 100 × (colonne / épaisseur)^1,5 mois, à ±20 % près)
+          { const hf = clamp((cd-topR)/thr, 0.35, 0.95), tb = 12 + 100*Math.pow(hf, 1.5), cuts = [40, 60, 85], bin = tb < cuts[0] ? 0 : tb < cuts[1] ? 1 : tb < cuts[2] ? 2 : 3;
+            if(cuts.every(c=>Math.abs(tb-c) >= 4)){ const labels = [TR('avant 40 mois','before 40 months'), TR('entre 40 et 60 mois','between 40 and 60 months'), TR('entre 60 et 85 mois','between 60 and 85 months'), TR('après 85 mois','after 85 months')];
+              q4 = { text:TR(`Le contact est à ${c5} m pour un réservoir de ${Math.round(topR/5)*5} à ${Math.round(baseR/5)*5} m : ${Math.round(cd-topR)} m d'hydrocarbures sur ${Math.round(thr)} m (${Math.round(hf*100)} %). Quand l'eau percera-t-elle au puits ?`,`The contact is at ${c5} m for a reservoir from ${Math.round(topR/5)*5} to ${Math.round(baseR/5)*5} m: ${Math.round(cd-topR)} m of hydrocarbons out of ${Math.round(thr)} m (${Math.round(hf*100)} %). When will water break through at the well?`),
+                opts:labels.map((t,i)=>({k:String(i), t})), good:String(bin), y:ys(cd), type:'bsw', meta:{ hf, tb, contact:c5, top:topR, base:baseR },
+                chip:TR('Du log au BSW','From log to BSW'), facts:[[TR('Colonne d\'hydrocarbures','Hydrocarbon column'),Math.round(cd-topR)+' m'],[TR('Part du réservoir','Share of the reservoir'),Math.round(hf*100)+' %']], ask:TR('Quand l\'eau perce-t-elle ?','When does water break through?'), note:TR('Plus la colonne est épaisse au-dessus du contact, plus l\'eau met de temps à arriver.','The thicker the column above the contact, the longer water takes to arrive.'),
+                why:`${TR(`Part de réservoir au-dessus du contact : `,`Share of the reservoir above the contact: `)}<b>${Math.round(hf*100)} %</b>. ${TR(`Dans le jeu, la percée d'eau arrive vers le mois `,`In the game, water breakthrough comes around month `)}12 + 100 × ${f2(hf)}<sup>1,5</sup> ≈ <b>${Math.round(tb)}</b>${TR(`, à ±20 % près. Une colonne mince (contact proche du toit) donne une percée rapide et un BSW fort ; une colonne épaisse retarde l'eau. C'est le lien entre ce que le log montre et le BSW que le puits produira.`,`, within about ±20 %. A thin column (contact near the top) gives early breakthrough and a high BSW; a thick column delays the water. That is the link between what the log shows and the BSW the well will produce.`)}`, table:'' }; } }
         }
         if(!q3) continue;
         // question 2 : fluide du réservoir en B (le texte cite les valeurs réellement lues)
@@ -10007,7 +10054,7 @@ function _doStartGame(){
           : fluid==='huile' ? `${TR(`C'était de l'`,`It was`)}<b>${TR(`huile`,`oil`)}</b>${TR(` : résistivité profonde de `,` : deep resistivity of `)}${rtTxt}${TR(`, bien au-dessus de celle de l'eau salée (une roche aquifère comparable lit moins de 10 Ω·m dans ce jeu), mais écart densité-neutron de `,`, well above that of salt water (a comparable aquifer rock reads under 10 Ω·m in this game), but a density-neutron gap of `)}${gapTxt}${TR(` points seulement : pas de croisement, donc pas de gaz.`,` points only: no crossover, so no gas.`)}`
           : `${TR(`C'était de l'`,`It was`)}<b>${TR(`eau salée`,`salt water`)}</b>${TR(` : résistivité de `,` : resistivity of `)}${rtTxt}${TR(` seulement, l'eau de formation conduit. Un puits sec peut avoir un réservoir parfaitement poreux, c'est le fluide qui manque.`,` only, the formation water conducts. A dry hole can have a perfectly porous reservoir, it is the fluid that is missing.`)}`;
         const q2 = { chip:TR('Lecture du log','Log reading'), text:TR('En B, dans le réservoir (couche poreuse à ','At B, in the reservoir (porous layer at ') + Math.round(zB) + TR(' m), que contient la roche ?',' m), what does the rock contain?'), opts:[{k:'gaz',t:'Gaz'},{k:'huile',t:'Huile'},{k:'eau',t:TR('Eau salée seule (réservoir aquifère)','Salt water only (aquifer reservoir)')}], good:fluid, y:yB, why:why2, table: readTable(rB,'B') };
-        return { html, qs:[q1,q2,q3], fluid, calc: q3.type, q1type: q1.type, rB, rA, rng:{z0:g.z0, z1:g.z1, zA, zB, hcBase:g.hcBase, hcTop:g.hcTop} };
+        return { html, qs: q4 ? [q1,q2,q3,q4] : [q1,q2,q3], fluid, calc: q3.type, q1type: q1.type, rB, rA, rng:{z0:g.z0, z1:g.z1, zA, zB, hcBase:g.hcBase, hcTop:g.hcTop} };
       }
       return null;
     } finally {
