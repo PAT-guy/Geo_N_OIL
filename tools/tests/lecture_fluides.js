@@ -5,7 +5,7 @@ const { chromium } = require('playwright'); const path = require('path');
   const pg=await br.newPage({viewport:{width:1280,height:900}}); const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
   await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1');localStorage.setItem('geoexplorer_played','1')}catch(e){}});
   await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(500);
-  const R = await pg.evaluate(async()=>{ const o={}; document.getElementById('geoSeed').value='2468'; menuConfig.mode='junior'; menuConfig.basinType='aquitaine'; menuConfig.gridSize=12; menuConfig.offshore=false; labOptLaunch(); await new Promise(r=>setTimeout(r,1000)); setSpeed(0); G.budget=1e9; checkEndConditions=function(){};
+  const R = await pg.evaluate(async()=>{ const o={}; document.getElementById('geoSeed').value='2468'; menuConfig.mode='junior'; menuConfig.basinType='aquitaine'; menuConfig.gridSize=12; menuConfig.offshore=false; LABOPT.advfluids=true; labOptLaunch(); await new Promise(r=>setTimeout(r,1000)); setSpeed(0); G.budget=1e9; checkEndConditions=function(){};
     const st={n:0,fluidOk:0,gas:0,gasOk:0,dec:0,decOk:0,amb:0,colOk:0,tbOk:0,eauN:0,eauOk:0,errs:[]};
     for(const bt of ['aquitaine','rift','north_sea','gulf_coast']){ generateGeology(12,bt,false,31); G.seedNum=1; const land=blocks.filter(b=>!b.inSalt&&!b.isOffshore&&b.horizons.some(h=>h.role==='reservoir'&&(h.thicknessLocal??h.thickness)>=30)).slice(0,45);
       land.forEach((b,i)=>{ if(i%5===4){ b.dryHole=true; b.dryHoleInfo={techFail:false}; const r=logFluidReading(b); st.eauN++; if(r && (r.fluid==='eau'||r.fluid==='incertain')) st.eauOk++; return; }
