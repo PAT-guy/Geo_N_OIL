@@ -5,7 +5,7 @@ const { chromium } = require('playwright'); const path = require('path');
   const pg=await br.newPage({viewport:{width:1280,height:900}}); const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
   await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1');localStorage.setItem('geoexplorer_played','1')}catch(e){}});
   await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(500);
-  const R = await pg.evaluate(async()=>{ const o={}; document.getElementById('geoSeed').value='2468'; menuConfig.mode='junior'; menuConfig.basinType='aquitaine'; menuConfig.gridSize=12; menuConfig.offshore=false; labOptLaunch(); await new Promise(r=>setTimeout(r,1000)); setSpeed(0); LABOPT.pick=false;
+  const R = await pg.evaluate(async()=>{ const o={}; document.getElementById('geoSeed').value='2468'; menuConfig.mode='junior'; menuConfig.basinType='aquitaine'; menuConfig.gridSize=12; menuConfig.offshore=false; LABOPT.advfluids=true; labOptLaunch(); await new Promise(r=>setTimeout(r,1000)); setSpeed(0); LABOPT.pick=false;
     G.budget=1e9; G.price=80; checkEndConditions=function(){}; let land=blocks.filter(b=>!b.inSalt&&!b.isOffshore);
     // 1. mécanismes : déterminisme, répartition, neutralité du déclin
     const base=projectWell(3000,80,false,false,0,120).cum; let det=true, sum=0, n=0; const cnt={solgas:0,gascap:0,aquifer:0};
