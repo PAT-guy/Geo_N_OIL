@@ -24,6 +24,7 @@ const MODE = process.argv[2] || 'decouverte', N = parseInt(process.argv[3] || '4
           else if(/guideDo\('strati',(\d+)\)/.test(call)){ launchStrati(+/guideDo\('strati',(\d+)\)/.exec(call)[1]); }
           else (0, eval)(call);
         }catch(e){ break; } flush(); }
+        if(!G.simple && G.infraOn){ try{ const st = infraState(); if(infraFactor() < 0.97){ const L = infraLoad(); if(L.liquid > L.procCap*0.97 && st.proc < INFRA.procCap.length-1 && G.budget > INFRA.procCapex[st.proc+1] + 2e6) infraUpgradeProc(); else if(L.oil > L.routeCap*0.97 && st.pipe < INFRA.pipeCap.length-1 && G.budget > INFRA.pipeCapex[st.pipe+1] + 2e6) infraBuildPipe(); } }catch(e){} }
         if(/frac/.test(strat) && !G.simple){ try{
           const free = b=>!b.inSalt && !b.isOffshore && !b.well && !b.dryHole && !G.drilling.some(d=>d.blockId===b.id);
           // 1) frac sur un bloc dont la Rock-Eval est favorable et dont la frac se rembourse en moins de 30 mois
