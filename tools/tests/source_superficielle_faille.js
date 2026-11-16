@@ -5,7 +5,7 @@ const { chromium } = require('playwright'); const path = require('path');
   const pg=await br.newPage(); const errs=[]; pg.on('pageerror',e=>errs.push(e.message)); await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}});
   await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(500);
   const T = await pg.evaluate(()=>{ const o={maps:0,special:0,vf:0,blocksSpecial:0,badCond:0,badCharge:0,leak:0,txt:0,nan:0,mapsWithVf:0,gen:[]};
-    for(const bt of ['random','rift','passive','foreland','north_sea','paris','aquitaine','gulf_coast']) for(let s=1;s<=60;s++){
+    for(const bt of ['random','rift','passive','foreland','north_sea','paris','aquitaine','gulf_coast','permian']) for(let s=1;s<=60;s++){
       const r = generateGeology(12, bt, true, s*4391+7); o.maps++;
       const hasUpper = STRAT_PROVINCES.some(col=>col.some((l,i)=>l.role==='source' && !l.deepSource && i<col.findIndex(x=>x.role==='reservoir')));
       let vfHere = 0;

@@ -5,7 +5,7 @@ const { chromium } = require('playwright'); const path = require('path');
   const pg=await br.newPage(); const errs=[]; pg.on('pageerror',e=>errs.push(e.message)); await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}});
   await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(500);
   const T = await pg.evaluate(()=>{ const o={maps:0,low:[],noSeal:[],special:0,sterile:0,minShare:1,nanProb:0,absentKitchen:0,byBasin:{}};
-    for(const bt of ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast']) for(let s=1;s<=60;s++){
+    for(const bt of ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast','permian']) for(let s=1;s<=60;s++){
       const gs = s%3===0?20:12, seed = s*977+13; generateGeology(gs, bt, true, seed); o.maps++;
       const ri = STRAT.findIndex(l=>l.role==='reservoir');
       const good = b => { const col = STRAT_PROVINCES[b.provinceIdx], r = col.findIndex(l=>l.role==='reservoir'); return !b.srcAbsent && col.some((l,i)=>l.role==='source' && i>r && !l.hiatus); };

@@ -5,7 +5,7 @@ const { chromium } = require('playwright'); const path = require('path');
   const pg=await br.newPage(); const errs=[]; pg.on('pageerror',e=>errs.push(e.message)); await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}});
   await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(500);
   const T = await pg.evaluate(()=>{ const pot={}, hi={Immature:[],'Fenêtre à huile':[],'Surmature (gaz)':[]}, o={n:0,absentBad:0,absent:0,incoh:0,tmaxBad:0};
-    for(const bt of ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast']) for(let s=1;s<=12;s++){ generateGeology(12,bt,true,s*977+13); const rng=makeRng(s+7);
+    for(const bt of ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast','permian']) for(let s=1;s<=12;s++){ generateGeology(12,bt,true,s*977+13); const rng=makeRng(s+7);
       blocks.forEach(b=>{ const r=STUDIES.rockeval.do(b,rng); if(b.srcAbsent){ o.absent++; if(!(+r.toc<0.7)) o.absentBad++; return; } o.n++; pot[r.genPotential]=(pot[r.genPotential]||0)+1; hi[b.maturityClass].push(r.hi);
         const t=+r.toc, h=r.hi, cls = t<0.3?'Non générateur': t<0.7?'Pauvre': t<1.5 ? (h>300?'Bon':'Moyen') : (h>400?'Excellent':'Bon'); const near = [0.3,0.7,1.5].some(th=>Math.abs(t-th)<0.011) || Math.abs(h-300)<=1 || Math.abs(h-400)<=1; /* l'arrondi de l'affichage peut franchir un seuil */ if(cls!==r.genPotential && !near) o.incoh++;
         const exp = b.maturityClass==='Immature' ? r.tmax<435 : b.maturityClass==='Fenêtre à huile' ? (r.tmax>=435 && r.tmax<=455) : r.tmax>455; if(!exp) o.tmaxBad++; }); }
