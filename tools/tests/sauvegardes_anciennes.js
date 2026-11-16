@@ -13,8 +13,10 @@ const OLD = [ ['c7f9133','V4.45'], ['76c9ad4','V4.56'], ['5ba1c66','V4.63'], ['2
     const saved = await p1.evaluate(async ()=>{ document.querySelector('#basinPicker button[data-val="paris"]')?.click(); document.getElementById('geoSeed').value='4321'; labOptLaunch(); await new Promise(r=>setTimeout(r,900));
       try { performStudy(null,'gravity'); } catch(e){}
       G.budget = 40e6; const cands = blocks.filter(x=>!x.inSalt).sort((x,z)=>x.topOfReservoir-z.topOfReservoir).slice(0,25).sort((x,z)=>z.trueProbability-x.trueProbability);
+      const rr0 = Math.random; Math.random = ()=>0.0001; /* l'ancienne version tire au hasard : on force un succès pour avoir un puits productif à sauvegarder */
       for(const b of cands){ if(G.wells.length>=1) break; b.studyLevel = Math.max(b.studyLevel,1); try { drillBlock(b.id,'vertical','standard', null); } catch(e){}
         for(let i=0;i<12;i++){ try { monthTick(); } catch(e){ break; } } drillRevealQueue.length=0; drillRevealPlaying=false; }
+      Math.random = rr0;
       for(let i=0;i<18;i++){ try { monthTick(); } catch(e){ break; } } drillRevealQueue.length=0; drillRevealPlaying=false;
       saveGame(); return { raw: localStorage.getItem('geoexplorer_save'), month:G.month, budget:Math.round(G.budget), wells:G.wells.length, dry:blocks.filter(x=>x.dryHole).length, n:blocks.length, p0:blocks[0].trueProbability, price:G.price }; });
     await p1.close();

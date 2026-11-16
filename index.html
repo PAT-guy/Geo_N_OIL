@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V4.88</title>
+<title>GeoExplorer V4.89</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2003,11 +2003,12 @@ function generateGeology(gridSize, basinType, offshore, seed){
       });
 
       // Sel
-      let saltUplift = 0, inSalt = false;
+      let saltUplift = 0, inSalt = false, saltRing = 0;
       saltDomes.forEach(s=>{
-        const d = Math.hypot(x-s.x, y-s.y);
+        const d = Math.hypot(x-s.x, y-s.y), dr = d/s.r;
         if(d < s.r*.4) inSalt = true;
-        saltUplift = Math.max(saltUplift, s.uplift*Math.exp(-Math.pow(d/s.r,2)));
+        saltUplift = Math.max(saltUplift, s.uplift*Math.exp(-Math.pow(dr,2)));
+        if(dr >= 0.4 && dr <= 1.1) saltRing = Math.max(saltRing, 0.5*(1 - Math.abs(dr-0.75)/0.4)); // piège de flanc : anneau étroit autour du dôme, pas toute la carte
       });
 
       // Failles
@@ -2099,9 +2100,14 @@ function generateGeology(gridSize, basinType, offshore, seed){
       if(sourceIdx>=0 && horizons[sourceIdx] && horizons[sourceIdx].role==='source') horizons[sourceIdx].toc = srcAbsent ? '0.2' : (0.2 + 8.5*Math.pow(clamp(srcFaciesVal,0,1), 2.2)).toFixed(1);
       const sealFaciesVal = sealFacies(x,y);
 
-      const anticlineTop = anticlines.reduce((m,a)=>Math.max(m, a.str*Math.exp(-Math.hypot(x-a.x,y-a.y)/a.range)), 0);
-      const pinchTrap = pinchT < .9 ? (1-pinchT)*.7 : 0;
-      const saltFlank = (saltUplift>0 && !inSalt) ? .5 : 0;
+      // Forme du piège : un piège structural n'existe qu'à l'intérieur de la fermeture, c'est-à-dire sous le point de débordement (spill point) de l'anticlinal.
+      // Le relief suit u(d) = crête × exp(−d/portée) ; la hauteur de fermeture vaut 30 % du relief de la crête. Dedans, la qualité du piège baisse peu (jusqu'à 35 %
+      // au bord) ; au-delà, les flancs ne retiennent plus rien (décroissance rapide). Avant, la qualité décroissait lentement sur toute la portée : des gisements
+      // de 20 blocs et plus d'un seul tenant, sans rapport avec la taille d'une fermeture réelle.
+      const anticlineTop = anticlines.reduce((m,a)=>{ const e = (1 - Math.exp(-Math.hypot(x-a.x,y-a.y)/a.range)) / TRAP_CLOSURE_FRAC; return Math.max(m, e <= 1 ? a.str*(1 - 0.35*e) : a.str*0.65*Math.exp(-(e-1)*2.5)); }, 0);
+      // Piège stratigraphique par biseau : une bande étroite où le réservoir s'amincit sans disparaître (pinchT autour de 0,3), pas toute la rampe d'amincissement.
+      const pinchTrap = (pinchT > 0.12 && pinchT < 0.9) ? 0.7*Math.exp(-Math.pow((pinchT-0.3)/0.14, 2)) : 0;
+      const saltFlank = inSalt ? 0 : saltRing;
       const trapFactor     = clamp(Math.max(anticlineTop, pinchTrap, saltFlank), .03, .97);
       const resFactor      = inSalt ? .01 : clamp(.2+resFaciesVal*.75, .05, .95);
       // La lithologie de la couverture compte : sel et anhydrite scellent mieux qu'une argile, et
@@ -2176,6 +2182,21 @@ function generateGeology(gridSize, basinType, offshore, seed){
       const heat = b => { const pot = Math.max(.3, b.genStrength / b.maturity); b.paleoTemp = Math.max(b.paleoTemp, 85); b.maturity = .75; b.maturityClass = 'Fenêtre à huile'; b.isGas = false; b.genStrength = Math.max(.2, pot*.75); };
       for(const c of cands){ if(have >= need) break; heat(c); have++; raw.forEach(o=>{ if(o!==c && !o.srcAbsent && o.provinceIdx===c.provinceIdx && o.genStrength < KITCHEN_MIN_STRENGTH && Math.hypot(o.x-c.x,o.y-c.y) <= 1.5){ heat(o); have++; } }); }
     } }
+  // Province productive : le meilleur piège (piège, réservoir et couverture corrects, proche d'une cuisine) doit avoir une cuisine mature à moins d'une case et demie.
+  // Sinon un dépocentre local, bloc et voisins immédiats, entre dans la fenêtre à huile : une cuisine qui manque là où le système est bon, ce qui est courant.
+  { const KMIN = KITCHEN_MIN_STRENGTH, rng0 = Math.min(10, Math.max(2.5, gridSize*0.4)), kit0 = raw.filter(o=>o.genStrength >= KMIN);
+    const sysQ0 = o => o.trapFactor*o.resFactor*o.sealFactor, dmin0 = o => kit0.length ? Math.min(...kit0.map(k=>Math.hypot(k.x-o.x, k.y-o.y))) : 99;
+    const cand0 = raw.filter(o=>!o.inSalt && !o.srcAbsent && o.trapFactor>=0.35 && o.resFactor>=0.4 && o.sealFactor>=0.4);
+    if(!cand0.length){ // aucune fermeture correcte sur la carte : le meilleur bloc devient un haut structural net (fermeture, faciès de réservoir et de couverture corrects)
+      const best = raw.filter(o=>!o.inSalt && !o.srcAbsent).sort((u,w)=>sysQ0(w)-sysQ0(u) || u.id-w.id)[0];
+      if(best){ best.trapFactor = Math.max(best.trapFactor, 0.5); best.resFactor = Math.max(best.resFactor, 0.5); best.sealFactor = Math.max(best.sealFactor, 0.5); cand0.push(best); }
+    }
+    const sc0 = new Map(cand0.map(o=>[o.id, sysQ0(o)*Math.exp(-dmin0(o)/rng0)]));
+    const tgt = cand0.sort((u,w)=> sc0.get(w.id) - sc0.get(u.id) || u.id - w.id)[0];
+    if(tgt && dmin0(tgt) > 1.5){
+      const heat0 = o => { const pot = Math.max(.3, o.maturity>0 ? o.genStrength/o.maturity : .4); o.paleoTemp = Math.max(o.paleoTemp, 85); o.maturity = .75; o.maturityClass = 'Fenêtre à huile'; o.isGas = false; o.genStrength = Math.max(.25, pot*.75); };
+      raw.forEach(o=>{ if(!o.srcAbsent && o.provinceIdx===tgt.provinceIdx && Math.hypot(o.x-tgt.x,o.y-tgt.y) <= 1.1 && o.genStrength < KMIN) heat0(o); });
+    } }
   const kitchens = raw.filter(b => b.genStrength >= KITCHEN_MIN_STRENGTH);
   const migrationRange = Math.min(10, Math.max(2.5, gridSize*0.4)) * (ADV.migrationRangeMult ?? 1); // portée de migration, en cases de grille
   const TRAP_CANDIDATE_MIN = 0.25; // trapFactor mini pour compter comme concurrent au partage de charge
@@ -2213,29 +2234,59 @@ function generateGeology(gridSize, basinType, offshore, seed){
     return {k, pulls, totalCandidatePull};
   });
 
-  raw.forEach(b=>{
-    let charge = 0.02; // charge résiduelle plancher (micro-suintements, bruit de fond)
-    let chargeFrom = null; // cuisine qui fournit cette charge (explication affichée après forage, sans effet sur la géologie)
-    pullByKitchen.forEach(({k, pulls, totalCandidatePull})=>{
-      const pull = pulls.get(b.id);
-      if(!pull) return;
-      // Pénalité de compétition : proche de 1 si ce piège capte l'essentiel
-      // du pull vers cette kitchen (peu ou pas de concurrent à portée),
-      // proche du plancher si d'autres pièges plus favorables se disputent
-      // la même source.
-      const competitionPenalty = clamp(1/(1+(totalCandidatePull-pull)/Math.max(pull,0.001)), .15, 1);
-      const c = k.genStrength * pull * competitionPenalty;
-      // Un piège profite de la MEILLEURE source qui le charge (pas la somme :
-      // on ne compte pas deux fois le même volume physique d'hydrocarbures).
-      if(c > charge){ charge = c; chargeFrom = k; }
-    });
-    // contact de faille avec la roche-mère superficielle : charge locale, un peu moins efficace qu'une vraie cuisine voisine
-    let viaFault = false;
-    if(b.faultJuxt && b.upperGen > 0.15){ const cf = b.upperGen*0.7; if(cf > charge){ charge = cf; chargeFrom = null; viaFault = true; } }
-    b.viaFault = viaFault;
-    b.srcFactor = clamp(charge, .02, .9);
-    b.chargeFrom = chargeFrom ? { x:chargeFrom.x, y:chargeFrom.y, dist:+Math.hypot(b.x-chargeFrom.x, b.y-chargeFrom.y).toFixed(1), self: chargeFrom.id===b.id } : null;
+  // ── Charge par bilan de masse ──
+  // Chaque cuisine k génère un volume Gk (richesse × maturité × épaisseur de la roche-mère). Une fraction ETA seulement atteint un piège (efficacité
+  // de rétention : 1 à 20 % des hydrocarbures générés selon la littérature de modélisation de bassin). Ce volume se répartit entre les pièges candidats
+  // en proportion de leur capacité (fermeture × épaisseur de réservoir) et de leur accessibilité (distance, failles). Le remplissage d'un piège est donc
+  // le volume reçu de TOUTES les cuisines à portée divisé par sa capacité ; il sature à 1 (piège rempli jusqu'au point de débordement). Une cuisine
+  // lointaine, une roche-mère mince ou immature, ou un réservoir loin au-dessus de la roche-mère (migration verticale) donnent un piège peu chargé.
+  const ETA = 0.16;
+  const srcThick = o => { const h = o.horizons.find(z=>z.role==='source'); return h ? (h.thicknessLocal ?? h.thickness) : 60; };
+  const capOf = o => Math.max(0.05, o.trapFactor) * clamp((o.resThicknessLocal||30)/30, .3, 2);
+  const rawById = new Map(raw.map(o=>[o.id, o]));
+  const kitchenSupply = pullByKitchen.map(({k, pulls}) => {
+    let S = 0; pulls.forEach((pl, id)=>{ const o = rawById.get(id); if(o.trapFactor >= TRAP_CANDIDATE_MIN) S += pl*capOf(o); });
+    return { k, pulls, S, G: k.genStrength * clamp(srcThick(k)/60, .3, 2) };
   });
+  const boost = new Map(); // renforcement local de la richesse des cuisines (garantie d'une province productive)
+  // gap vertical roche-mère / réservoir, calculé une fois par bloc
+  const vertLoss = new Map(raw.map(b=>{ const rH = b.horizons.find(h=>h.role==='reservoir'), sH = b.horizons.find(h=>h.role==='source'); let f = 1;
+    // migration verticale : au-delà de ~150 m entre le toit de la roche-mère et la base du réservoir, il faut des drains (×0,7 à 300 m, ×0,4 à 550 m)
+    if(rH && sH && !b.srcAbsent){ const vGap = sH.top - (rH.top + (rH.thicknessLocal ?? rH.thickness)); if(vGap > 150) f = Math.exp(-(vGap-150)/400); } return [b.id, f]; }));
+  const assignCharges = () => {
+    const nR = raw.length, fillA = new Float64Array(nR), bestA = new Float64Array(nR), fromA = new Array(nR).fill(null); // les identifiants de blocs sont 0..n-1
+    kitchenSupply.forEach(({k, pulls, S, G})=>{
+      if(S <= 0) return; const gk = ETA * G * (boost.get(k.id)||1) / S; // volume reçu / capacité : la capacité du piège se simplifie
+      pulls.forEach((pull, id)=>{ const v = gk * pull; fillA[id] += v; if(v > bestA[id]){ bestA[id] = v; fromA[id] = k; } });
+    });
+    raw.forEach(b=>{
+      const fill = fillA[b.id] * vertLoss.get(b.id), chargeFrom = fromA[b.id]; // cuisine qui fournit le plus de volume (explication affichée après forage, sans effet sur la géologie)
+      let charge = 0.02 + 0.88*(1 - Math.exp(-fill));
+      // contact de faille avec la roche-mère superficielle : charge locale, un peu moins efficace qu'une vraie cuisine voisine
+      let viaFault = false, cFrom = chargeFrom;
+      if(b.faultJuxt && b.upperGen > 0.15){ const cf = b.upperGen*0.7; if(cf > charge){ charge = cf; cFrom = null; viaFault = true; } }
+      b.viaFault = viaFault;
+      b.srcFactor = clamp(charge, .02, .9);
+      b.chargeFrom = cFrom ? { x:cFrom.x, y:cFrom.y, dist:+Math.hypot(b.x-cFrom.x, b.y-cFrom.y).toFixed(1), self: cFrom.id===b.id } : null;
+    });
+  };
+  assignCharges();
+  // Garantie d'une province productive : au moins un bloc réunit piège, réservoir et couverture corrects ET une charge suffisante. Sinon la richesse de
+  // roche-mère de la zone autour du meilleur candidat est renforcée (un dépocentre plus riche, ce qui existe dans les vrais bassins) jusqu'à ce que
+  // ce bloc soit rempli à plus de 55 %. Les cartes qui satisfont déjà la condition ne sont pas touchées.
+  const prodOk = () => raw.some(o=>!o.inSalt && o.trapFactor>=0.35 && o.resFactor>=0.4 && o.sealFactor>=0.4 && o.srcFactor>=0.55);
+  if(!prodOk() && kitchens.length){
+    const sysQ = o => o.trapFactor*o.resFactor*o.sealFactor;
+    const dminC = new Map(); const dmin = o => { let m = dminC.get(o.id); if(m===undefined){ m = Infinity; for(const k of kitchens){ const d = Math.hypot(k.x-o.x, k.y-o.y); if(d<m) m = d; } dminC.set(o.id, m); } return m; };
+    const pool = raw.filter(o=>!o.inSalt && !o.srcAbsent);
+    const sc = new Map(pool.map(o=>[o.id, sysQ(o)*Math.exp(-dmin(o)/migrationRange)])); // bon piège ET proche d'une cuisine : le candidat le plus naturel
+    const byScore = (u,w)=>sc.get(w.id)-sc.get(u.id);
+    const target = pool.filter(o=>o.trapFactor>=0.35 && o.resFactor>=0.4 && o.sealFactor>=0.4).sort(byScore)[0] || [...pool].sort(byScore)[0];
+    for(let it=0; target && !prodOk() && it<30; it++){
+      const rad = Math.max(migrationRange*1.2, dmin(target)+0.1);
+      kitchens.forEach(k=>{ if(Math.hypot(k.x-target.x, k.y-target.y) <= rad) boost.set(k.id, (boost.get(k.id)||1)*1.35); });
+      assignCharges();
+    } }
 
   blocks = raw.map(b=>{
     const combinedRisk    = b.trapFactor*b.resFactor*b.sealFactor*b.srcFactor;
@@ -2253,7 +2304,9 @@ function generateGeology(gridSize, basinType, offshore, seed){
     const systemScore = geomMean*0.4 + bottleneck*0.6;
     const sigK = 6.5, sigMid = 0.48;
     const sigmoid = 1/(1+Math.exp(-sigK*(systemScore-sigMid)));
-    const trueProbability = clamp(0.03 + sigmoid*0.94, .02, .97);
+    // Probabilité géologique de succès par la méthode de Rose, standard de l'exploration : Pg = P(piège) × P(réservoir) × P(couverture) × P(charge).
+    // Chaque facteur est la probabilité que l'élément existe et fonctionne ; la charge vient du bilan de masse. Plus de classement par rang sur la carte.
+    const trueProbability = roseP(b.trapFactor, b.resFactor, b.sealFactor, b.srcFactor);
     return {
       id:b.id, x:b.x, y:b.y,
       el: null,
@@ -2273,38 +2326,30 @@ function generateGeology(gridSize, basinType, offshore, seed){
     };
   });
 
-  // Recalibrage des probabilités de succès. La formule d'origine donnait en
-  // moyenne 12 % et presque jamais plus de 15 % aux meilleurs blocs : à ce
-  // niveau, aucun forage n'est rentable (seuil vers 33 %), même en connaissant
-  // la vérité (2 % de parties gagnées par un joueur parfaitement informé). On
-  // étale donc les probabilités par RANG de bloc sur la carte : l'ordre des
-  // blocs, donc la géologie qui les distingue, est inchangé ; seule leur
-  // échelle change (moyenne ≈ 24 %, meilleurs blocs entre 60 et 85 %).
-  // Étalonnage : 80 % par RANG sur la carte (l'ordre des blocs, donc la géologie qui les distingue, est inchangé) et 20 % par position dans la
-  // distribution de référence : une carte dont la géologie brute est faible (peu de charge, pièges médiocres) est globalement plus pauvre
-  // qu'une carte riche. Un plancher de 10 % de blocs au-dessus de 50 % garantit une carte jouable (la part absolue est réduite sinon).
-  const order = [...blocks].sort((a,z)=>a.trueProbability-z.trueProbability), nB = order.length;
-  order.forEach((b,i)=>{ b.pRaw = b.trueProbability; b._q = i/Math.max(1,nB-1); b._qa = pAbsQuantile(b.pRaw); });
-  PCAL_E = PCAL.exp;
-  const pOf = (b,w) => PCAL.pmin + (PCAL.pmax-PCAL.pmin)*Math.pow((1-w)*b._q + w*b._qa, PCAL.exp);
-  let w = PCAL.abs; while(w > 0 && blocks.filter(b=>pOf(b,w) >= 0.5).length < PCAL.floorShare*nB) w = Math.max(0, +(w-0.05).toFixed(2));
-  PCAL_W = w; _pRawFor = null;
-  blocks.forEach(b=>{ b.trueProbability = pOf(b,w); delete b._q; delete b._qa; });
+  // Plus de recalage par rang ni par référence : la probabilité de chaque bloc est son produit de Rose. b.pRaw la conserve pour les outils qui la lisent.
+  PCAL_MODE = 'rose'; PCAL_W = 0; _pRawFor = null;
+  blocks.forEach(b=>{ b.pRaw = b.trueProbability; });
 
   return {anticlines, faults, saltDomes};
 }
 
 // exp 2,8 (3 avant la V4.73) : le mélange rang et référence resserre la distribution ; cette valeur garde la probabilité moyenne des cartes à environ 24 %
-const PCAL = { pmin:0.03, pmax:0.85, exp:2.8, abs:0.20, floorShare:0.10 };
+// Probabilité géologique de succès (méthode de Rose) : Pg = P(piège) × P(réservoir) × P(couverture) × P(charge). Le piège est une fermeture : sa qualité vaut sa probabilité.
+// Réservoir, couverture et charge sont des qualités de 0 à 1 converties en probabilité d'être efficace (25 % même pour un faciès médiocre, 95 % au mieux : un élément « bon » vaut 0,8 à 0,9 dans la pratique de l'industrie).
+const roseEff = q => 0.25 + 0.7*Math.sqrt(Math.max(0, Math.min(1, q)));
+const roseP = (t, r, se, c) => Math.max(0.01, Math.min(0.95, Math.min(0.95, 1.15*t) * roseEff(r) * roseEff(se) * roseEff(c)));
+const TRAP_CLOSURE_FRAC = 0.3; // hauteur de fermeture d'un anticlinal / relief de sa crête
+const PCAL = { pmin:0.03, pmax:0.85, exp:2.8, abs:1.0, floorShare:0.01 };
 // Distribution de référence des probabilités brutes (401 quantiles, 800 cartes de tous les bassins et tailles) : sert à situer un bloc par
 // rapport à l'ENSEMBLE des cartes possibles, et non seulement par rapport aux autres blocs de sa carte. À régénérer si la formule brute change
 // (le test calibration_bassin.js le détecte : part moyenne de bons blocs qui dérive).
-const PRAW_REF = [0.0755,0.0846,0.0864,0.0875,0.0883,0.089,0.0896,0.0901,0.0906,0.0911,0.0915,0.0919,0.0922,0.0926,0.0929,0.0932,0.0935,0.0938,0.094,0.0943,0.0945,0.0948,0.095,0.0952,0.0955,0.0957,0.0959,0.0961,0.0963,0.0965,0.0966,0.0968,0.097,0.0972,0.0974,0.0976,0.0977,0.0979,0.0981,0.0982,0.0984,0.0985,0.0987,0.0989,0.099,0.0992,0.0993,0.0995,0.0996,0.0998,0.0999,0.1,0.1002,0.1003,0.1005,0.1006,0.1007,0.1008,0.101,0.1011,0.1013,0.1014,0.1015,0.1016,0.1017,0.1019,0.102,0.1021,0.1022,0.1024,0.1025,0.1026,0.1027,0.1028,0.103,0.1031,0.1032,0.1033,0.1034,0.1035,0.1037,0.1038,0.1039,0.104,0.1041,0.1042,0.1043,0.1044,0.1046,0.1047,0.1048,0.1049,0.105,0.1051,0.1052,0.1054,0.1055,0.1056,0.1057,0.1058,0.1059,0.106,0.1061,0.1062,0.1063,0.1065,0.1066,0.1067,0.1068,0.1069,0.107,0.1071,0.1072,0.1073,0.1074,0.1075,0.1076,0.1078,0.1079,0.108,0.1081,0.1082,0.1083,0.1084,0.1085,0.1086,0.1087,0.1089,0.109,0.1091,0.1092,0.1093,0.1094,0.1095,0.1096,0.1097,0.1098,0.1099,0.11,0.1101,0.1102,0.1104,0.1105,0.1106,0.1107,0.1108,0.1109,0.111,0.1111,0.1112,0.1114,0.1115,0.1116,0.1117,0.1118,0.1119,0.112,0.1121,0.1122,0.1123,0.1124,0.1126,0.1127,0.1128,0.1129,0.113,0.1132,0.1133,0.1134,0.1135,0.1136,0.1137,0.1138,0.1139,0.1141,0.1142,0.1143,0.1144,0.1145,0.1147,0.1148,0.1149,0.115,0.1152,0.1153,0.1154,0.1155,0.1156,0.1157,0.1159,0.116,0.1161,0.1162,0.1164,0.1165,0.1166,0.1167,0.1168,0.117,0.1171,0.1172,0.1173,0.1175,0.1176,0.1177,0.1178,0.1179,0.1181,0.1182,0.1183,0.1184,0.1186,0.1187,0.1188,0.119,0.1191,0.1192,0.1193,0.1195,0.1196,0.1197,0.1198,0.1199,0.1201,0.1202,0.1203,0.1205,0.1206,0.1207,0.1208,0.121,0.1211,0.1212,0.1214,0.1215,0.1216,0.1218,0.1219,0.122,0.1221,0.1223,0.1224,0.1225,0.1226,0.1228,0.1229,0.123,0.1232,0.1233,0.1234,0.1236,0.1237,0.1238,0.124,0.1241,0.1242,0.1244,0.1245,0.1246,0.1248,0.1249,0.125,0.1252,0.1253,0.1255,0.1256,0.1257,0.1259,0.126,0.1262,0.1263,0.1264,0.1266,0.1267,0.1269,0.127,0.1272,0.1273,0.1274,0.1276,0.1277,0.1279,0.128,0.1282,0.1283,0.1285,0.1286,0.1288,0.1289,0.1291,0.1292,0.1294,0.1295,0.1297,0.1298,0.13,0.1301,0.1303,0.1305,0.1306,0.1308,0.131,0.1311,0.1313,0.1314,0.1316,0.1318,0.1319,0.1321,0.1323,0.1324,0.1326,0.1328,0.133,0.1331,0.1333,0.1335,0.1337,0.1338,0.134,0.1342,0.1344,0.1346,0.1348,0.1349,0.1351,0.1353,0.1355,0.1357,0.1359,0.1361,0.1363,0.1365,0.1367,0.1369,0.1371,0.1374,0.1376,0.1378,0.138,0.1382,0.1384,0.1386,0.1389,0.1391,0.1393,0.1396,0.1398,0.14,0.1403,0.1406,0.1408,0.1411,0.1414,0.1416,0.1419,0.1422,0.1425,0.1428,0.1431,0.1434,0.1437,0.144,0.1443,0.1447,0.145,0.1453,0.1457,0.146,0.1464,0.1467,0.1471,0.1475,0.1479,0.1484,0.1488,0.1492,0.1496,0.1501,0.1506,0.1512,0.1517,0.1523,0.1529,0.1535,0.1542,0.1549,0.1557,0.1564,0.1573,0.1581,0.1592,0.1604,0.1617,0.1632,0.1649,0.1667,0.1694,0.1731,0.1802,0.288];
+const PRAW_REF = [0.0769,0.0887,0.0919,0.0934,0.0948,0.0956,0.0964,0.097,0.0976,0.0981,0.0986,0.099,0.0993,0.0997,0.1,0.1003,0.1006,0.1009,0.1012,0.1015,0.1017,0.1019,0.1022,0.1024,0.1026,0.1028,0.103,0.1032,0.1034,0.1036,0.1038,0.1039,0.1041,0.1043,0.1044,0.1046,0.1047,0.1049,0.105,0.1052,0.1053,0.1055,0.1056,0.1057,0.1059,0.106,0.1062,0.1063,0.1064,0.1066,0.1067,0.1068,0.1069,0.107,0.1071,0.1073,0.1074,0.1075,0.1076,0.1077,0.1079,0.108,0.1081,0.1082,0.1083,0.1084,0.1085,0.1086,0.1087,0.1088,0.1089,0.109,0.1091,0.1092,0.1093,0.1094,0.1095,0.1096,0.1097,0.1098,0.1099,0.11,0.1101,0.1102,0.1103,0.1104,0.1105,0.1106,0.1107,0.1108,0.1109,0.1109,0.111,0.1111,0.1112,0.1113,0.1114,0.1115,0.1116,0.1117,0.1117,0.1118,0.1119,0.112,0.1121,0.1122,0.1123,0.1124,0.1125,0.1126,0.1126,0.1127,0.1128,0.1129,0.113,0.1131,0.1132,0.1132,0.1133,0.1134,0.1135,0.1136,0.1137,0.1138,0.1138,0.1139,0.114,0.1141,0.1142,0.1143,0.1144,0.1144,0.1145,0.1146,0.1147,0.1148,0.1149,0.115,0.115,0.1151,0.1152,0.1153,0.1154,0.1155,0.1156,0.1157,0.1157,0.1158,0.1159,0.116,0.1161,0.1162,0.1163,0.1163,0.1164,0.1165,0.1166,0.1167,0.1168,0.1169,0.117,0.1171,0.1171,0.1172,0.1173,0.1174,0.1175,0.1176,0.1177,0.1178,0.1179,0.118,0.118,0.1181,0.1182,0.1183,0.1184,0.1185,0.1186,0.1187,0.1188,0.1189,0.119,0.1191,0.1191,0.1192,0.1193,0.1194,0.1195,0.1196,0.1197,0.1198,0.1199,0.12,0.1201,0.1202,0.1203,0.1204,0.1205,0.1206,0.1207,0.1208,0.1209,0.121,0.1211,0.1213,0.1214,0.1215,0.1216,0.1217,0.1218,0.1219,0.122,0.1221,0.1222,0.1223,0.1225,0.1226,0.1227,0.1228,0.1229,0.1231,0.1232,0.1233,0.1234,0.1236,0.1237,0.1238,0.1239,0.1241,0.1242,0.1243,0.1245,0.1246,0.1247,0.1249,0.125,0.1251,0.1253,0.1254,0.1256,0.1257,0.1259,0.126,0.1262,0.1263,0.1265,0.1267,0.1269,0.127,0.1272,0.1274,0.1275,0.1277,0.1279,0.1281,0.1283,0.1285,0.1287,0.1289,0.1291,0.1294,0.1296,0.1298,0.1301,0.1303,0.1306,0.1309,0.1311,0.1314,0.1318,0.1321,0.1324,0.1328,0.1332,0.1336,0.1341,0.1345,0.135,0.1355,0.1361,0.1367,0.1374,0.138,0.1388,0.1395,0.1402,0.141,0.1419,0.1428,0.1437,0.1447,0.1456,0.1466,0.1476,0.1486,0.1496,0.1507,0.1518,0.153,0.1542,0.1553,0.1566,0.1578,0.1591,0.1604,0.1618,0.1633,0.1648,0.1663,0.1677,0.1693,0.1708,0.1722,0.174,0.1757,0.1773,0.1791,0.1809,0.1828,0.1848,0.1866,0.1886,0.1907,0.1927,0.1951,0.1977,0.2002,0.2024,0.205,0.2076,0.2099,0.2125,0.2155,0.2183,0.2212,0.2242,0.2274,0.2306,0.2338,0.237,0.2403,0.2435,0.247,0.2508,0.2544,0.258,0.2618,0.2657,0.2698,0.2737,0.278,0.2825,0.287,0.2917,0.2963,0.3013,0.3059,0.3106,0.3151,0.3201,0.3252,0.3306,0.3357,0.3413,0.3462,0.3516,0.3576,0.364,0.3697,0.3759,0.3827,0.3888,0.3952,0.4019,0.4086,0.4151,0.4221,0.4293,0.4368,0.4447,0.4524,0.4605,0.4686,0.4762,0.4854,0.4944,0.5036,0.5132,0.5229,0.533,0.5439,0.5563,0.5687,0.5823,0.5971,0.614,0.6323,0.656,0.6907,0.8629];
 function pAbsQuantile(raw){
   const n = PRAW_REF.length - 1; if(raw <= PRAW_REF[0]) return 0; if(raw >= PRAW_REF[n]) return 1;
   let lo = 0, hi = n; while(hi-lo > 1){ const m = (lo+hi)>>1; if(PRAW_REF[m] <= raw) lo = m; else hi = m; }
   const span = PRAW_REF[hi] - PRAW_REF[lo]; return (lo + (span>0 ? (raw-PRAW_REF[lo])/span : 0)) / n;
 }
+let PCAL_MODE = 'rose'; // 'rose' : produit des quatre probabilités (V4.89) ; 'rank' : anciennes sauvegardes, étalonnage par rang
 let PCAL_W = PCAL.abs, PCAL_E = PCAL.exp; // part absolue et exposant de la carte en cours (anciennes sauvegardes : 0 et 3) // part d'étalonnage absolu retenue pour la carte en cours (réduite si la carte serait trop pauvre)
 // Applique à une probabilité brute (ex. 2e réservoir d'un side-track) la même
 // échelle que celle des blocs de la carte. Les sauvegardes anciennes n'ont pas
@@ -2313,11 +2358,13 @@ let _pRawFor = null, _pRawSorted = null;
 // Potentiel régional de la carte : moyenne des probabilités vraies (évaluation régionale que donnerait un rapport de bassin)
 function mapRichness(){
   const n = blocks.length || 1, mean = blocks.reduce((t,b)=>t+b.trueProbability,0)/n;
-  const label = mean < 0.215 ? 'pauvre' : mean > 0.257 ? 'riche' : 'moyen'; // seuils aux 20e et 80e centiles de 480 cartes
-  return { mean:+mean.toFixed(3), label, hi:+(blocks.filter(b=>b.trueProbability>=0.6).length/n).toFixed(3) };
+  const rose = PCAL_MODE==='rose';
+  const label = rose ? (mean < 0.044 ? 'pauvre' : mean > 0.07 ? 'riche' : 'moyen') : (mean < 0.175 ? 'pauvre' : mean > 0.33 ? 'riche' : 'moyen'); // seuils aux 20e et 80e centiles de 400 cartes
+  const top = [...blocks].sort((a,z)=>z.trueProbability-a.trueProbability).slice(0, Math.max(1, Math.round(n*0.1))); // meilleurs blocs : ce que visent les forages
+  return { mean:+mean.toFixed(3), label, hi:+(blocks.filter(b=>b.trueProbability>=0.6).length/n).toFixed(3), top: rose ? +(top.reduce((t,b)=>t+b.trueProbability,0)/top.length).toFixed(3) : undefined };
 }
 function pCalibrate(raw){
-  if(!blocks.length || blocks[0].pRaw === undefined) return raw;
+  if(PCAL_MODE==='rose' || !blocks.length || blocks[0].pRaw === undefined) return raw;
   if(_pRawFor !== blocks){ _pRawSorted = blocks.map(b=>b.pRaw).sort((a,z)=>a-z); _pRawFor = blocks; }
   let lo = 0, hi = _pRawSorted.length;
   while(lo < hi){ const m = (lo+hi)>>1; if(_pRawSorted[m] < raw) lo = m+1; else hi = m; }
@@ -2359,8 +2406,8 @@ function gauss(rng){
   const u = Math.max(1e-9, rng()), v = rng();
   return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
 }
-// Estimation de la probabilité par la sismique 3D : a priori régional (moyenne −1,6 en cotes, écart-type 1,44, mesurés sur les cartes du jeu).
-const SEIS3D_MU = -1.6, SEIS3D_TAU2 = 2.07;
+// Estimation de la probabilité par la sismique 3D : a priori régional (moyenne en cotes = celle du potentiel régional de la carte moins 0,39 ; écart-type 1,29 à l'intérieur d'une carte, mesurés).
+const SEIS3D_MU = -3.3, SEIS3D_TAU2 = 1.75; // repli (anciennes parties) ; la moyenne a priori suit en fait le potentiel régional de la carte
 const STUDIES = {
   gravity: {
     name:TRN('Levé gravimétrique régional','Regional gravity survey'),
@@ -2482,7 +2529,8 @@ const STUDIES = {
       // la mesure vers la moyenne régionale dans l'espace des cotes (estimateur bayésien : moyenne a priori −1,6 en cotes, écart a priori 1,44,
       // bruit effectif = bruit nominal + risque de faux signal). L'écart annoncé est l'écart-type de cette estimation.
       const sig2 = Math.pow(0.35*um, 2) + pFalse*2.013, kShr = SEIS3D_TAU2/(SEIS3D_TAU2 + sig2), sdPost = Math.sqrt(SEIS3D_TAU2*sig2/(SEIS3D_TAU2 + sig2));
-      const logitShown = SEIS3D_MU + kShr*(logit - SEIS3D_MU);
+      const muMap = (G.richness && G.richness.mean>0.01 && G.richness.mean<0.99) ? Math.log(G.richness.mean/(1-G.richness.mean)) - (PCAL_MODE==='rose' ? 0.61 : 0.39) : SEIS3D_MU; // le potentiel régional est public : a priori propre à la carte
+      const logitShown = muMap + kShr*(logit - muMap);
       const probEst = clamp(1/(1+Math.exp(-logitShown)), 0.005, 0.95);
       const probErr = clamp(probEst*(1-probEst)*sdPost, 0.01, 0.25);
       const amp = probRaw > 0.25 ? TR('forte anomalie d\'amplitude','strong amplitude anomaly') : probRaw > 0.10 ? TR('anomalie d\'amplitude modérée','moderate amplitude anomaly') : TR('pas d\'anomalie d\'amplitude nette','no clear amplitude anomaly');
@@ -2745,8 +2793,8 @@ function updateBlockEstimate(b){
 // fois plus de barils sur sa vie qu'avec l'ancien déclin exponentiel à 35 %/an : le débit initial
 // a donc été ramené de 165 à 63, valeur retenue par simulation de parties (le joueur parfaitement
 // informé gagne environ une partie sur deux, le tireur au hasard presque jamais).
-const PROD_BASE = 63;            // puits neuf (était 165 avec l'ancien déclin)
-const PROD_BASE_SIDETRACK = 51;  // side-track sur un 2e réservoir (était 135)
+const PROD_BASE = 130;           // puits neuf (63 avant le produit de Rose : les probabilités honnêtes sont plus basses, la production par puits est relevée pour garder des forages rentables)
+const PROD_BASE_SIDETRACK = 105;  // side-track sur un 2e réservoir
 // Un puits en mer produit beaucoup plus qu'un puits à terre : réservoirs plus épais et plus perméables, puits
 // complétés pour de gros débits (en vrai de 500 à 3 000 bbl/j sur la plateforme continentale, contre quelques dizaines
 // à quelques centaines à terre). Ici ×8 (environ 340 bbl/j médian), pour un coût ×6 et 80 k$ de charges fixes par
@@ -3070,7 +3118,7 @@ function getSecondReservoirInfo(b){
   const geomMean2   = Math.pow(combinedRisk2, 0.25);
   const bottleneck2 = Math.min(b.trapFactor, resFactor2, sealFactor2, b.srcFactor);
   const systemScore2 = geomMean2*0.4 + bottleneck2*0.6;
-  const trueProbability2 = pCalibrate(clamp(0.03 + (1/(1+Math.exp(-6.5*(systemScore2-0.48))))*0.94, .02, .97));
+  const trueProbability2 = PCAL_MODE==='rose' ? roseP(b.trapFactor, resFactor2, sealFactor2, b.srcFactor) : pCalibrate(clamp(0.03 + (1/(1+Math.exp(-6.5*(systemScore2-0.48))))*0.94, .02, .97));
   const trueQuality2 = clamp((h2.porosity-2)/0.33, 5, 95);
   return { horizon:h2, trueProbability2, trueQuality2, depth:h2.top };
 }
@@ -7248,7 +7296,7 @@ const REALITY_ENTRIES = [
   {tag:'approx', term:TR('Géosteering du drain','Drain geosteering'), def:TR('Capteurs GR à 12 m et Rt à 6 m derrière l\'outil, inclinaison limitée à 2° par 10 m : des ordres de grandeur réalistes sur une trajectoire simplifiée en deux dimensions.','GR sensors 12 m and Rt 6 m behind the tool, inclination limited to 2° per 10 m: realistic orders of magnitude on a trajectory simplified to two dimensions.')},
   {tag:'approx', term:TR('Coût d\'abandon','Abandonment cost'), def:TR('12 % (terre) et 18 % (mer) du coût de forage : un ordre de grandeur. Offshore, l\'abandon d\'un champ peut dépasser le coût de son forage.','12 % (onshore) and 18 % (offshore) of the drilling cost: an order of magnitude. Offshore, the abandonment of a field can exceed the cost of drilling it.')},
   {tag:'approx', term:TR('Seuils de lecture des logs','Log reading thresholds'), def:TR('Les 9 et 11 Ω·m du jeu valent dans le jeu. Sur le terrain, le seuil dépend de l\'eau de formation (Rw), de la porosité et de la lithologie.','The game\'s 9 and 11 Ω·m hold within the game. In the field, the threshold depends on formation water (Rw), porosity and lithology.')},
-  {tag:'jeu', term:TR('Probabilités de succès','Probabilities of success'), def:TR('Étalonnées pour l\'équilibre du jeu (moyenne autour de 24 %). La richesse d\'une carte est relative au générateur du jeu, pas à de vrais bassins.','Calibrated for game balance (average around 24 %). A map\'s richness is relative to the game\'s generator, not to real basins.')},
+  {tag:'jeu', term:TR('Probabilités de succès','Probabilities of success'), def:TR('Méthode de Rose, standard de l\'exploration : Pg = P(piège) × P(réservoir) × P(couverture) × P(charge). La charge vient d\'un bilan de masse (volume généré, rétention de 16 %, distance, failles, migration verticale). Les meilleurs blocs d\'une carte atteignent 40 à 60 % ; la plupart restent sous 10 %. Les conversions de qualité en probabilité sont des réglages de jeu.','Rose method, the exploration standard: Pg = P(trap) × P(reservoir) × P(seal) × P(charge). Charge comes from a mass balance (generated volume, 16 % retention, distance, faults, vertical migration). The best blocks on a map reach 40 to 60 %; most stay under 10 %. The conversions from quality to probability are game settings.')},
   {tag:'jeu', term:TR('Événements de marché','Market events'), def:TR('Embargo, récession, tempête, taxe exceptionnelle : des catégories réalistes, mais fréquences et ampleurs inventées.','Embargo, recession, storm, extraordinary tax: realistic categories, but invented frequencies and magnitudes.')},
   {tag:'jeu', term:'Informateur', def:TR('Détection de 75 à 80 % et fausses alertes : des règles de jeu pour créer un pari, pas des statistiques réelles.','Detection of 75 to 80 % and false alarms: game rules to create a gamble, not real statistics.')},
   {tag:'jeu', term:TR('Incidents du drain','Drain incidents'), def:TR('Les causes (argile, coude serré, outil usé, faille) sont réalistes ; les probabilités sont réglées pour le jeu.','The causes (clay, tight bend, worn tool, fault) are realistic; the probabilities are tuned for the game.')},
@@ -7726,7 +7774,7 @@ function loadGame(){
   Object.assign(G, payload.G);
   if(G.labOpt) LABOPT = labNormOpt(G.labOpt); else LABOPT = labNormOpt({ ...LAB_PRESETS.decouverte.o }); // sauvegarde d'avant V4.33 : règles d'origine
   blocks = payload.blocks.map(b => ({ ...b, el: null })); // .el sera réattaché par buildGrid()
-  PCAL_W = G.pcalW ?? 0; PCAL_E = G.pcalW===undefined ? 3 : PCAL.exp; // anciennes sauvegardes : étalonnage par rang seul et exposant 3, comme à leur création
+  PCAL_MODE = G.pmode==='rose' ? 'rose' : 'rank'; PCAL_W = G.pcalW ?? 0; PCAL_E = G.pcalW===undefined ? 3 : PCAL.exp; // anciennes sauvegardes : étalonnage par rang seul et exposant 3, comme à leur création
   _pRawFor = null;
   // Bug V4.1 : JSON.stringify/parse transforme l'objet puits partagé entre
   // G.wells et b.well en deux copies indépendantes. On remet b.well sur
@@ -7825,7 +7873,7 @@ function _doStartGame(){
   const seedNum = seedToInt(seedShown);
   G.seedNum = seedNum;
   generateGeology(menuConfig.gridSize, menuConfig.basinType, menuConfig.offshore, seedNum);
-  G.pcalW = PCAL_W;
+  G.pcalW = PCAL_W; G.pmode = PCAL_MODE;
   { const ri = mapRichness(); G.richness = ri; }
   // défi du jour : valable seulement si les réglages sont ceux du jour (le joueur a pu les changer entre-temps)
   { const dc = dailyConfig(); G.daily = (menuConfig.daily === dc.date && menuConfig.gridSize===dc.gridSize && menuConfig.basinType===dc.basinType && menuConfig.mode===dc.mode && String(menuConfig.seed)===String(dc.seed)) ? dc.date : null; }
@@ -7861,7 +7909,7 @@ function _doStartGame(){
     addLog(`🌍 ${BASIN_BRIEFS[menuConfig.basinType]}`, 'ev');
   }
   addLog(TR(`🌱 Seed géologique : ${G.seedShown} (même seed et mêmes réglages de carte = même géologie)`,`🌱 Geological seed: ${G.seedShown} (same seed and same map settings = same geology)`));
-  if(G.richness) addLog(TR(`📊 Potentiel régional du bassin : ${G.richness.label} (réussite moyenne attendue autour de ${Math.round(G.richness.mean*100)} %).`,`📊 Regional potential of the basin: ${G.richness.label} (average expected success around ${Math.round(G.richness.mean*100)} %).`), 'ev');
+  if(G.richness) addLog(TR(`📊 Potentiel régional du bassin : ${G.richness.label} (${G.richness.top!==undefined ? 'meilleurs blocs : réussite géologique autour de '+Math.round(G.richness.top*100)+' %' : 'réussite moyenne attendue autour de '+Math.round(G.richness.mean*100)+' %'}).`,`📊 Regional potential of the basin: ${G.richness.label} (${G.richness.top!==undefined ? 'best blocks: geological success around '+Math.round(G.richness.top*100)+' %' : 'average expected success around '+Math.round(G.richness.mean*100)+' %'}).`), 'ev');
   if(G.financeMode)   addLog(TR(`💰 Mode Finance activé : emprunts, stockage, hedging, EOR, accidents.`,`💰 Finance mode on: loans, storage, hedging, EOR, accidents.`));
   if(m.tpMode)        addLog(TR(`🎓 Mode TP : la vraie géologie sera révélée après chaque forage.`,`🎓 Practice mode: the true geology will be revealed after each well.`));
 
@@ -8064,12 +8112,10 @@ function _doStartGame(){
     return null;
   }
 
-  // Probabilité d'un système pétrolier : exactement la formule du moteur (generateGeology) : moyenne géométrique des quatre
-  // facteurs pondérée avec le plus faible, puis courbe en S. Le maillon faible domine : un bon piège sans charge reste vide.
+  // Probabilité d'un système pétrolier : exactement la formule du moteur (generateGeology), le produit de Rose des quatre facteurs.
+  // Un maillon faible suffit à faire chuter le résultat : un bon piège sans charge reste vide.
   function cgEngineProb(t, r, se, c){
-    const geomMean = Math.pow(t*r*se*c, 0.25), bottleneck = Math.min(t, r, se, c), score = geomMean*0.4 + bottleneck*0.6;
-    const sig = 1/(1+Math.exp(-6.5*(score-0.48)));
-    return Math.max(0.02, Math.min(0.97, 0.03 + sig*0.94));
+    return roseP(t, r, se, c);
   }
   // Le moteur recale ensuite chaque probabilité sur son rang parmi les blocs d'une carte (PCAL) : cela n'a de sens que pour une carte entière,
   // et écraserait la différence entre deux mains de cartes. Ici on garde donc la probabilité du système avant ce recalage (b.pRaw du moteur).
@@ -9230,7 +9276,11 @@ function _doStartGame(){
   }
 
   // Un log complet + ses deux questions, dans un état de jeu isolé. `fluid` : 'eau', 'huile' ou 'gaz' (équilibré sur la manche).
+  // Génération par rejet : dans de rares cas (environ 1 sur 300) aucun puits ne satisfait toutes les contraintes ; on retente alors sans les options facultatives (piège, volume d'argile).
   function makeLog(fluid, avoid, opt){
+    return makeLogOnce(fluid, avoid, opt) || makeLogOnce(fluid, [], {});
+  }
+  function makeLogOnce(fluid, avoid, opt){
     avoid = avoid || []; opt = opt || {};
     fluid = fluid || ['eau','huile','gaz'][Math.floor(Math.random()*3)];
     // 3e question : calcul sur le réservoir. Porosité-densité (puits aquifère : le fluide est connu), saturation en eau par Archie ou contact

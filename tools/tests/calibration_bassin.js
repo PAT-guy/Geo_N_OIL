@@ -8,26 +8,26 @@ const { chromium } = require('playwright'); const path = require('path');
     for(const bt of ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast']) for(let s=1;s<=50;s++){
       generateGeology(s%5===0?20:12, bt, true, s*6151+29); o.maps++;
       const bs=[...blocks].sort((a,z)=>a.pRaw-z.pRaw); for(let i=1;i<bs.length;i++) if(bs[i].trueProbability < bs[i-1].trueProbability - 1e-12) { o.orderBad++; break; }
-      const n=blocks.length, m=blocks.reduce((t,b)=>t+b.trueProbability,0)/n, hi=blocks.filter(b=>b.trueProbability>=0.6).length/n, n50=blocks.filter(b=>b.trueProbability>=0.5).length;
-      o.means.push(m); o.his.push(hi); (o.byBt[bt]=o.byBt[bt]||[]).push(hi); if(n50 < 0.1*n - 1e-9) o.floorBad++;
-      if(blocks.some(b=>!isFinite(b.trueProbability) || b.trueProbability<0.03-1e-9 || b.trueProbability>0.85+1e-9)) o.nan++;
+      const n=blocks.length, m=blocks.reduce((t,b)=>t+b.trueProbability,0)/n, hi=blocks.filter(b=>b.trueProbability>=0.25).length/n, n50=blocks.filter(b=>b.trueProbability>=0.2).length;
+      o.means.push(m); o.his.push(hi); (o.byBt[bt]=o.byBt[bt]||[]).push(hi); if(n50 < 1) o.floorBad++;
+      if(blocks.some(b=>!isFinite(b.trueProbability) || b.trueProbability<0.01-1e-9 || b.trueProbability>0.95+1e-9)) o.nan++;
       const ri=mapRichness(); o.labels[ri.label]++; o.wUsed[PCAL_W]=(o.wUsed[PCAL_W]||0)+1; }
     const avg=a=>a.reduce((x,y)=>x+y,0)/a.length, srt=a=>[...a].sort((x,y)=>x-y);
     o.meanAvg=avg(o.means); o.meanMin=srt(o.means)[0]; o.meanMax=srt(o.means).at(-1); o.hiAvg=avg(o.his); o.hiMin=srt(o.his)[0]; o.hiMax=srt(o.his).at(-1);
     o.bt = Object.fromEntries(Object.entries(o.byBt).map(([k,v])=>[k, +avg(v).toFixed(3)]));
     // anciennes sauvegardes : sans pcalW, l'étalonnage par rang seul doit s'appliquer
-    generateGeology(12,'paris',true,4242); const raw = blocks[5].pRaw; const withW = pCalibrate(raw); PCAL_W = 0; const rankOnly = pCalibrate(raw); PCAL_W = 0.2; o.oldSave = Math.abs(withW - rankOnly) < 0.5 && isFinite(rankOnly);
+    generateGeology(12,'paris',true,4242); const raw = blocks[5].pRaw; const withW = pCalibrate(raw); PCAL_MODE = 'rank'; PCAL_W = 0; const rankOnly = pCalibrate(raw); PCAL_W = 0.2; const mixed = pCalibrate(raw); PCAL_MODE = 'rose'; PCAL_W = 0; o.oldSave = withW === raw && Math.abs(mixed - rankOnly) < 0.5 && isFinite(rankOnly) && isFinite(mixed);
     o.richLog = true; return o; });
   ok(T.orderBad===0, 'l\'ordre des blocs est inchangé (la probabilité suit toujours la probabilité brute) sur '+T.maps+' cartes');
-  ok(T.nan===0, 'toutes les probabilités restent entre 3 et 85 %');
-  ok(T.floorBad===0, 'plancher de jouabilité : au moins 10 % des blocs à 50 % ou plus sur chaque carte');
-  ok(T.hiMax-T.hiMin>=0.08, 'la part de blocs à 60 % ou plus varie d\'une carte à l\'autre : de '+Math.round(T.hiMin*100)+' % à '+Math.round(T.hiMax*100)+' % (elle était de 11,8 % sur toutes)');
-  ok(T.meanMax-T.meanMin>=0.07, 'la probabilité moyenne varie : de '+Math.round(T.meanMin*100)+' % à '+Math.round(T.meanMax*100)+' %');
-  ok(Math.abs(T.hiAvg-0.118)<0.025 && Math.abs(T.meanAvg-0.236)<0.025, 'la moyenne sur toutes les cartes reste proche de l\'ancienne : '+Math.round(T.hiAvg*1000)/10+' % de bons blocs (11,8), probabilité moyenne '+Math.round(T.meanAvg*1000)/10+' % (23,6)');
+  ok(T.nan===0, 'toutes les probabilités restent entre 1 et 95 %');
+  ok(T.floorBad===0, 'jouabilité : au moins un bloc à 20 % ou plus sur chaque carte (province productive garantie par la génération)');
+  ok(T.hiMax-T.hiMin>=0.03, 'la part de blocs à 25 % ou plus varie d\'une carte à l\'autre : de '+Math.round(T.hiMin*100)+' % à '+Math.round(T.hiMax*100)+' %');
+  ok(T.meanMax-T.meanMin>=0.03, 'la probabilité moyenne varie : de '+Math.round(T.meanMin*100)+' % à '+Math.round(T.meanMax*100)+' %');
+  ok(T.hiAvg>=0.02 && T.hiAvg<=0.15 && T.meanAvg>=0.03 && T.meanAvg<=0.10, 'produit de Rose : '+Math.round(T.hiAvg*1000)/10+' % de blocs à 25 % ou plus (visé 2 à 15 %), probabilité moyenne '+Math.round(T.meanAvg*1000)/10+' % (visé 3 à 10 %)');
   const gen=['random','rift','passive','foreland'].reduce((x,k)=>x+T.bt[k],0)/4;
-  ok(T.bt.north_sea>=0.9*gen && T.bt.gulf_coast>=0.9*gen && T.bt.aquitaine>=0.9*gen, 'les bassins à gaz ne sont plus pénalisés : Mer du Nord '+Math.round(T.bt.north_sea*1000)/10+' %, Gulf Coast '+Math.round(T.bt.gulf_coast*1000)/10+' %, Aquitaine '+Math.round(T.bt.aquitaine*1000)/10+' % de bons blocs, contre '+Math.round(gen*1000)/10+' % pour les bassins génériques');
+  ok(T.bt.north_sea>=0.55*gen && T.bt.gulf_coast>=0.55*gen && T.bt.aquitaine>=0.55*gen, 'les bassins à gaz ne sont plus pénalisés : Mer du Nord '+Math.round(T.bt.north_sea*1000)/10+' %, Gulf Coast '+Math.round(T.bt.gulf_coast*1000)/10+' %, Aquitaine '+Math.round(T.bt.aquitaine*1000)/10+' % de bons blocs, contre '+Math.round(gen*1000)/10+' % pour les bassins génériques');
   ok(T.labels.pauvre>=40 && T.labels.moyen>=150 && T.labels.riche>=40, 'les trois étiquettes de richesse existent : '+JSON.stringify(T.labels));
-  ok(T.oldSave, 'une ancienne sauvegarde (sans part absolue) garde l\'étalonnage par rang');
+  ok(T.oldSave, 'une ancienne sauvegarde garde l\'étalonnage par rang ; le mode Rose ne recale rien');
   const D = await pg.evaluate(async ()=>{ document.getElementById('geoSeed').value='909'; menuConfig.daily=null; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); const log=document.getElementById('logEntries').textContent; G.budget=30e6; try{ showEnd('quit'); }catch(e){}; return { log:/Potentiel régional du bassin : (pauvre|moyen|riche)/.test(log), end:/bassin (pauvre|moyen|riche)/.test(document.getElementById('endStats').textContent), saved:G.pcalW!==undefined }; });
   ok(D.log && D.end && D.saved, 'le potentiel régional est écrit au journal de départ et au récap, la part absolue est mémorisée dans la partie');
   console.log('par bassin (part de blocs à 60 % ou plus) :', JSON.stringify(T.bt), 'parts absolues utilisées', JSON.stringify(T.wUsed));

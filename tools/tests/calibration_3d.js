@@ -4,7 +4,7 @@ const { chromium } = require('playwright'); const path = require('path');
   const pg=await br.newPage(); const errs=[]; pg.on('pageerror',e=>errs.push(e.message)); await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}});
   await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(400);
   const r = await pg.evaluate(()=>{ const rows=[]; let ampBad=0, mu=0;
-    for(let s=1;s<=60;s++){ generateGeology([8,12,20][s%3],['paris','rift','aquitaine','passive','north_sea'][s%5],false,s*131+7);
+    for(let s=1;s<=60;s++){ generateGeology([8,12,20][s%3],['paris','rift','aquitaine','passive','north_sea'][s%5],false,s*131+7); G.richness = mapRichness();
       blocks.forEach(b=>{ if(b.inSalt) return; const rng=makeRng(s*1000+b.id); const x=STUDIES.seismic3d.do(b, rng); rows.push([x.probEst, b.trueProbability, x.probErr]);
         const cls = x.probRaw>0.25 ? /forte|strong/ : x.probRaw>0.10 ? /mod[ée]r|moderate/ : /pas d|no clear/; if(!cls.test(x.amplitude)) ampBad++; }); }
     const n=rows.length, srt=[...rows].sort((a,b)=>a[0]-b[0]); const dec=[]; for(let q=0;q<10;q++){ const sl=srt.slice(Math.floor(n*q/10),Math.floor(n*(q+1)/10)); dec.push([sl.reduce((t,x)=>t+x[0],0)/sl.length, sl.reduce((t,x)=>t+x[1],0)/sl.length]); }
