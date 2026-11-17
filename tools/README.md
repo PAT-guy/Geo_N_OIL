@@ -175,3 +175,6 @@ Demande : au moins une province vraiment productive par carte. Cause du constat 
 
 ## V5.9 : désignation de l'horizon cible plus fiable
 Retour d'un joueur sur la V4.89 : le jeu semblait ne pas voir l'horizon visé, ou en viser un autre. Deux causes dans le code : un second clic sur l'horizon déjà visé le retirait (« rien de sélectionné » alors que le joueur venait de le choisir), et un clic sur une ligne de la sismique désignait la couche située au-dessus du réflecteur. Désormais : un clic désigne le réflecteur le plus proche (la couche qui commence à cette ligne), cliquer deux fois ne retire plus la cible, le retrait passe par un bouton « Retirer », et un sélecteur H1..Hn est affiché sous la coupe. Test : `tools/tests/horizon_cible.js`.
+
+## V5.10 : tutoriel et guide à jour de la désignation de l'horizon
+Le tutoriel (diapositive « Lire la carte et la coupe ») explique maintenant comment désigner l'horizon cible (clic sur une ligne de la sismique, boutons H1..Hn, retrait par « Retirer »). Le guide et le message de refus de forage citent les mêmes moyens. Comparaison de robot V4.89 contre V5.9 (40 parties, mêmes graines, robot propre à chaque version) : Découverte 50 % puis 48 %, Junior 28 % puis 57 %, Expert 28 % puis 40 %.
