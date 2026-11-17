@@ -1,0 +1,7 @@
+{
+  "name": "geoexplorer",
+  "private": true,
+  "description": "Simulateur d'exploration pétrolière en un seul fichier (index.html). Les dépendances ne servent qu'aux tests de navigateur de tools/tests.",
+  "scripts": { "test": "node tools/run_tests.js" },
+  "devDependencies": { "playwright": "1.63.0" }
+}

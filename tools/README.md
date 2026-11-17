@@ -168,3 +168,7 @@ Demande : au moins une province vraiment productive par carte. Cause du constat 
 ## V5.7 : bilan d'exploitation de fin de partie
 
 `opsRecapHtml()` ajoute un tableau « Bilan d'exploitation » à l'écran de fin (production avancée ou puits fracturés) : eau produite cumulée et son coût, gaz associé vendu (volume, revenu) et brûlé ou épuré (volume, coût), transport, production différée puis vendue, production perdue au-delà du plafond, investissements construits (SWD, usine de recyclage, unité de gaz, traitement et pipeline, maintien de pression) avec le poste le plus lourd ; puis « Fracturation » : puits productifs sur total, capital engagé, débit initial cumulé, cause de chaque sec. Les coûts s'accumulent dans `G.ops` à chaque tour de mois. Test : `bilan_exploitation.js`.
+
+## V5.8 : contrôle automatique à chaque fusion
+
+`.github/workflows/tests.yml` lance `node tools/run_tests.js` (environ 9 minutes) sur chaque pull request vers `main`, sur chaque push sur `main` et à la demande (`workflow_dispatch`), avec Node 22 et Chromium installé par Playwright (`package.json` et `package-lock.json` épinglent Playwright 1.63.0 ; `node_modules` est ignoré). Un test rouge rend la PR rouge. Les tests qui dépendent du temps ont été écrits sur une machine locale : la première exécution sur le serveur de GitHub peut révéler des instabilités liées à une machine plus lente, à traiter à la source et non en relançant. Hors CI : `npm install` puis `npm test`, ou sans rien installer si Playwright est déjà disponible globalement.
