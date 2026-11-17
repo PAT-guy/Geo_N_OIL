@@ -6291,13 +6291,15 @@ function labHelpHtml(){
   return `<details class="lab-help"><summary>${TR(`Comment lire cette sismique`,`How to read this seismic`)}</summary>${parts.join('')}</details>`;
 }
 // Rappel d'une ligne sur la cible
+var LAB_NAMES = {};
+function labPickLabel(li){ return 'H'+(li+1) + (LAB_NAMES[li] ? ' · '+LAB_NAMES[li] : ''); }
 function labTipHtml(){
   if(!LABOPT.pick) return '';
   const n = STRAT.length;
   const chips = `<div class="lab-chips">${Array.from({length:n},(_,i)=>`<button class="lab-pick ${G.labPick===i?'sel':''}" onclick="labSetPick(${i})">H${i+1}</button>`).join('')}${G.labPick!=null?`<button class="lab-pick" onclick="labClearPick()">${TR('Retirer','Clear')}</button>`:''}</div>`;
   return G.labPick==null
     ? `<div class="lab-tip">🎯 <b>${TR(`Désignez votre cible`,`Designate your target`)}</b>${TR(` : cliquez sur une couche de la sismique, sur « viser » dans le tableau, ou choisissez ci-dessous. Forer le mauvais horizon donne un puits sec ; un bon choix rapporte `,` : click a layer on the seismic, “aim” in the table, or choose below. Drilling the wrong horizon gives a dry hole; a good choice earns `)}${formatM(LAB_PICK_BONUS)}${TR(`, une fois par province.`,`, once per province.`)}${chips}</div>`
-    : `<div class="lab-tip">🎯 <b>${TR(`Cible : H`,`Target: H`)}${G.labPick+1}</b>${TR(`. Les forages la visent. Choisissez un autre horizon pour changer.`,`. Wells aim at it. Pick another horizon to change.`)}${chips}</div>`;
+    : `<div class="lab-tip">🎯 <b>${TR(`Cible : `,`Target: `)}${labPickLabel(G.labPick)}</b>${TR(`. Les forages la visent. Choisissez un autre horizon pour changer.`,`. Wells aim at it. Pick another horizon to change.`)}${chips}</div>`;
 }
 // temps double moyen en millisecondes en fonction de la profondeur (modèle de vitesse moyen du profil)
 function labTwtFn(dispData){
@@ -6435,14 +6437,15 @@ function labHorizonTable(dispData, lv){
       if(lv[i]>=0 && !name) name = h.name;
     });
     if(!n) continue;
+    if(name) LAB_NAMES[li] = name;
     const v = vS/n*(1 + (labHash(li+3)-0.5)*0.16), R = Rs/n;
     rows.push({ li, top:top/n, th:th/n, v, R, name });
   }
   const rc = r => { const a = Math.abs(r); return (a>0.15?'fort':a>0.06?'moyen':'faible') + (r>=0?' (+)':' (−)'); };
   const vc = v => v<3000 ? 'lent' : v<4200 ? 'moyen' : v<5200 ? 'rapide' : TR('très rapide','very fast');
   const fr = x => Math.round(x).toLocaleString('fr-FR');
-  return `<div style="overflow-x:auto;"><table class="lab-tab"><thead><tr><th>Horizon</th><th>${TR(`Prof. toit`,`Top depth`)}</th><th>${TR(`Épaisseur`,`Thickness`)}</th><th>${TR(`Vitesse (±8 %)`,`Velocity (±8 %)`)}</th><th>${TR(`Contraste au toit`,`Contrast at top`)}</th><th>${TR(`Lithologie`,`Lithology`)}</th><th>${TR(`Cible`,`Target`)}</th></tr></thead><tbody>${rows.map(r=>
-    `<tr class="${G.labPick===r.li?'lab-sel':''}"><td><b>H${r.li+1}</b></td><td>${fr(r.top)} m</td><td>${fr(r.th)} m</td><td>${fr(r.v)} m/s <span class="lab-mut">(${vc(r.v)})</span></td><td>${r.li===0?'—':rc(r.R)}</td><td>${r.name?`<b>${r.name}</b>`:'<span class="lab-mut">?</span>'}</td><td><button class="lab-pick ${G.labPick===r.li?'sel':''}" onclick="labSetPick(${r.li})">${G.labPick===r.li?TR('🎯 cible','🎯 target'):TR('viser','aim')}</button></td></tr>`).join('')}</tbody></table></div>`;
+  return `<div style="overflow-x:auto;"><table class="lab-tab"><thead><tr><th>Horizon</th><th>${TR(`Lithologie`,`Lithology`)}</th><th>${TR(`Cible`,`Target`)}</th><th>${TR(`Prof. toit`,`Top depth`)}</th><th>${TR(`Épaisseur`,`Thickness`)}</th><th>${TR(`Vitesse (±8 %)`,`Velocity (±8 %)`)}</th><th>${TR(`Contraste au toit`,`Contrast at top`)}</th></tr></thead><tbody>${rows.map(r=>
+    `<tr class="${G.labPick===r.li?'lab-sel':''}"><td><b>H${r.li+1}</b></td><td>${r.name?`<b>${r.name}</b>`:'<span class="lab-mut">?</span>'}</td><td><button class="lab-pick ${G.labPick===r.li?'sel':''}" onclick="labSetPick(${r.li})">${G.labPick===r.li?TR('🎯 cible','🎯 target'):TR('viser','aim')}</button></td><td>${fr(r.top)} m</td><td>${fr(r.th)} m</td><td>${fr(r.v)} m/s <span class="lab-mut">(${vc(r.v)})</span></td><td>${r.li===0?'—':rc(r.R)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 // ---------- PHASE 2 : désigner l'horizon cible ----------
@@ -6455,7 +6458,7 @@ function labClearPick(){ if(G.labPick==null) return; G.labPick = null; labPickRe
 function labSetPick(li){
   // V5.9 : un clic sur l'horizon déjà visé ne le retire plus (retrait explicite via labClearPick)
   G.labPick = li;
-  { addLog(TR('🎯 Cible désignée : horizon H','🎯 Target designated: horizon H') + (li+1) + '.', 'ev'); toast(TR('Cible : horizon H','Target: horizon H') + (li+1) + TR('. Les forages la viseront.','. Wells will aim at it.')); }
+  { addLog(TR('🎯 Cible désignée : ','🎯 Target designated: ') + labPickLabel(li) + '.', 'ev'); toast(TR('Cible : ','Target: ') + labPickLabel(li) + TR('. Les forages la viseront.','. Wells will aim at it.')); }
   labPickRefresh();
 }
 function labPickRefresh(){
@@ -6475,6 +6478,7 @@ function labPickAt(evt){
   // V5.10 : la cible est la couche sous le doigt (celle que l'infobulle nomme). Sur une limite exacte, la couche du dessous.
   // Hors de toute couche (trou entre deux profils), la couche dont le toit ou la base est la plus proche.
   L.forEach((l,i)=>{ if(l[1]<1) return; const inside = d>=l[0] && d<l[0]+l[1]; const dist = inside ? 0 : Math.min(Math.abs(d-l[0]), Math.abs(d-(l[0]+l[1]))); if(dist<best){ best = dist; li = i; } });
+  { const nm = evt.target.getAttribute && evt.target.getAttribute('data-layer-name'); if(li>=0 && nm && +evt.target.getAttribute('data-li')===li) LAB_NAMES[li] = nm; }
   if(li>=0) labSetPick(li);
 }
 function labResultHtml(b, missed, resIdx){
@@ -7160,7 +7164,7 @@ function renderSection(){
   // Analyse le profil des données estimées pour identifier la géométrie
   if(LAB_ON || (!LAB.truth && (LABOPT.pick || LABOPT.cal))){
     const ip = document.getElementById('sectionInterpret');
-    if(ip){ ip.style.display = 'block'; ip.innerHTML = `<div class="lab-ihead">${TR(`Traitement et interprétation`,`Processing and interpretation`)}</div>` + labHorizonTable(dispData, labLv) + `<div class="lab-status">${labProcHtml()}${labWellList(dispData, labLv)}</div>${srcMaturityNote(profileBlocks)}${labTipHtml()}${labHelpHtml()}`; }
+    if(ip){ ip.style.display = 'block'; ip.innerHTML = `<div class="lab-ihead">${TR(`Traitement et interprétation`,`Processing and interpretation`)}</div>` + labTipHtml() + labHorizonTable(dispData, labLv) + `<div class="lab-status">${labProcHtml()}${labWellList(dispData, labLv)}</div>${srcMaturityNote(profileBlocks)}${labHelpHtml()}`; }
   } else interpretSection(blockData, profileBlocks);
 
   // ── Légende ── énumère les lithologies RÉELLEMENT présentes sur ce profil,
@@ -7213,7 +7217,7 @@ function showTip(b,e){
   if(b.well) h+=`<div class="tr"><span class="tl">Statut</span><span style="color:var(--green);">${TR(`Puits actif ⛽`,`Active well ⛽`)}</span></div>`;
   else if(b.dryHole) h+=`<div class="tr"><span class="tl">Statut</span><span style="color:var(--red);">${TR(`Puits sec ✗`,`Dry hole ✗`)}</span></div>`;
   else if(b.estimate?.prob!==undefined) h+=`<div class="tr"><span class="tl">Prob.</span><span>${(b.estimate.prob*100).toFixed(0)}% ±${(b.estimate.probErr*100).toFixed(0)}%</span></div>`;
-  { const pd = labShownDepth(b); if(pd!==null) h+=`<div class="tr"><span class="tl">${G.labPick==null?TR('Prof. réservoir','Reservoir depth'):TR('Prof. cible H','Target depth H')+(G.labPick+1)}</span><span>${Math.round(pd)} m</span></div>`; }
+  { const pd = labShownDepth(b); if(pd!==null) h+=`<div class="tr"><span class="tl">${G.labPick==null?TR('Prof. réservoir','Reservoir depth'):TR('Prof. cible ','Target depth ')+labPickLabel(G.labPick)}</span><span>${Math.round(pd)} m</span></div>`; }
   if(!G.simple && b.studyLevel>0) h+=`<div class="tr"><span class="tl">${TR(`Confiance (mesures)`,`Confidence (measurements)`)}</span><span>${Math.round(gsConfidence(b)*100)} %</span></div>`;
   if(b.estimate?.structPos!==undefined) h+=`<div class="tr"><span class="tl">${TR(`Position struct.`,`Struct. position`)}</span><span>${b.estimate.structPos>.1?TR('Haut structural','Structural high'):b.estimate.structPos<-.1?TR('Bas structural','Structural low'):TR('Intermédiaire','Intermediate')}</span></div>`;
   if(b.studyLevel===0) h+=`<div style="color:var(--muted);font-size:10px;">Non exploré</div>`;
