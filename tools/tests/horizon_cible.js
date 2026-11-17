@@ -1,4 +1,4 @@
-// Désignation de l'horizon cible (V5.9) : un clic sur un réflecteur désigne la couche qui commence là, un second clic ne retire plus la cible, retrait explicite, sélecteur H1..Hn.
+// Désignation de l'horizon cible (V5.9/V5.10) : un clic désigne la couche sous le doigt (celle de l'infobulle), un second clic ne retire plus la cible, retrait explicite, sélecteur H1..Hn.
 const { chromium } = require('playwright'); const path = require('path');
 (async()=>{ const br=await chromium.launch(); let ko=0; const ok=(c,m)=>{ if(!c){ko++; console.log('ECHEC',m);} else console.log('ok',m); };
   const pg=await br.newPage({viewport:{width:1400,height:900}}); const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
@@ -7,14 +7,19 @@ const { chromium } = require('playwright'); const path = require('path');
   await pg.click('.menu-tab[data-tab="world"]'); await pg.click('#basinPicker button[data-val="paris"]'); await pg.fill('#geoSeed','2024'); await pg.click('#startBtn'); await pg.evaluate(()=>labOptPreset('complet')); await pg.click('#labOptGo'); await pg.waitForTimeout(500);
   await pg.evaluate(()=>{ setSpeed(0); G.budget=30e6; performStudy(null,'gravity'); const land=blocks.filter(b=>!b.isOffshore); const rows={}; land.forEach(b=>(rows[b.y]=rows[b.y]||[]).push(b)); const r=Object.values(rows).sort((a,z)=>z.length-a.length)[0].sort((a,z)=>a.x-z.x); G.sectionA=r[0].id; G.sectionB=r[r.length-1].id; window.__row=r.map(b=>b.id); performStudy(null,'seismic2d'); switchTab('section'); renderSection(); });
   await pg.waitForTimeout(300);
-  // pixel du toit de la couche k, 1 px au-dessus (donc dans la couche k-1)
+  // pixel à l'intérieur de la couche k, juste sous son toit
   const target = await pg.evaluate(()=>{ const svg=document.getElementById('sectionSvg'); const info=JSON.parse(svg.getAttribute('data-lab')); const rect=svg.querySelector('rect[onclick="labPickAt(event)"]');
     const bi=Math.floor(info.b.length/2); const col=info.b[bi]; const k=col.L.findIndex((l,i)=>i>=2&&l[1]>=30); if(k<0) return null;
-    const px=info.m[0]+col.t*info.m[2], py=info.m[1]+((col.L[k][0]-info.d[0])/(info.d[1]-info.d[0]))*info.m[3]-1;
+    const px=info.m[0]+col.t*info.m[2], py=info.m[1]+((col.L[k][0]+Math.min(10,col.L[k][1]/2)-info.d[0])/(info.d[1]-info.d[0]))*info.m[3];
     const pt=svg.createSVGPoint(); pt.x=px; pt.y=py; const s=pt.matrixTransform(svg.getScreenCTM()); return {x:s.x,y:s.y,k}; });
   ok(!!target,'une couche profonde repérable sur la coupe');
   await pg.mouse.click(target.x,target.y); await pg.waitForTimeout(200);
-  ok(await pg.evaluate(()=>G.labPick)===target.k,'clic sur un réflecteur : désigne la couche qui commence à cette ligne (H'+(target.k+1)+')');
+  ok(await pg.evaluate(()=>G.labPick)===target.k,'clic dans une couche : désigne cette couche (H'+(target.k+1)+')');
+  ok(await pg.evaluate(()=>document.querySelector('#sectionInterpret .lab-tip').textContent.includes('Cible : H'+(G.labPick+1))),'le bandeau annonce la cible (H#)');
+  ok(await pg.evaluate(()=>{ const t=document.querySelector('#sectionInterpret .lab-tip'); const r=document.querySelector('#sectionInterpret .lab-tab'); return !!t && !!r && (t.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING)>0; }),'le sélecteur est au-dessus du tableau des horizons');
+  await pg.evaluate(()=>{ LAB_NAMES[G.labPick]='Calcaire test'; renderSection(); });
+  ok(await pg.evaluate(()=>document.querySelector('#sectionInterpret .lab-tip').textContent.includes('Calcaire test')),'le nom de la couche est affiché avec la cible');
+  ok(await pg.evaluate(()=>/Calcaire test/.test(labPickLabel(G.labPick))),'libellé de cible avec le nom');
   await pg.mouse.click(target.x,target.y); await pg.waitForTimeout(200);
   ok(await pg.evaluate(()=>G.labPick)===target.k,'un second clic sur le même horizon ne retire pas la cible');
   await pg.evaluate(()=>{ labSetPick(G.labPick); }); ok(await pg.evaluate(()=>G.labPick)!==null,'le bouton du tableau ne retire plus non plus la cible');
