@@ -12,7 +12,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(r.balance[0]>r.n*0.25 && r.balance[1]>r.n*0.25,'les décisions « non » et « oui » sont toutes deux fréquentes '+r.balance);
   ok(r.tuto.length===3 && r.tuto[0]==='fluide-meca' && r.tuto[1]==='fluide-eau' && r.tuto[2]==='fluide-gaz','exercice du tutoriel : mécanisme, eau, gaz '+r.tuto);
   // la bonne réponse suit bien les constantes : le SWD n'est jamais correct sous 27 mois de retour sur le contraire
-  const cons = await pg.evaluate(()=>{ let wrong=0; for(let i=0;i<200;i++){ const q=window.__qz.qzGenFluids().find(x=>x.kind==='fluide-eau'); const vol=+q.facts[0][1].replace(/\D/g,''); const pay=WATER.swdCapex/(vol*(WATER.truck-WATER.swd)); if((pay<=27)!==(q.correct===1)) wrong++; } return wrong; });
+  const cons = await pg.evaluate(()=>{ let wrong=0; for(let i=0;i<200;i++){ const q=(()=>{ for(let j=0;j<40;j++){ const f=window.__qz.qzGenFluids().find(x=>x.kind==='fluide-eau'); if(f) return f; } })(); const vol=+q.facts[0][1].replace(/\D/g,''); const pay=WATER.swdCapex/(vol*(WATER.truck-WATER.swd)); if((pay<=27)!==(q.correct===1)) wrong++; } return wrong; });
   ok(cons===0,'eau : la réponse suit le retour sur investissement du SWD '+cons);
   const nf = await pg.evaluate(()=>{ const num=t=>parseFloat(String(t).replace(/\s/g,'').replace('−','-').replace(',','.').replace(/[^\d.\-]/g,'')); let wor=0,con=0,gor=0,n=[0,0,0]; for(let i=0;i<150;i++){ window.__qz.qzGenFluids().forEach(q=>{
       if(q.kind==='fluide-wor'){ n[0]++; const b=num(q.facts[0][1])/100, tr=num(q.facts[1][1]); if(Math.abs(num(q.choices[q.correct])-b/(1-b)*tr)>0.006) wor++; }
