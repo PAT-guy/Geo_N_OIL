@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.6</title>
+<title>GeoExplorer V5.7</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3871,6 +3871,7 @@ function monthTick(){
       }
       opex += econ.opex;
       if(econ.waterBbl>0){ waterAll += econ.waterBbl; if(!w.offshore) waterOn += econ.waterBbl; }
+      if(G.advOn){ const os = G.ops || (G.ops = { water:0, transport:0, flare:0, gasRev:0, hold:0 }); os.water += econ.waterCost||0; os.transport += econ.transport||0; os.flare += econ.fluidCost||0; os.gasRev += econ.gasRev||0; }
       if(econ.curt!==undefined && econ.transport!==undefined && infraCounts(w)){ defOil += econ.deferred||0; soldOil += econ.prodEffective; soldLiquid += econ.prodEffective + econ.waterBbl; pfNum += (econ.pf||1)*econ.prodEffective; }
     }
 
@@ -3893,7 +3894,7 @@ function monthTick(){
     if(ist){ const r = infraRoute(ist), cap = INFRA.backlogMonths*r.cap; ist.backlog = (ist.backlog||0) + defOil; if(ist.backlog > cap){ ist.lostBbl = (ist.lostBbl||0) + ist.backlog - cap; ist.backlog = cap; }
       if(!strikeActive){ const spare = Math.max(0, Math.min(r.cap - soldOil, INFRA.procCap[ist.proc] - soldLiquid)), rel = Math.min(ist.backlog, spare);
         if(rel > 0){ ist.backlog -= rel; ist.releasedBbl = (ist.releasedBbl||0) + rel; revenue += rel*G.price*(soldOil>0 ? pfNum/soldOil : 1)*taxMult; opex += rel*r.cost; } }
-      opex += ist.backlog*INFRA.holdCost; } }
+      opex += ist.backlog*INFRA.holdCost; if(G.ops) G.ops.hold += ist.backlog*INFRA.holdCost; } }
   { const gs = gasState(); G.wells.forEach(w=>{ if(w.status==='producing' && w.fp && w.fp.kind==='oil'){ const e = wellEconomics(w); if(gs.mode==='sell' && gs.plant) gs.soldMcf += e.assocMcf; else gs.flaredMcf += e.assocMcf; } }); }
   { const st = waterState(); st.total += waterAll; st.month = waterAll;
     if(st.mode==='recycle' && st.plant && waterOn>0){ st.pool += waterOn; if(st.pool > WATER.poolCap){ const ex = st.pool - WATER.poolCap; st.pool = WATER.poolCap; opex += ex*(WATER.truck - WATER.recycle); } } }
@@ -4515,6 +4516,37 @@ function showEnd(reason){
 
 
 // Page de bilan : résultat en tête (valeur nette, avancement vers l'objectif, taux de réussite), courbe du budget avec les forages, tableau de tous les forages.
+// Bilan d'exploitation (V5.7) : eau, gaz, installations, frac et investissements de la partie, avec le poste le plus lourd. Seulement avec la production avancée ou des fracs.
+function opsRecapHtml(){
+  const adv = !!G.advOn, os = G.ops || { water:0, transport:0, flare:0, gasRev:0, hold:0 }, wst = waterState(), gst = gasState(), ist = infraState();
+  const fracOk = G.wells.filter(w=>w.method==='frac'), fracDry = blocks.filter(b=>b.dryHole && b.dryHoleInfo?.method==='frac');
+  if(!adv && !fracOk.length && !fracDry.length) return '';
+  const fx = n => Math.round(n).toLocaleString(), row = (l, v) => `<tr><td>${l}</td><td style="text-align:right;">${v}</td></tr>`;
+  const invest = { swd: wst.swd ? WATER.swdCapex : 0, plant: wst.plant ? WATER.plantCapex : 0, gas: gst.plant ? FLUID.gasPlantCapex : 0, infra: ist ? ist.spent : 0, maint: G.wells.filter(w=>w.maint).reduce((s,w)=>s+(w.maintCost||MAINT.capex),0) };
+  const investTot = Object.values(invest).reduce((a,b)=>a+b,0);
+  let h = '';
+  if(adv){
+    const costs = [[TR('eau','water'), os.water], [TR('transport','transport'), os.transport], [TR('gaz (torchage, épuration)','gas (flaring, sweetening)'), os.flare], [TR('stockage de la production différée','storage of deferred production'), os.hold], [TR('investissements d\'exploitation','operating investments'), investTot]].sort((a,z)=>z[1]-a[1]);
+    h += `<tr><th colspan="2" style="text-align:left;">${TR('Exploitation','Operations')}</th></tr>`
+      + row(TR('Eau produite (cumul)','Water produced (cumulative)'), `${fx(wst.total)} ${TR('barils','barrels')}`)
+      + row(TR('Coût de l\'eau','Cost of water'), `${formatM(os.water)} · ${TR('mode','mode')} ${wst.mode==='swd'?'SWD':wst.mode==='recycle'?TR('recyclage','recycling'):TR('camion','trucking')}`)
+      + row(TR('Gaz associé vendu','Associated gas sold'), `${fx(gst.soldMcf||0)} Mcf · ${formatM(os.gasRev)}`)
+      + row(TR('Gaz brûlé ou épuré','Gas flared or sweetened'), `${fx(gst.flaredMcf||0)} Mcf · ${formatM(os.flare)}`)
+      + (ist ? row(TR('Transport par camion ou pipeline','Transport by truck or pipeline'), formatM(os.transport)) + row(TR('Production différée puis vendue','Deferred then sold production'), `${fx(ist.releasedBbl||0)} ${TR('barils','barrels')}`) + row(TR('Production perdue au-delà du plafond','Production lost beyond the cap'), `${fx(ist.lostBbl||0)} ${TR('barils','barrels')}`) : '')
+      + row(TR('Investissements d\'exploitation','Operating investments'), `${formatM(investTot)} (${[invest.swd?'SWD':'', invest.plant?TR('usine de recyclage','recycling plant'):'', invest.gas?TR('unité de gaz','gas unit'):'', invest.infra?TR('traitement et pipeline','processing and pipeline'):'', invest.maint?TR('maintien de pression','pressure maintenance'):''].filter(Boolean).join(', ') || TR('aucun','none')})`);
+    if(costs[0][1] > 0) h += `<tr><td colspan="2" style="color:var(--muted);font-size:11px;">${TR(`Poste le plus lourd : ${costs[0][0]} (${formatM(costs[0][1])}).`,`Heaviest item: ${costs[0][0]} (${formatM(costs[0][1])}).`)}</td></tr>`;
+  }
+  if(fracOk.length || fracDry.length){
+    const n = fracOk.length + fracDry.length, spent = fracOk.reduce((s,w)=>s+(w.cost||0),0) + fracDry.reduce((s,b)=>s+(b.dryHoleInfo.cost||0),0);
+    h += `<tr><th colspan="2" style="text-align:left;">${TR('Fracturation','Fracturing')}</th></tr>`
+      + row(TR('Puits fracturés productifs','Productive fracked wells'), `${fracOk.length} / ${n}`)
+      + row(TR('Capital engagé en frac','Capital committed to frac'), formatM(spent))
+      + row(TR('Débit initial cumulé des puits fracturés','Cumulative initial rate of fracked wells'), `${fx(fracOk.reduce((s,w)=>s+(w.comps?.[0]?.q0||0),0))} ${TR('par mois','per month')}`)
+      + fracDry.map(b=>row(`(${b.x},${b.y}) ${TR('sec','dry')}`, FRAC_WHY()[b.fracInfo?.why] || TR('échec technique','technical failure'))).join('');
+  }
+  return `<div class="end-sec">${TR('Bilan d\'exploitation','Operations review')}</div><table class="end-tbl" style="width:100%;font-size:12px;border-collapse:collapse;">${h}</table>`;
+}
+
 function buildRecapExtras(reason){
   const m = MODES[G.mode], goal = m.winGoal || 0, nw = netWorth(), fx = v => String(v).replace('.',DEC);
   const wells = G.wells.map(w=>({b:blocks[w.blockId], info:w, ok:true})).concat(blocks.filter(b=>b.dryHole && b.dryHoleInfo).map(b=>({b, info:b.dryHoleInfo, ok:false}))).sort((a,z)=>(a.info.month??0)-(z.info.month??0));
@@ -4562,6 +4594,9 @@ function buildRecapExtras(reason){
         <div style="font-size:11px;color:var(--muted);">${TR('Ligne ambre : budget. Ligne grise : cours du brut. Points : forages (vert productif, rouge sec).','Amber line: budget. Grey line: crude price. Dots: wells (green productive, red dry).')}</div>`;
     }
   }
+  // bilan d'exploitation (V5.7)
+  { let ob = document.getElementById('endOpsBox'); const html = opsRecapHtml(); if(!ob && html){ ob = document.createElement('div'); ob.id = 'endOpsBox'; ob.className = 'end-box'; ob.style.marginTop = '12px'; const ref = document.getElementById('endDrillsBox') || document.getElementById('endGisementsBox'); if(ref && ref.parentNode) ref.parentNode.insertBefore(ob, ref.nextSibling); }
+    if(ob){ ob.innerHTML = html; ob.style.display = html ? '' : 'none'; } }
   // tableau de tous les forages
   const db = document.getElementById('endDrillsBox');
   if(db){
