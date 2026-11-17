@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.15</title>
+<title>GeoExplorer V5.16</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3671,7 +3671,7 @@ const maintBoost = w => w.maint && w.rd ? DRIVE[w.rd.mech].boost : 1;
 const CO2 = { capex:2.0e6, minDepth:800, utilMisc:7, utilImm:10, boostMisc:1.22, boostImm:1.07, driveShare:{ solgas:1, gascap:0.7, aquifer:0.4 }, bt:{ solgas:36, gascap:18, aquifer:24 }, wagBonus:12, fade:24 };
 const co2Price = () => 0.9 + 0.012*G.price;   // $/Mcf livré
 const co2Mmp = (b, fp) => clamp(75 + 1.2*((b.tempAtRes ?? 60) - 30) - 0.9*((fp && fp.api != null ? fp.api : 30) - 30), 60, 400);
-const presRel = w => (w.maint ? 0.4 : 1) * (w.co2 ? 0.6 : 1);
+const presRel = w => (w.maint ? 0.4 : 1) * (w.co2 ? 0.6 : 1) * (w.gasInj ? 0.7 : 1);
 function co2State(w){
   if(!w.co2 || !w.rd) return null;
   const b = blocks[w.blockId], p = w.rd.pi*pressureFrac(w), mmp = co2Mmp(b, w.fp), misc = p >= mmp;
@@ -3715,6 +3715,57 @@ function co2Rows(w){
     h += why ? `<div class="lab-note" style="margin:4px 0;">${why}</div>` : `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" ${G.budget>=CO2.capex||G.mode==='sandbox'?'':'disabled'} onclick="co2Buy(${b.id})">${TR('💨 Injecter du CO2','💨 Inject CO2')} · ${formatM(CO2.capex)}</button></div>`;
   }
   return h;
+}
+
+// =====================================================================
+// RÉINJECTION DU GAZ ASSOCIÉ (V5.16), drainage par le gaz : au lieu de le brûler ou de le vendre, le gaz produit est recomprimé et renvoyé dans le réservoir (chapeau de gaz ou gaz dissous).
+// Il maintient la pression (chute x0,7) et pousse l'huile : +10 % (gaz dissous), +12 % (chapeau de gaz), +2 % (aquifère). Il coûte la recompression (0,4 $/Mcf) et fait perdre la vente du gaz
+// ou la redevance de torche économisée : sur un puits à fort GOR, vendre le gaz peut rapporter davantage que le gain d'huile. Exclusif avec le CO2 sur un même puits. Il faut au moins 1 500 Mcf par mois de gaz associé.
+// Règles de jeu simplifiées, non sourcées ; les gains (5 à 15 %) sont de l'ordre de la pratique.
+// =====================================================================
+const GASINJ = { capex:1.6e6, boost:{ solgas:1.10, gascap:1.12, aquifer:1.02 }, compress:0.4, minMcf:1500 };
+const gasInjBoost = w => (w.gasInj && w.rd) ? (GASINJ.boost[w.rd.mech] || 1) : 1;
+function gasInjEligible(w){
+  if(!w || w.status!=='producing' || !w.rd || !G.advOn) return TR('Production avancée requise.','Advanced production required.');
+  if(w.offshore) return TR('Pas de réinjection de gaz en mer dans ce jeu.','No offshore gas reinjection in this game.');
+  if(!w.fp || w.fp.kind!=='oil') return TR('Réservé aux puits à huile.','Oil wells only.');
+  if(w.rd.mech==='tight' || w.rd.mech==='gasdep') return TR('Pas de réinjection sur ce type de réservoir dans ce jeu.','No reinjection on this reservoir type in this game.');
+  if(w.co2) return TR('Un puits n\'utilise qu\'un fluide d\'injection : arrêtez le CO2 d\'abord.','A well uses one injection fluid only: stop the CO2 first.');
+  if(wellEconomics(w).assocMcf < GASINJ.minMcf) return TR(`Pas assez de gaz associé (${GASINJ.minMcf.toLocaleString('fr-FR')} Mcf par mois requis).`,`Not enough associated gas (${GASINJ.minMcf.toLocaleString('en-US')} Mcf per month required).`);
+  return null;
+}
+function gasInjBuy(blockId){
+  const b = blocks[blockId], w = b && b.well, why = gasInjEligible(w); if(why){ toast(why); return; } if(w.gasInj) return;
+  if(G.budget < GASINJ.capex && G.mode!=='sandbox'){ toast(TR('Budget insuffisant.','Insufficient budget.')); return; }
+  if(G.mode!=='sandbox') G.budget -= GASINJ.capex; w.gasInj = { since: w.monthsActive||0, capex: GASINJ.capex };
+  addLog(TR(`⛽ Réinjection du gaz associé sur le puits (${b.x},${b.y}) : ${formatM(GASINJ.capex)}, recompression ${GASINJ.compress.toFixed(1)} $/Mcf. Le gaz n'est plus vendu ni brûlé.`,`⛽ Associated-gas reinjection on well (${b.x},${b.y}): ${formatM(GASINJ.capex)}, recompression $${GASINJ.compress.toFixed(1)}/Mcf. The gas is no longer sold or flared.`), 'ev');
+  updateHud(); renderStudiesPanel(b); renderGisementsPanel();
+}
+function gasInjStop(blockId){
+  const b = blocks[blockId], w = b && b.well; if(!w || !w.gasInj) return; w.gasInj = null;
+  addLog(TR(`Réinjection du gaz arrêtée sur le puits (${b.x},${b.y}) : le gaz est de nouveau vendu ou brûlé.`,`Gas reinjection stopped on well (${b.x},${b.y}): the gas is sold or flared again.`), 'ev');
+  updateHud(); renderStudiesPanel(b); renderGisementsPanel();
+}
+function gasInjRows(w){
+  if(!G.advOn || !w.rd || !w.fp || w.fp.kind!=='oil' || w.offshore || w.rd.mech==='tight' || w.rd.mech==='gasdep') return '';
+  const b = blocks[w.blockId], mcf = wellEconomics(w).assocMcf; let h = '';
+  if(w.gasInj){
+    h += infoRow(TR('Réinjection du gaz','Gas reinjection'), TR(`active : +${Math.round((gasInjBoost(w)-1)*100)} % de production, ${Math.round(mcf).toLocaleString('fr-FR')} Mcf par mois recomprimés`,`active: +${Math.round((gasInjBoost(w)-1)*100)} % production, ${Math.round(mcf).toLocaleString('en-US')} Mcf per month recompressed`));
+    h += `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" onclick="gasInjStop(${b.id})">${TR('Arrêter la réinjection','Stop reinjection')}</button></div>`;
+  } else {
+    const why = gasInjEligible(w);
+    h += infoRow(TR('Gaz associé','Associated gas'), TR(`${Math.round(mcf).toLocaleString('fr-FR')} Mcf par mois (${gasState().plant ? 'vendu' : 'brûlé'})`,`${Math.round(mcf).toLocaleString('en-US')} Mcf per month (${gasState().plant ? 'sold' : 'flared'})`));
+    h += why ? `<div class="lab-note" style="margin:4px 0;">${why}</div>` : `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" ${G.budget>=GASINJ.capex||G.mode==='sandbox'?'':'disabled'} onclick="gasInjBuy(${b.id})">${TR('⛽ Réinjecter le gaz','⛽ Reinject the gas')} · ${formatM(GASINJ.capex)}</button></div>`;
+  }
+  return h;
+}
+// Drainage assisté d'un puits : EOR générique (mode finance), injection de CO2 et réinjection du gaz (production avancée). Affiché dans la fiche Gisements.
+function assistedRows(w){
+  let h = '';
+  if(G.financeMode && !w.eorActive) h += `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" ${G.budget>=500000?'':'disabled'} onclick="activateEOR(${w.blockId})">${TR('⚡ EOR : +35 % pendant 24 mois','⚡ EOR: +35 % for 24 months')} · ${formatM(500000)}</button></div>`;
+  else if(G.financeMode && w.eorActive) h += infoRow('EOR', TR(`actif, encore ${w.eorMonthsLeft} mois`,`active, ${w.eorMonthsLeft} months left`));
+  h += co2Rows(w) + gasInjRows(w);
+  return h ? `<div style="margin-top:8px;padding-top:6px;border-top:1px dashed var(--line);"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">${TR('Drainage assisté','Assisted drainage')}</div>${h}</div>` : '';
 }
 
 // Ce que le joueur peut déduire après 18 mois de production : la chute de pression rapportée au volume produit
@@ -3785,16 +3836,16 @@ function logFluidCardHtml(b){
 }
 
 function wellEconomicsRaw(w){
-  const prodEffective = w.production * (w.eorActive ? 1.35 : 1.0) * maintBoost(w) * co2Boost(w);
+  const prodEffective = w.production * (w.eorActive ? 1.35 : 1.0) * maintBoost(w) * co2Boost(w) * gasInjBoost(w);
   const priceWell = w.isGas ? G.price*.18 : (G.financeMode && G.hedgeContract?.monthsLeft>0 ? G.hedgeContract.lockedPrice : G.price);
   const fixedOp = w.offshore ? OFFSHORE_OPEX : 8000;
   const varOp   = (w.offshore?14:4) + 6;
   const pf = fluidPf(w.fp), st = gasState();
   const oilRev = prodEffective * priceWell * pf;
   let gasRev = 0, assocMcf = 0, fluidCost = 0;
-  if(w.fp && w.fp.kind==='oil'){ assocMcf = prodEffective*gorNow(w)/1000; if(st.mode==='sell' && st.plant) gasRev = assocMcf*gasNetPrice(); else fluidCost = assocMcf*FLUID.flareFee; }
+  if(w.fp && w.fp.kind==='oil'){ assocMcf = prodEffective*gorNow(w)/1000; if(w.gasInj) fluidCost = assocMcf*GASINJ.compress; else if(st.mode==='sell' && st.plant) gasRev = assocMcf*gasNetPrice(); else fluidCost = assocMcf*FLUID.flareFee; }
   else if(w.fp && w.fp.kind==='gas'){ gasRev = prodEffective/1000*w.fp.cgr*G.price*FLUID.condPremium; if(w.fp.sour) fluidCost = prodEffective*FLUID.sweeten; }
-  { const cs = co2State(w); if(cs) fluidCost += w.production*(cs.boost-1)*maintBoost(w)*(w.eorActive?1.35:1)*cs.util*co2Price(); }   // CO2 acheté par baril supplémentaire
+  { const cs = co2State(w); if(cs) fluidCost += w.production*(cs.boost-1)*maintBoost(w)*(w.eorActive?1.35:1)*gasInjBoost(w)*cs.util*co2Price(); }   // CO2 acheté par baril supplémentaire
   const revenue = oilRev + gasRev;
   const bsw = w.wp ? wellBsw(w) : 0, waterBbl = prodEffective*bswToWor(bsw, w.isGas), waterCost = waterBbl*waterUnit(w);
   const opex    = fixedOp + prodEffective*varOp + waterCost + fluidCost;
@@ -3820,7 +3871,7 @@ function infraLoad(){   // charge actuelle des puits bridables, sans bridage
 }
 function infraFactor(){
   const st = infraState(); if(!st) return 1;
-  let sig = 0; for(const w of G.wells){ sig += w.production + (w.monthsActive||0)*1.37 + (w.maint ? 11 : 0) + (w.co2 ? 19 + (w.co2.since||0) : 0) + (w.eorActive ? 13 : 0) + (w.status==='producing' ? 17 : 0); }   // signature bon marché : le calcul complet n'est refait que si l'état change
+  let sig = 0; for(const w of G.wells){ sig += w.production + (w.monthsActive||0)*1.37 + (w.maint ? 11 : 0) + (w.co2 ? 19 + (w.co2.since||0) : 0) + (w.gasInj ? 23 : 0) + (w.eorActive ? 13 : 0) + (w.status==='producing' ? 17 : 0); }   // signature bon marché : le calcul complet n'est refait que si l'état change
   const key = `${G.month}|${G.wells.length}|${st.proc}|${st.pipe}|${sig.toFixed(2)}`;
   if(G._infraLock!=null) return G._infraLock;   // pendant le tour de mois, le bridage est figé à la valeur du début de tour
   if(G._infraF && G._infraF.key===key) return G._infraF.s;
@@ -4117,7 +4168,7 @@ function activateEOR(blockId){
   b.well.eorActive = true;
   b.well.eorMonthsLeft = 24;
   addLog(TR(`⚡ EOR activé : puits (${b.x},${b.y}). +35% de production pendant 24 mois. Coût : ${formatM(cost)}.`,`⚡ EOR activated: well (${b.x},${b.y}). +35% production for 24 months. Cost: ${formatM(cost)}.`), 'ev');
-  updateHud(); renderFinancePanel();
+  updateHud(); renderFinancePanel(); renderGisementsPanel();
 }
 
 function renderEndGisementsPanel(){
@@ -4167,6 +4218,7 @@ function renderGisementsPanel(){
       body = `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;"><span style="color:var(--muted);">Production</span><span>${Math.round(w.production)} ${w.isGas?'Mcf':TR('barils','barrels')}${TR(`${TR(`/mois (`,`/month (`)}`,`/month (`)}${Math.round(w.production/peak*100)}${TR(`${TR(` % du débit initial)`,`% of initial rate)`)}`,`${TR(`% of initial rate)`,`of initial rate)`)}`)}</span></div>
         ${w.wp ? `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;"><span style="color:var(--muted);">BSW</span><span>${Math.round(econ.bsw*100)} % · ${Math.round(econ.waterBbl).toLocaleString()} ${TR('bbl d\'eau/mois','bbl water/month')}</span></div>` : ''}
         <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--muted);">${TR(`${TR(`Net/mois`,`Net/month`)}`,`Net/month`)}</span><span style="color:${econ.net>=0?'var(--green)':'var(--red)'};">${formatM(econ.net)}</span></div>
+        ${assistedRows(w)}
         <div style="text-align:right;margin-top:6px;"><button class="cg-close" style="padding:2px 8px;" onclick="confirmCloseWell(${b.id})">${TR(`${TR(`🔧 Fermer`,`🔧 Close`)}`,`🔧 Close`)}</button></div>`;
     } else {
       body = `<div style="font-size:11px;color:var(--muted);">${w.monthsActive}${TR(`${TR(` mois en production avant arrêt.`,` months in production before shutdown.`)}`,` months in production before shutdown.`)}</div>`;
@@ -4243,23 +4295,7 @@ function renderFinancePanel(){
     <button class="study-btn" style="flex:1;font-size:10px;padding:6px;" onclick="takeLoan(${Math.floor(avail/1e5)*1e5})" ${avail>=5e5?'':'disabled'}>${TR(`${TR(`Tout : `,`All: `)}`,`All: `)}${formatM(Math.floor(avail/1e5)*1e5)}</button>
   </div>`;
 
-  // EOR sur puits actifs
-  const eorablePuits = activePuits.filter(w=>!w.eorActive);
-  if(eorablePuits.length>0){
-    html += `<div class="ps-section" style="margin-top:10px;">${TR(`${TR(`EOR : Enhanced Oil Recovery`,`EOR: Enhanced Oil Recovery`)}`,`EOR: Enhanced Oil Recovery`)}</div>
-    <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">${TR(`${TR(`+35% de production pendant 24 mois. $500k par puits.`,`+35% production for 24 months. $500k per well.`)}`,`+35% production for 24 months. $500k per well.`)}</div>`;
-    eorablePuits.slice(0,3).forEach(w=>{
-      const b=blocks[w.blockId];
-      html+=`<button class="study-btn" style="font-size:10px;padding:6px;margin-bottom:4px;" onclick="activateEOR(${w.blockId})">${TR(`${TR(`
-        ⚡ EOR : puits (`,`
-        ⚡ EOR: well (`)}`,`
-        ⚡ EOR: well (`)}${b.x},${b.y}) · ${Math.round(w.production)}${TR(`${TR(` barils/mois · $500k
-      `,` barrels/month · $500k
-      `)}`,` barrels/month · $500k
-      `)}</button>`;
-    });
-  }
-
+  // L'EOR se lance depuis l'onglet Gisements (drainage assisté de chaque puits).
   html += `<div class="ps-section" style="margin-top:10px;">${TR(`${TR(`Puits actifs (`,`Active wells (`)}`,`Active wells (`)}${activePuits.length})</div>`;
   if(activePuits.length===0){
     html += `<div style="font-size:11px;color:var(--muted);">${TR(`${TR(`Aucun puits en production pour l'instant.`,`No wells in production at the moment.`)}`,`No wells in production at the moment.`)}</div>`;
@@ -9403,7 +9439,7 @@ function _doStartGame(){
   function qzGenFluids(){
     const k = ['solgas','gascap','aquifer'], m1 = k[Math.floor(Math.random()*3)], m2 = k.filter(x=>x!==m1)[Math.floor(Math.random()*2)];
     // huit questions parmi des gabarits variés : au plus deux du même type, les décisions (eau, gaz, pression) et les lectures (mécanisme, contacts, WOR, GOR) mélangées
-    const pool = qzShuffled([qzGenFluidDrive(m1), qzGenFluidDrive(m2), qzGenFluidWater(), qzGenFluidGas(), qzGenFluidPress(), qzGenFluidContacts(), qzGenFluidWor(), qzGenFluidGor(), qzGenFluidCo2()].filter(Boolean));
+    const pool = qzShuffled([qzGenFluidDrive(m1), qzGenFluidDrive(m2), qzGenFluidWater(), qzGenFluidGas(), qzGenFluidPress(), qzGenFluidContacts(), qzGenFluidWor(), qzGenFluidGor(), qzGenFluidCo2(), qzGenFluidGasInj()].filter(Boolean));
     return pool.slice(0,8);
   }
   function qzGenFluidsTuto(){
@@ -9709,6 +9745,22 @@ function _doStartGame(){
       return { gen:true, kind:'fluide-co2', chip:TR('Marge du CO2','CO2 margin'), facts:[[TR('Prix du brut','Oil price'), `${price} $/bbl`],[TR('CO2 par baril supplémentaire','CO2 per incremental barrel'), `${util} Mcf (${misc?TR('miscible','miscible'):TR('immiscible','immiscible')})`],[TR('Prix du CO2','CO2 price'), `${qzNum(cp,2)} $/Mcf`],[TR('Coût variable d\'exploitation','Variable operating cost'), '10 $/bbl']],
         ask:TR('Quelle marge par baril supplémentaire grâce au CO2 ?','What margin per incremental barrel thanks to CO2?'), note:TR('Marge = prix du brut − coût variable − (Mcf par baril × prix du CO2). Le CO2 est indexé sur le brut : 0,9 + 0,012 × prix.','Margin = oil price − variable cost − (Mcf per barrel × CO2 price). CO2 is indexed on oil: 0.9 + 0.012 × price.'),
         choices:o.choices, correct:o.correct, explain:TR(`Marge = ${qzNum(margin,0)} $/bbl : le CO2 coûte ${qzNum(cost,0)} $ par baril supplémentaire. ${margin>0?'Le gain paie le CO2.':'Marge négative : à ce prix du brut, injecter perd de l\'argent.'} Erreurs proposées : `,`Margin = $${qzNum(margin,0)}/bbl: CO2 costs $${qzNum(cost,0)} per incremental barrel. ${margin>0?'The gain pays for the CO2.':'Negative margin: at this oil price, injecting loses money.'} Wrong answers were: `) + o.tags.filter(Boolean).join(' ; ') + '.' };
+    }
+    return null;
+  }
+  function qzGenFluidGasInj(){
+    const r = Math.random, keys = ['solgas','gascap','aquifer'];
+    for(let t=0;t<400;t++){
+      const mech = keys[Math.floor(r()*3)], prod = Math.round((3000 + r()*14000)/500)*500, price = 40 + Math.round(r()*80), gor = Math.round((300 + r()*2200)/50)*50;
+      const mcf = Math.round(prod*gor/1000/500)*500, net = Math.max(0.2, price*0.18*FLUID.gasShare - FLUID.gasProc);
+      if(mcf < GASINJ.minMcf) continue;
+      const boost = GASINJ.boost[mech] - 1, gain = boost*prod*(price - 10) - mcf*GASINJ.compress, sale = mcf*net;
+      if(Math.abs(gain - sale) < 0.25*Math.max(gain, sale)) continue;
+      const names = DRIVE_NAME(), reinject = gain > sale;
+      return { gen:true, kind:'fluide-gasinj', chip:TR('Réinjecter ou vendre le gaz','Reinject or sell the gas'), facts:[[TR('Mécanisme','Mechanism'), names[mech]],[TR('Production','Production'), TR(`${prod.toLocaleString('fr-FR')} barils par mois`,`${prod.toLocaleString('en-US')} barrels per month`)],[TR('Prix du brut','Oil price'), `${price} $/bbl`],[TR('Gaz associé','Associated gas'), `${mcf.toLocaleString('fr-FR')} Mcf ${TR('par mois','per month')}`],[TR('Gaz net de traitement','Gas net of processing'), `${qzNum(net,1)} $/Mcf`],[TR('Gain de la réinjection','Reinjection gain'), `+${Math.round(boost*100)} %`]],
+        ask:TR('Que faites-vous du gaz ?','What do you do with the gas?'), note:TR('Réinjecter : gain d\'huile × (prix − 10 $/bbl) − recompression (0,4 $/Mcf). Vendre : Mcf × gaz net. On choisit la valeur mensuelle la plus haute.','Reinject: oil gain × (price − $10/bbl) − recompression ($0.4/Mcf). Sell: Mcf × net gas. Pick the higher monthly value.'),
+        choices:[TR('Le vendre','Sell it'), TR('Le réinjecter','Reinject it')], correct: reinject?1:0,
+        explain:TR(`Réinjecter vaut ${qzM(gain)} par mois, vendre ${qzM(sale)}. ${reinject?'Le gain d\'huile l\'emporte.':'La vente l\'emporte : sur un puits à fort GOR, le gaz vaut plus que le gain d\'huile.'}`,`Reinjecting is worth ${qzM(gain)} a month, selling ${qzM(sale)}. ${reinject?'The oil gain wins.':'Selling wins: on a high-GOR well, the gas is worth more than the oil gain.'}`) };
     }
     return null;
   }
@@ -10387,7 +10439,7 @@ function _doStartGame(){
     },
     {
       title: TR('Production avancée et incertitude','Advanced production and uncertainty'),
-      body: `${TR(`L'option <b>Production avancée</b> (Senior, Grande exploration, Permien, ou case des options de partie) ajoute ce qui se passe après le forage : l'<b>eau</b> et le <b>BSW</b> (camion, puits d'injection, recyclage), la <b>qualité</b> du brut et le <b>gaz associé</b>, la <b>capacité</b> de traitement et d'export, la <b>pression</b> du réservoir et son mécanisme de drainage, puis le drainage assisté par <b>injection de CO2</b> (miscible au-dessus de la pression minimale de miscibilité, avec percée et coût au Mcf). Le guide vous propose alors l'action utile : agrandir le traitement, construire un SWD, vendre le gaz. Le bouton <b>Incertitude</b> de la carte hachure les blocs où vos mesures ne disent presque rien, et le résumé de forage donne une fourchette de production P90 / P50 / P10. Si vous activez <b>Dimensionner le forage</b>, vous composez aussi la boue et le tubage face à la pression du bloc.`,`The <b>Advanced production</b> option (Senior, Grand exploration, Permian, or the game options checkbox) adds what happens after drilling: <b>water</b> and <b>BSW</b> (trucking, disposal well, recycling), crude <b>quality</b> and <b>associated gas</b>, processing and export <b>capacity</b>, reservoir <b>pressure</b> and its drive mechanism, then assisted drainage by <b>CO2 injection</b> (miscible above the minimum miscibility pressure, with breakthrough and a per-Mcf cost). The guide then suggests the useful action: expand processing, build a SWD, sell the gas. The map's <b>Uncertainty</b> button hatches the blocks where your measurements say almost nothing, and the drilling summary gives a P90 / P50 / P10 production range. If you turn on <b>Size the drilling programme</b>, you also compose the mud and casing against the block's pressure.`)}<br><br><b>${TR(`À vous de jouer`,`Your turn`)}</b> : ${TR(`le guide ne remplace pas votre jugement. Trois exercices courts, avec les vrais chiffres du jeu : lire le mécanisme d'un puits, décider du camion ou du SWD, décider de la torche ou de l'unité de gaz.`,`the guide does not replace your judgment. Three short exercises with the game's real numbers: read a well's drive mechanism, decide between trucking and a SWD, decide between flaring and a gas unit.`)}<br><button class="study-btn study-btn-compact" style="margin-top:8px;" onclick="document.getElementById('tutoCloseBtn').click(); window.__qz && window.__qz.open('fluides_tuto');">💧 ${TR(`Faire les exercices`,`Do the exercises`)}</button>`,
+      body: `${TR(`L'option <b>Production avancée</b> (Senior, Grande exploration, Permien, ou case des options de partie) ajoute ce qui se passe après le forage : l'<b>eau</b> et le <b>BSW</b> (camion, puits d'injection, recyclage), la <b>qualité</b> du brut et le <b>gaz associé</b>, la <b>capacité</b> de traitement et d'export, la <b>pression</b> du réservoir et son mécanisme de drainage, puis le drainage assisté, lancé depuis l'onglet Gisements : <b>injection de CO2</b> (miscible au-dessus de la pression minimale de miscibilité, avec percée et coût au Mcf) ou <b>réinjection du gaz associé</b> (pression soutenue, mais gaz non vendu). Le guide vous propose alors l'action utile : agrandir le traitement, construire un SWD, vendre le gaz. Le bouton <b>Incertitude</b> de la carte hachure les blocs où vos mesures ne disent presque rien, et le résumé de forage donne une fourchette de production P90 / P50 / P10. Si vous activez <b>Dimensionner le forage</b>, vous composez aussi la boue et le tubage face à la pression du bloc.`,`The <b>Advanced production</b> option (Senior, Grand exploration, Permian, or the game options checkbox) adds what happens after drilling: <b>water</b> and <b>BSW</b> (trucking, disposal well, recycling), crude <b>quality</b> and <b>associated gas</b>, processing and export <b>capacity</b>, reservoir <b>pressure</b> and its drive mechanism, then assisted drainage, launched from the Fields tab: <b>CO2 injection</b> (miscible above the minimum miscibility pressure, with breakthrough and a per-Mcf cost) or <b>associated-gas reinjection</b> (pressure supported, but the gas is not sold). The guide then suggests the useful action: expand processing, build a SWD, sell the gas. The map's <b>Uncertainty</b> button hatches the blocks where your measurements say almost nothing, and the drilling summary gives a P90 / P50 / P10 production range. If you turn on <b>Size the drilling programme</b>, you also compose the mud and casing against the block's pressure.`)}<br><br><b>${TR(`À vous de jouer`,`Your turn`)}</b> : ${TR(`le guide ne remplace pas votre jugement. Trois exercices courts, avec les vrais chiffres du jeu : lire le mécanisme d'un puits, décider du camion ou du SWD, décider de la torche ou de l'unité de gaz.`,`the guide does not replace your judgment. Three short exercises with the game's real numbers: read a well's drive mechanism, decide between trucking and a SWD, decide between flaring and a gas unit.`)}<br><button class="study-btn study-btn-compact" style="margin-top:8px;" onclick="document.getElementById('tutoCloseBtn').click(); window.__qz && window.__qz.open('fluides_tuto');">💧 ${TR(`Faire les exercices`,`Do the exercises`)}</button>`,
     },
     {
       title: TR('Prêt à jouer','Ready to play'),
