@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.13</title>
+<title>GeoExplorer V5.15</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3651,7 +3651,7 @@ function driveParams(b, fp, isFrac){
 const driveDi = (w) => w.rd ? DRIVE[w.rd.mech].di : 1;
 function pressureFrac(w){
   if(!w.rd) return 1; const d = DRIVE[w.rd.mech], q0 = (w.comps||[{q0:w.production}]).reduce((s,c)=>s+c.q0,0), N = Math.max(1, q0*MAINT.equivMonths);
-  return clamp(1 - d.k*(w.maint ? 0.4 : 1)*((w.cum||0)/N), 0.12, 1);
+  return clamp(1 - d.k*presRel(w)*((w.cum||0)/N), 0.12, 1);
 }
 function gorNow(w){
   if(!w.fp || w.fp.kind!=='oil' || !w.rd) return w.fp?.gor ?? 0; const p = pressureFrac(w), d = DRIVE[w.rd.mech], g0 = w.fp.gor;
@@ -3660,12 +3660,69 @@ function gorNow(w){
   return g0*(1 + 3*Math.max(0, (d.pb - p)/Math.max(0.05, d.pb)));
 }
 const maintBoost = w => w.maint && w.rd ? DRIVE[w.rd.mech].boost : 1;
+// =====================================================================
+// INJECTION DE CO2 (V5.15), drainage assisté : le CO2 réduit la viscosité de l'huile, la fait gonfler et, au-dessus de la pression minimale de miscibilité (MMP),
+// se mélange à elle : le gain est alors fort (+22 %) ; en dessous, l'injection reste immiscible (+7 %). Le gain dépend du mécanisme de drainage (gaz dissous 100 %, chapeau de gaz 70 %,
+// aquifère 40 % : le CO2 file par le gaz ou se heurte à l'eau). Une percée de CO2 survient après un délai (36 / 18 / 24 mois ; +12 avec le maintien de pression par l'eau, c'est l'alternance
+// eau-gaz, WAG), puis le gain retombe à la moitié. Le CO2 injecté soutient la pression (chute x0,6). Il se paie au Mcf, indexé sur le brut, par baril supplémentaire (7 Mcf miscible, 10 immiscible).
+// Pour la miscibilité, la pression actuelle compte : un réservoir épuisé passe sous la MMP, d'où l'intérêt d'injecter tôt. MMP = 75 + 1,2*(T - 30) - 0,9*(API - 30) bar.
+// Règles de jeu simplifiées, non sourcées ; les ordres de grandeur (7 à 10 Mcf par baril, MMP de 80 à 250 bar) sont ceux de la pratique.
+// =====================================================================
+const CO2 = { capex:2.0e6, minDepth:800, utilMisc:7, utilImm:10, boostMisc:1.22, boostImm:1.07, driveShare:{ solgas:1, gascap:0.7, aquifer:0.4 }, bt:{ solgas:36, gascap:18, aquifer:24 }, wagBonus:12, fade:24 };
+const co2Price = () => 0.9 + 0.012*G.price;   // $/Mcf livré
+const co2Mmp = (b, fp) => clamp(75 + 1.2*((b.tempAtRes ?? 60) - 30) - 0.9*((fp && fp.api != null ? fp.api : 30) - 30), 60, 400);
+const presRel = w => (w.maint ? 0.4 : 1) * (w.co2 ? 0.6 : 1);
+function co2State(w){
+  if(!w.co2 || !w.rd) return null;
+  const b = blocks[w.blockId], p = w.rd.pi*pressureFrac(w), mmp = co2Mmp(b, w.fp), misc = p >= mmp;
+  const bt = (CO2.bt[w.rd.mech] || 24) + (w.maint ? CO2.wagBonus : 0), m = (w.monthsActive||0) - w.co2.since, phase = m < bt ? 1 : Math.max(0.5, 1 - 0.5*(m - bt)/CO2.fade);
+  const base = (misc ? CO2.boostMisc : CO2.boostImm) - 1, extra = base*(CO2.driveShare[w.rd.mech] ?? 0.5)*phase;
+  return { p, mmp, misc, bt, m, phase, extra, boost:1+extra, util: misc ? CO2.utilMisc : CO2.utilImm, breakthrough: m >= bt };
+}
+const co2Boost = w => { const st = co2State(w); return st ? st.boost : 1; };
+function co2Eligible(w){
+  if(!w || w.status!=='producing' || !w.rd || !G.advOn) return TR('Production avancée requise.','Advanced production required.');
+  if(w.offshore) return TR('Pas d\'injection de CO2 en mer dans ce jeu.','No offshore CO2 injection in this game.');
+  if(!w.fp || w.fp.kind!=='oil') return TR('Réservé aux puits à huile.','Oil wells only.');
+  if(w.rd.mech==='tight') return TR('Pas de CO2 en roche-mère (shale) dans ce jeu.','No CO2 in source-rock (shale) wells in this game.');
+  if(blocks[w.blockId].topOfReservoir < CO2.minDepth) return TR(`Réservoir trop peu profond (${CO2.minDepth} m requis) : le CO2 n'y est pas dense.`,`Reservoir too shallow (${CO2.minDepth} m required): CO2 is not dense there.`);
+  return null;
+}
+function co2Buy(blockId){
+  const b = blocks[blockId], w = b && b.well, why = co2Eligible(w); if(why){ toast(why); return; } if(w.co2) return;
+  if(G.budget < CO2.capex && G.mode!=='sandbox'){ toast(TR('Budget insuffisant.','Insufficient budget.')); return; }
+  if(G.mode!=='sandbox') G.budget -= CO2.capex; w.co2 = { since: w.monthsActive||0, capex: CO2.capex };
+  const st = co2State(w);
+  addLog(TR(`💨 Injection de CO2 sur le puits (${b.x},${b.y}) : ${formatM(CO2.capex)}, puis ${co2Price().toFixed(2)} $/Mcf. L'injection est ${st.misc?'miscible':'immiscible'} (pression ${Math.round(st.p)} bar, MMP ${Math.round(st.mmp)} bar).`,`💨 CO2 injection on well (${b.x},${b.y}): ${formatM(CO2.capex)}, then $${co2Price().toFixed(2)}/Mcf. The injection is ${st.misc?'miscible':'immiscible'} (pressure ${Math.round(st.p)} bar, MMP ${Math.round(st.mmp)} bar).`), 'ev');
+  updateHud(); renderStudiesPanel(b); renderGisementsPanel();
+}
+function co2Stop(blockId){
+  const b = blocks[blockId], w = b && b.well; if(!w || !w.co2) return; w.co2 = null;
+  addLog(TR(`Injection de CO2 arrêtée sur le puits (${b.x},${b.y}). Le gain disparaît, le soutien de pression aussi.`,`CO2 injection stopped on well (${b.x},${b.y}). The gain goes, and so does the pressure support.`), 'ev');
+  updateHud(); renderStudiesPanel(b); renderGisementsPanel();
+}
+function co2Rows(w){
+  if(!G.advOn || !w.rd || !w.fp || w.fp.kind!=='oil' || w.offshore || w.rd.mech==='tight' || w.rd.mech==='gasdep') return '';
+  const b = blocks[w.blockId], st = co2State(w); let h = '';
+  if(st){
+    h += infoRow(TR('Injection de CO2','CO2 injection'), TR(`${st.misc?'miscible':'immiscible'} : +${Math.round(st.extra*100)} % de production${st.breakthrough?' (percée de CO2, le gain retombe)':''}`,`${st.misc?'miscible':'immiscible'}: +${Math.round(st.extra*100)} % production${st.breakthrough?' (CO2 breakthrough, gain fading)':''}`));
+    h += infoRow(TR('Pression / MMP','Pressure / MMP'), `${Math.round(st.p)} bar / ${Math.round(st.mmp)} bar`);
+    h += infoRow(TR('Coût du CO2','CO2 cost'), TR(`${st.util} Mcf par baril supplémentaire à ${co2Price().toFixed(2)} $/Mcf`,`${st.util} Mcf per incremental barrel at $${co2Price().toFixed(2)}/Mcf`));
+    h += `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" onclick="co2Stop(${b.id})">${TR('Arrêter le CO2','Stop CO2')}</button></div>`;
+  } else {
+    const why = co2Eligible(w);
+    h += infoRow(TR('CO2 : conditions du réservoir','CO2: reservoir conditions'), TR(`${Math.round(b.tempAtRes ?? 60)} °C, API ${w.fp.api}, MMP ≈ ${Math.round(co2Mmp(b, w.fp))} bar, pression actuelle ${Math.round(w.rd.pi*pressureFrac(w))} bar`,`${Math.round(b.tempAtRes ?? 60)} °C, API ${w.fp.api}, MMP ≈ ${Math.round(co2Mmp(b, w.fp))} bar, current pressure ${Math.round(w.rd.pi*pressureFrac(w))} bar`));
+    h += why ? `<div class="lab-note" style="margin:4px 0;">${why}</div>` : `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" ${G.budget>=CO2.capex||G.mode==='sandbox'?'':'disabled'} onclick="co2Buy(${b.id})">${TR('💨 Injecter du CO2','💨 Inject CO2')} · ${formatM(CO2.capex)}</button></div>`;
+  }
+  return h;
+}
+
 // Ce que le joueur peut déduire après 18 mois de production : la chute de pression rapportée au volume produit
 function driveGuess(w){
   if(!w.rd || (w.monthsActive||0) < 18) return null; if(w.rd.mech==='tight') return 'tight';
   // chute de pression par fraction du volume produit (observable) : gaz dissous ~0,9, chapeau de gaz ~0,45, aquifère ~0,15
   const q0 = (w.comps||[{q0:w.production}]).reduce((s,c)=>s+c.q0,0), cf = (w.cum||0)/Math.max(1, q0*MAINT.equivMonths); if(cf < 0.1) return null;
-  const kobs = (1 - pressureFrac(w))/cf/(w.maint ? 0.4 : 1);
+  const kobs = (1 - pressureFrac(w))/cf/presRel(w);
   return kobs > 0.65 ? 'solgas' : kobs > 0.3 ? 'gascap' : 'aquifer';
 }
 const DRIVE_NAME = () => ({ solgas:TR('gaz dissous','solution gas'), gascap:TR('chapeau de gaz','gas cap'), aquifer:TR('aquifère actif','active aquifer'), tight:TR('épuisement (shale)','depletion (shale)'), gasdep:TR('épuisement du gaz','gas depletion') });
@@ -3685,6 +3742,7 @@ function wellPressureRows(w){
   h += infoRow(TR('Mécanisme de drainage','Drive mechanism'), g ? `${nm[g]} ${TR('(déduit)','(inferred)')}` : (w.rd.mech==='gasdep' ? nm.gasdep : (w.monthsActive||0) < 18 ? TR('pas encore lisible (18 mois de production nécessaires)','not readable yet (18 months of production needed)') : TR('indéterminé','undetermined')));
   if(w.maint) h += infoRow(TR('Maintien de pression','Pressure maintenance'), TR(`actif : +${Math.round((DRIVE[w.rd.mech].boost-1)*100)} % de production`,`active: +${Math.round((DRIVE[w.rd.mech].boost-1)*100)} % production`));
   else if(!w.offshore && w.rd.mech!=='tight' && w.rd.mech!=='gasdep') h += `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" ${G.budget>=MAINT.capex||G.mode==='sandbox'?'':'disabled'} onclick="maintBuy(${b.id})">${TR('💧 Maintenir la pression','💧 Maintain pressure')} · ${formatM(MAINT.capex)}</button></div>`;
+  h += co2Rows(w);
   return h;
 }
 
@@ -3727,7 +3785,7 @@ function logFluidCardHtml(b){
 }
 
 function wellEconomicsRaw(w){
-  const prodEffective = w.production * (w.eorActive ? 1.35 : 1.0) * maintBoost(w);
+  const prodEffective = w.production * (w.eorActive ? 1.35 : 1.0) * maintBoost(w) * co2Boost(w);
   const priceWell = w.isGas ? G.price*.18 : (G.financeMode && G.hedgeContract?.monthsLeft>0 ? G.hedgeContract.lockedPrice : G.price);
   const fixedOp = w.offshore ? OFFSHORE_OPEX : 8000;
   const varOp   = (w.offshore?14:4) + 6;
@@ -3736,6 +3794,7 @@ function wellEconomicsRaw(w){
   let gasRev = 0, assocMcf = 0, fluidCost = 0;
   if(w.fp && w.fp.kind==='oil'){ assocMcf = prodEffective*gorNow(w)/1000; if(st.mode==='sell' && st.plant) gasRev = assocMcf*gasNetPrice(); else fluidCost = assocMcf*FLUID.flareFee; }
   else if(w.fp && w.fp.kind==='gas'){ gasRev = prodEffective/1000*w.fp.cgr*G.price*FLUID.condPremium; if(w.fp.sour) fluidCost = prodEffective*FLUID.sweeten; }
+  { const cs = co2State(w); if(cs) fluidCost += w.production*(cs.boost-1)*maintBoost(w)*(w.eorActive?1.35:1)*cs.util*co2Price(); }   // CO2 acheté par baril supplémentaire
   const revenue = oilRev + gasRev;
   const bsw = w.wp ? wellBsw(w) : 0, waterBbl = prodEffective*bswToWor(bsw, w.isGas), waterCost = waterBbl*waterUnit(w);
   const opex    = fixedOp + prodEffective*varOp + waterCost + fluidCost;
@@ -3761,7 +3820,7 @@ function infraLoad(){   // charge actuelle des puits bridables, sans bridage
 }
 function infraFactor(){
   const st = infraState(); if(!st) return 1;
-  let sig = 0; for(const w of G.wells){ sig += w.production + (w.monthsActive||0)*1.37 + (w.maint ? 11 : 0) + (w.eorActive ? 13 : 0) + (w.status==='producing' ? 17 : 0); }   // signature bon marché : le calcul complet n'est refait que si l'état change
+  let sig = 0; for(const w of G.wells){ sig += w.production + (w.monthsActive||0)*1.37 + (w.maint ? 11 : 0) + (w.co2 ? 19 + (w.co2.since||0) : 0) + (w.eorActive ? 13 : 0) + (w.status==='producing' ? 17 : 0); }   // signature bon marché : le calcul complet n'est refait que si l'état change
   const key = `${G.month}|${G.wells.length}|${st.proc}|${st.pipe}|${sig.toFixed(2)}`;
   if(G._infraLock!=null) return G._infraLock;   // pendant le tour de mois, le bridage est figé à la valeur du début de tour
   if(G._infraF && G._infraF.key===key) return G._infraF.s;
@@ -9262,7 +9321,7 @@ function _doStartGame(){
 
   QUIZ_BANKS.forage = {
       title: TR('⛏ Dimensionner son forage','⛏ Sizing your well'),
-      gen: ()=>qzGenForage(), // 6 questions de calcul tirées de blocs générés + 2 questions de la liste fixe
+      gen: ()=>[...qzGenForage(), qzGenMudWindow()].filter(Boolean), // 6 questions de calcul tirées de blocs générés, 1 fenêtre de boue, 1 question de la liste fixe
       questions: [
         {q:TR('Un puits exploratoire est prévu à 1 800 m. Pourquoi ne pas choisir systématiquement le matériel le plus robuste ?','An exploration well is planned at 1,800 m. Why not systematically choose the most robust equipment?'),
          choices:[TR('Il coûte plus cher au mètre : si la probabilité de succès est faible ou le gain modeste, le surcoût n\'est pas payé par la fiabilité en plus','It costs more per metre: if the probability of success is low or the gain modest, the extra cost is not paid back by the added reliability'),TR('Il fore moins vite et ne peut pas atteindre 1 800 m','It drills more slowly and cannot reach 1,800 m'),TR('Il est interdit en dessous de 2 000 m','It is forbidden below 2,000 m')], correct:0,
@@ -9343,7 +9402,9 @@ function _doStartGame(){
   }
   function qzGenFluids(){
     const k = ['solgas','gascap','aquifer'], m1 = k[Math.floor(Math.random()*3)], m2 = k.filter(x=>x!==m1)[Math.floor(Math.random()*2)];
-    return qzShuffled([qzGenFluidDrive(m1), qzGenFluidDrive(m2), qzGenFluidWater(), qzGenFluidWater(), qzGenFluidGas(), qzGenFluidGas(), qzGenFluidPress(), qzGenFluidPress()].filter(Boolean));
+    // huit questions parmi des gabarits variés : au plus deux du même type, les décisions (eau, gaz, pression) et les lectures (mécanisme, contacts, WOR, GOR) mélangées
+    const pool = qzShuffled([qzGenFluidDrive(m1), qzGenFluidDrive(m2), qzGenFluidWater(), qzGenFluidGas(), qzGenFluidPress(), qzGenFluidContacts(), qzGenFluidWor(), qzGenFluidGor(), qzGenFluidCo2()].filter(Boolean));
+    return pool.slice(0,8);
   }
   function qzGenFluidsTuto(){
     const k = ['solgas','gascap','aquifer'];
@@ -9372,9 +9433,9 @@ function _doStartGame(){
   const QZ_BBL_M3 = 6.2898;
   const qzNum = (v, d) => { const a = Math.abs(v); const dd = d != null ? d : (a>=100 ? 0 : a>=10 ? 1 : 2); return (v<0?'−':'') + a.toFixed(dd).replace('.', DEC); };
   // Quatre propositions : la bonne et trois erreurs typiques (étiquetées pour la correction), mélangées. Les valeurs doivent être distinctes d'au moins 8 %.
-  function qzFluidOpts(good, wrongs, fmt){
+  function qzFluidOpts(good, wrongs, fmt, gap){
     const all = [{ v:good, tag:null }, ...wrongs], vals = all.map(a=>a.v);
-    for(let i=0;i<vals.length;i++) for(let j=i+1;j<vals.length;j++) if(Math.abs(vals[i]-vals[j]) < 0.08*Math.max(vals[i],vals[j])) return null;
+    for(let i=0;i<vals.length;i++) for(let j=i+1;j<vals.length;j++) if(Math.abs(vals[i]-vals[j]) < (gap||0.08)*Math.max(vals[i],vals[j])) return null;
     const sh = qzShuffled(all);
     return { choices: sh.map(a=>fmt(a.v)), correct: sh.findIndex(a=>a.tag===null), tags: sh.map(a=>a.tag) };
   }
@@ -9456,7 +9517,8 @@ function _doStartGame(){
     return null;
   }
   function qzGenAnalyses(){
-    return qzShuffled([qzGenVolumes('stoiip'), qzGenVolumes('reserves'), qzGenDecline('eur'), qzGenDecline('be'), qzGenWelltest(), qzGenWelltest(), qzGenRiskFactors('global'), qzGenRiskFactors('weak')].filter(Boolean));
+    // dix gabarits, huit tirés par manche : on ne revoit pas toujours les mêmes
+    return qzShuffled([qzGenVolumes(Math.random()<0.5?'stoiip':'reserves'), qzGenDecline('eur'), qzGenDecline('be'), qzGenWelltest(), qzGenRiskFactors('global'), qzGenRiskFactors('weak'), qzGenArchie(), qzGenNetPay(), qzGenEmv(), qzGenVolumes('reserves')].filter(Boolean)).slice(0,8);
   }
   QUIZ_BANKS.analyses = {
     title: TR('📐 Atelier d\'analyses','📐 Analysis workshop'),
@@ -9539,6 +9601,117 @@ function _doStartGame(){
     qzOpen('ana_real');
   }
 
+  // ---------- Gabarits supplémentaires (V5.14) : plus de formes de questions, pas seulement plus de chiffres ----------
+  const qzFmtBar = v => `${qzNum(v,1)} bar`;
+  function qzGenFluidContacts(){
+    const r = Math.random;
+    for(let t=0;t<300;t++){
+      const h = Math.round(30 + r()*120), f = Math.round((0.35 + r()*0.6)*100)/100, col = h*f, top = Math.round((1400 + r()*2400)/10)*10;
+      const o = qzFluidOpts(col, [{ v:h, tag:TR('épaisseur totale du réservoir prise pour la colonne d\'huile : le contact eau-huile est ignoré','total reservoir thickness taken as the oil column: the oil-water contact is ignored') },{ v:h*(1-f), tag:TR('colonne d\'eau prise pour la colonne d\'huile','water leg taken as the oil column') },{ v:col*0.6, tag:TR('porosité ou saturation appliquée à une hauteur : on mélange hauteur et volume','porosity or saturation applied to a height: height and volume mixed up') }], v=>`${Math.round(v)} m`); if(!o) continue;
+      return { gen:true, kind:'fluide-contact', chip:TR('Contacts de fluides','Fluid contacts'), facts:[[TR('Toit du réservoir','Reservoir top'), `${top} m`],[TR('Épaisseur du réservoir','Reservoir thickness'), `${h} m`],[TR('Part au-dessus du contact eau-huile','Share above the oil-water contact'), `${Math.round(f*100)} %`]],
+        ask:TR('Quelle colonne d\'huile exploitable ?','What exploitable oil column?'), note:TR('Colonne d\'huile = épaisseur du réservoir × part au-dessus du contact. Le contact eau-huile se trouve à toit + colonne.','Oil column = reservoir thickness × share above the contact. The oil-water contact sits at top + column.'),
+        choices:o.choices, correct:o.correct, explain:TR(`Colonne d'huile = ${Math.round(col)} m, contact vers ${Math.round(top+col)} m : forer plus bas ne trouve que de l'eau. Erreurs proposées : `,`Oil column = ${Math.round(col)} m, contact near ${Math.round(top+col)} m: drilling deeper only finds water. Wrong answers were: `) + o.tags.filter(Boolean).join(' ; ') + '.' };
+    }
+    return null;
+  }
+  function qzGenFluidWor(){
+    const r = Math.random;
+    for(let t=0;t<300;t++){
+      const bsw = Math.round(30 + r()*55), b = bsw/100, wor = b/(1-b), cost = wor*WATER.truck;
+      const o = qzFluidOpts(cost, [{ v:b*WATER.truck, tag:TR('BSW pris pour le rapport eau-huile : le BSW se rapporte au liquide, pas à l\'huile','BSW taken as the water-oil ratio: BSW is a share of liquid, not of oil') },{ v:wor*WATER.swd, tag:TR('tarif du SWD au lieu du camion','SWD rate instead of trucking') },{ v:wor*WATER.truck*0.5, tag:TR('moitié de l\'eau seulement','only half of the water') }], v=>`${qzNum(v,2)} $/bbl`); if(!o) continue;
+      return { gen:true, kind:'fluide-wor', chip:TR('Eau et huile','Water and oil'), facts:[[TR('BSW','BSW'), `${bsw} %`],[TR('Camion','Trucking'), `${WATER.truck.toFixed(1)} $/bbl`]],
+        ask:TR('Combien coûte l\'eau évacuée par baril d\'huile vendu ?','What does the disposed water cost per barrel of oil sold?'), note:TR('Rapport eau-huile (WOR) = BSW ÷ (1 − BSW).','Water-oil ratio (WOR) = BSW ÷ (1 − BSW).'),
+        choices:o.choices, correct:o.correct, explain:TR(`WOR = ${qzNum(wor,2)} baril d'eau par baril d'huile, soit ${qzNum(cost,2)} $ par baril d'huile au tarif du camion. Erreurs proposées : `,`WOR = ${qzNum(wor,2)} barrels of water per barrel of oil, i.e. $${qzNum(cost,2)} per barrel of oil at the trucking rate. Wrong answers were: `) + o.tags.filter(Boolean).join(' ; ') + '.' };
+    }
+    return null;
+  }
+  function qzGenFluidGor(){
+    const r = Math.random;
+    for(let t=0;t<300;t++){
+      const pi = Math.round((200 + r()*250)/10)*10, d = DRIVE.solgas, pFrac = Math.round((0.35 + r()*0.45)*100)/100, p = Math.round(pi*pFrac), g0 = Math.round((250 + r()*400)/10)*10;
+      if(pFrac >= d.pb - 0.04) continue;   // sous la pression de bulle, nettement
+      const mult = 1 + 3*Math.max(0,(d.pb-pFrac)/d.pb), good = g0*mult;
+      const o = qzFluidOpts(good, [{ v:g0, tag:TR('GOR inchangé : on ignore que le gaz sort de l\'huile sous la pression de bulle','GOR unchanged: ignores gas coming out of the oil below the bubble point') },{ v:g0*(1+3*pFrac), tag:TR('pression relative prise pour l\'écart à la pression de bulle','relative pressure taken for the gap to the bubble point') },{ v:g0*(1+(d.pb-pFrac)/d.pb), tag:TR('coefficient de montée oublié','rise coefficient forgotten') }], v=>`${Math.round(v)} scf/bbl`); if(!o) continue;
+      return { gen:true, kind:'fluide-gor', chip:TR('Pression de bulle et GOR','Bubble point and GOR'), facts:[[TR('Pression initiale','Initial pressure'), qzFmtBar(pi)],[TR('Pression actuelle','Current pressure'), qzFmtBar(p)],[TR('Pression de bulle','Bubble point'), `${Math.round(d.pb*100)} % ${TR('de la pression initiale','of initial pressure')} (${qzFmtBar(pi*d.pb)})`],[TR('GOR initial','Initial GOR'), `${g0} scf/bbl`]],
+        ask:TR('Quel GOR attendre à la pression actuelle ?','What GOR should you expect at current pressure?'), note:TR('Sous la pression de bulle : GOR = GOR initial × (1 + 3 × (bulle − actuelle) ÷ bulle), pressions relatives à la pression initiale.','Below the bubble point: GOR = initial GOR × (1 + 3 × (bubble − current) ÷ bubble), pressures relative to initial.'),
+        choices:o.choices, correct:o.correct, explain:TR(`La pression relative vaut ${Math.round(pFrac*100)} %, sous la bulle (${Math.round(d.pb*100)} %) : le GOR monte à ${Math.round(good)} scf/bbl (×${qzNum(mult,2)}). Erreurs proposées : `,`Relative pressure is ${Math.round(pFrac*100)} %, below the bubble point (${Math.round(d.pb*100)} %): GOR climbs to ${Math.round(good)} scf/bbl (×${qzNum(mult,2)}). Wrong answers were: `) + o.tags.filter(Boolean).join(' ; ') + '.' };
+    }
+    return null;
+  }
+  function qzGenMudWindow(){
+    const r = Math.random;
+    for(let t=0;t<300;t++){
+      const z = Math.round((1500 + r()*3500)/100)*100, gp = Math.round((1.0 + (Math.random()<0.5 ? 0 : 0.1 + r()*0.3))*100)/100, sv = progSv(z), gf = gp + PROG_KF*(sv - gp);
+      const good = Math.round((gp + 0.05)*100)/100; if(good > gf - 0.05) continue;
+      const o = qzFluidOpts(good, [{ v:Math.round((gp-0.07)*100)/100, tag:TR('boue sous la pression des pores : venue d\'effluents (kick)','mud below pore pressure: influx (kick)') },{ v:Math.round((gf+0.06)*100)/100, tag:TR('boue au-dessus de la fracturation : pertes de circulation','mud above fracture pressure: lost circulation') },{ v:Math.round(Math.min(gf-0.02, gf*0.99)*100)/100, tag:TR('trop près de la fracturation : aucune marge pour une variation de pression','too close to fracture pressure: no margin for a pressure swing') }], v=>`${qzNum(v,2)} sg`, 0.02); if(!o) continue;
+      return { gen:true, kind:'forage-boue', chip:TR('Fenêtre de boue','Mud window'), facts:[[TR('Profondeur','Depth'), `${z} m`],[TR('Gradient de pores','Pore gradient'), `${qzNum(gp,2)} sg`],[TR('Contrainte verticale','Vertical stress'), `${qzNum(sv,2)} sg`],[TR('Gradient de fracturation (Eaton)','Fracture gradient (Eaton)'), `${qzNum(gf,2)} sg`]],
+        ask:TR('Quelle densité de boue choisir pour cette section ?','Which mud density for this section?'), note:TR('La boue doit rester au-dessus de la pression des pores (avec une marge de 0,05 sg) et nettement sous la fracturation. Eaton : fracturation = pores + 0,54 × (contrainte − pores).','Mud must stay above pore pressure (with a 0.05 sg margin) and well below fracture pressure. Eaton: fracture = pore + 0.54 × (stress − pore).'),
+        choices:o.choices, correct:o.correct, explain:TR(`Fenêtre : ${qzNum(gp,2)} à ${qzNum(gf,2)} sg. Il faut ${qzNum(good,2)} sg : pores + 0,05 de marge. Erreurs proposées : `,`Window: ${qzNum(gp,2)} to ${qzNum(gf,2)} sg. The right choice is ${qzNum(good,2)} sg: pore + 0.05 margin. Wrong answers were: `) + o.tags.filter(Boolean).join(' ; ') + '.' };
+    }
+    return null;
+  }
+  function qzGenArchie(){
+    const r = Math.random;
+    for(let t=0;t<300;t++){
+      const phi = Math.round(10 + r()*20)/100, rw = Math.round((0.05 + r()*0.15)*100)/100, rt = Math.round(8 + r()*80), sw = Math.sqrt(rw/(phi*phi*rt));
+      if(sw < 0.12 || sw > 0.85) continue;
+      const o = qzFluidOpts(sw*100, [{ v:Math.min(99,rw/(phi*rt)*100), tag:TR('exposants m et n oubliés (pris égaux à 1)','exponents m and n forgotten (taken as 1)') },{ v:Math.min(99,(1-sw)*100), tag:TR('saturation en huile donnée au lieu de la saturation en eau','oil saturation given instead of water saturation') },{ v:Math.min(99,rw/(phi*phi*rt)*100), tag:TR('racine carrée oubliée','square root forgotten') }], v=>`${Math.round(v)} %`); if(!o) continue;
+      return { gen:true, kind:'analyse-archie', chip:TR('Saturation en eau (Archie)','Water saturation (Archie)'), facts:[[TR('Porosité','Porosity'), `${Math.round(phi*100)} %`],[TR('Résistivité de l\'eau Rw','Water resistivity Rw'), `${qzNum(rw,2)} Ω·m`],[TR('Résistivité vraie Rt','True resistivity Rt'), `${rt} Ω·m`],['a, m, n', '1, 2, 2']],
+        ask:TR('Quelle saturation en eau ?','What water saturation?'), note:TR('Archie : Sw = racine carrée de [a × Rw ÷ (φ² × Rt)], avec a = 1, m = n = 2.','Archie: Sw = square root of [a × Rw ÷ (φ² × Rt)], with a = 1, m = n = 2.'),
+        choices:o.choices, correct:o.correct, explain:TR(`Sw = ${Math.round(sw*100)} %, donc ${Math.round((1-sw)*100)} % d'huile dans les pores. Erreurs proposées : `,`Sw = ${Math.round(sw*100)} %, so ${Math.round((1-sw)*100)} % oil in the pores. Wrong answers were: `) + o.tags.filter(Boolean).join(' ; ') + '.' };
+    }
+    return null;
+  }
+  function qzGenNetPay(){
+    const r = Math.random;
+    for(let t=0;t<300;t++){
+      const cutoff = [6,8,10][Math.floor(r()*3)], n = 6, layers = Array.from({length:n},()=>({ h:Math.round(2+r()*10), phi:Math.round(3+r()*22) })), net = layers.filter(l=>l.phi>=cutoff).reduce((a,l)=>a+l.h,0), gross = layers.reduce((a,l)=>a+l.h,0);
+      if(net<5 || net>=gross-4) continue;
+      const wavg = layers.reduce((a,l)=>a+l.h*l.phi,0)/gross;
+      const o = qzFluidOpts(net, [{ v:gross, tag:TR('épaisseur brute prise pour l\'utile : la coupure de porosité est ignorée','gross thickness taken as net: the porosity cutoff is ignored') },{ v:gross-net, tag:TR('on a compté les couches sous la coupure','layers below the cutoff were counted') },{ v:Math.round(gross*net/gross*0.5), tag:TR('moitié de l\'utile, par confusion avec le rapport net/brut','half of the net, confused with the net-to-gross ratio') }], v=>`${Math.round(v)} m`); if(!o) continue;
+      return { gen:true, kind:'analyse-netpay', chip:TR('Épaisseur utile (net pay)','Net pay'), facts:layers.map((l,i)=>[TR('Couche ','Layer ')+(i+1), `${l.h} m · φ ${l.phi} %`]).concat([[TR('Coupure de porosité','Porosity cutoff'), `${cutoff} %`]]),
+        ask:TR('Quelle épaisseur utile (net pay) ?','What net pay?'), note:TR('On ne compte que les couches dont la porosité atteint la coupure.','Only layers whose porosity reaches the cutoff count.'),
+        choices:o.choices, correct:o.correct, explain:TR(`Utile = ${net} m sur ${gross} m bruts (net/brut ${Math.round(net/gross*100)} %). Erreurs proposées : `,`Net = ${net} m out of ${gross} m gross (net-to-gross ${Math.round(net/gross*100)} %). Wrong answers were: `) + o.tags.filter(Boolean).join(' ; ') + '.' };
+    }
+    return null;
+  }
+  function qzGenEmv(){
+    const r = Math.random;
+    for(let t=0;t<300;t++){
+      const p = Math.round((0.1 + r()*0.6)*20)/20, cost = Math.round((2 + r()*10)*2)/2*1e6, gain = Math.round((6 + r()*50)/2)*2*1e6, emv = p*gain - cost, be = cost/gain;
+      if(Math.abs(emv) < 0.18*cost) continue;
+      const yes = emv > 0;
+      return { gen:true, kind:'analyse-emv', chip:TR('Espérance de gain','Expected value'), facts:[[TR('Probabilité de succès','Probability of success'), `${Math.round(p*100)} %`],[TR('Coût du puits (perdu si sec)','Well cost (lost if dry)'), qzM(cost)],[TR('Gain net si succès (hors coût du puits)','Net gain if success (before well cost)'), qzM(gain)]],
+        ask:TR('Forez-vous ?','Do you drill?'), note:TR('Espérance = probabilité × gain − coût. On fore si elle est positive. Probabilité d\'équilibre = coût ÷ gain.','Expected value = probability × gain − cost. Drill if it is positive. Break-even probability = cost ÷ gain.'),
+        choices:[TR('Non, l\'espérance est négative','No, the expected value is negative'), TR('Oui, l\'espérance est positive','Yes, the expected value is positive')], correct: yes?1:0,
+        explain:TR(`Espérance = ${Math.round(p*100)} % × ${qzM(gain)} − ${qzM(cost)} = ${qzM(emv)}. La probabilité d'équilibre est ${Math.round(be*100)} % : ${yes?'vous êtes au-dessus':'vous êtes en dessous'}. Un puits isolé réussit ou rate, seule une série de puits s'approche de l'espérance.`,`Expected value = ${Math.round(p*100)} % × ${qzM(gain)} − ${qzM(cost)} = ${qzM(emv)}. The break-even probability is ${Math.round(be*100)} %: you are ${yes?'above':'below'} it. A single well succeeds or fails; only a series of wells approaches the expected value.`) };
+    }
+    return null;
+  }
+  function qzGenFluidCo2(){
+    const r = Math.random;
+    if(Math.random() < 0.5){
+      for(let t=0;t<300;t++){
+        const T = Math.round(50 + r()*90), api = Math.round((20 + r()*24)*10)/10, mmp = co2Mmp({ tempAtRes:T }, { api }), pi = Math.round((120 + r()*230)/5)*5, pFrac = Math.round((0.45 + r()*0.55)*100)/100, p = Math.round(pi*pFrac);
+        if(Math.abs(p - mmp) < 0.12*mmp) continue;
+        const misc = p >= mmp;
+        return { gen:true, kind:'fluide-co2', chip:TR('Injection de CO2','CO2 injection'), facts:[[TR('Température du réservoir','Reservoir temperature'), `${T} °C`],['API', qzNum(api,1)],[TR('Pression actuelle','Current pressure'), `${p} bar`]],
+          ask:TR('L\'injection de CO2 sera-t-elle miscible ?','Will the CO2 injection be miscible?'), note:TR('Pression minimale de miscibilité : MMP = 75 + 1,2 × (T − 30) − 0,9 × (API − 30), en bar, T en °C. Miscible si la pression actuelle atteint la MMP.','Minimum miscibility pressure: MMP = 75 + 1.2 × (T − 30) − 0.9 × (API − 30), in bar, T in °C. Miscible if current pressure reaches the MMP.'),
+          choices:[TR('Non, immiscible','No, immiscible'), TR('Oui, miscible','Yes, miscible')], correct: misc?1:0,
+          explain:TR(`MMP = ${Math.round(mmp)} bar pour ${p} bar de pression : ${misc?'la pression dépasse la MMP, le CO2 se mélange à l\'huile (+22 % au lieu de +7 %)':'la pression est sous la MMP, le CO2 ne se mélange pas (+7 % seulement)'}. Un réservoir épuisé perd la miscibilité : on injecte tôt, ou on repressurise d'abord.`,`MMP = ${Math.round(mmp)} bar for ${p} bar of pressure: ${misc?'pressure exceeds the MMP, CO2 mixes with the oil (+22 % instead of +7 %)':'pressure is below the MMP, CO2 does not mix (+7 % only)'}. A depleted reservoir loses miscibility: inject early, or repressurise first.`) };
+      }
+      return null;
+    }
+    for(let t=0;t<300;t++){
+      const price = 40 + Math.round(r()*80), misc = r() < 0.5, util = misc ? CO2.utilMisc : CO2.utilImm, cp = 0.9 + 0.012*price, cost = util*cp, margin = price - 10 - cost;   // 10 $/bbl : coût variable du moteur
+      if(Math.abs(margin) < 4) continue;
+      const o = qzFluidOpts(margin, [{ v:price - 10, tag:TR('coût du CO2 oublié','CO2 cost forgotten') },{ v:price - 10 - cp, tag:TR('un seul Mcf compté par baril, au lieu de '+util,'one Mcf counted per barrel instead of '+util) },{ v:price - cost, tag:TR('coût variable d\'exploitation oublié','variable operating cost forgotten') }], v=>`${qzNum(v,0)} $/bbl`); if(!o) continue;
+      return { gen:true, kind:'fluide-co2', chip:TR('Marge du CO2','CO2 margin'), facts:[[TR('Prix du brut','Oil price'), `${price} $/bbl`],[TR('CO2 par baril supplémentaire','CO2 per incremental barrel'), `${util} Mcf (${misc?TR('miscible','miscible'):TR('immiscible','immiscible')})`],[TR('Prix du CO2','CO2 price'), `${qzNum(cp,2)} $/Mcf`],[TR('Coût variable d\'exploitation','Variable operating cost'), '10 $/bbl']],
+        ask:TR('Quelle marge par baril supplémentaire grâce au CO2 ?','What margin per incremental barrel thanks to CO2?'), note:TR('Marge = prix du brut − coût variable − (Mcf par baril × prix du CO2). Le CO2 est indexé sur le brut : 0,9 + 0,012 × prix.','Margin = oil price − variable cost − (Mcf per barrel × CO2 price). CO2 is indexed on oil: 0.9 + 0.012 × price.'),
+        choices:o.choices, correct:o.correct, explain:TR(`Marge = ${qzNum(margin,0)} $/bbl : le CO2 coûte ${qzNum(cost,0)} $ par baril supplémentaire. ${margin>0?'Le gain paie le CO2.':'Marge négative : à ce prix du brut, injecter perd de l\'argent.'} Erreurs proposées : `,`Margin = $${qzNum(margin,0)}/bbl: CO2 costs $${qzNum(cost,0)} per incremental barrel. ${margin>0?'The gain pays for the CO2.':'Negative margin: at this oil price, injecting loses money.'} Wrong answers were: `) + o.tags.filter(Boolean).join(' ; ') + '.' };
+    }
+    return null;
+  }
   const QZ_ROUND = 8; // questions par manche, tirées au hasard sans répétition
 
   function qzShuffled(arr){ return [...arr].sort(()=>Math.random()-.5); }
@@ -10214,7 +10387,7 @@ function _doStartGame(){
     },
     {
       title: TR('Production avancée et incertitude','Advanced production and uncertainty'),
-      body: `${TR(`L'option <b>Production avancée</b> (Senior, Grande exploration, Permien, ou case des options de partie) ajoute ce qui se passe après le forage : l'<b>eau</b> et le <b>BSW</b> (camion, puits d'injection, recyclage), la <b>qualité</b> du brut et le <b>gaz associé</b>, la <b>capacité</b> de traitement et d'export, la <b>pression</b> du réservoir et son mécanisme de drainage. Le guide vous propose alors l'action utile : agrandir le traitement, construire un SWD, vendre le gaz. Le bouton <b>Incertitude</b> de la carte hachure les blocs où vos mesures ne disent presque rien, et le résumé de forage donne une fourchette de production P90 / P50 / P10. Si vous activez <b>Dimensionner le forage</b>, vous composez aussi la boue et le tubage face à la pression du bloc.`,`The <b>Advanced production</b> option (Senior, Grand exploration, Permian, or the game options checkbox) adds what happens after drilling: <b>water</b> and <b>BSW</b> (trucking, disposal well, recycling), crude <b>quality</b> and <b>associated gas</b>, processing and export <b>capacity</b>, reservoir <b>pressure</b> and its drive mechanism. The guide then suggests the useful action: expand processing, build a SWD, sell the gas. The map's <b>Uncertainty</b> button hatches the blocks where your measurements say almost nothing, and the drilling summary gives a P90 / P50 / P10 production range. If you turn on <b>Size the drilling programme</b>, you also compose the mud and casing against the block's pressure.`)}<br><br><b>${TR(`À vous de jouer`,`Your turn`)}</b> : ${TR(`le guide ne remplace pas votre jugement. Trois exercices courts, avec les vrais chiffres du jeu : lire le mécanisme d'un puits, décider du camion ou du SWD, décider de la torche ou de l'unité de gaz.`,`the guide does not replace your judgment. Three short exercises with the game's real numbers: read a well's drive mechanism, decide between trucking and a SWD, decide between flaring and a gas unit.`)}<br><button class="study-btn study-btn-compact" style="margin-top:8px;" onclick="document.getElementById('tutoCloseBtn').click(); window.__qz && window.__qz.open('fluides_tuto');">💧 ${TR(`Faire les exercices`,`Do the exercises`)}</button>`,
+      body: `${TR(`L'option <b>Production avancée</b> (Senior, Grande exploration, Permien, ou case des options de partie) ajoute ce qui se passe après le forage : l'<b>eau</b> et le <b>BSW</b> (camion, puits d'injection, recyclage), la <b>qualité</b> du brut et le <b>gaz associé</b>, la <b>capacité</b> de traitement et d'export, la <b>pression</b> du réservoir et son mécanisme de drainage, puis le drainage assisté par <b>injection de CO2</b> (miscible au-dessus de la pression minimale de miscibilité, avec percée et coût au Mcf). Le guide vous propose alors l'action utile : agrandir le traitement, construire un SWD, vendre le gaz. Le bouton <b>Incertitude</b> de la carte hachure les blocs où vos mesures ne disent presque rien, et le résumé de forage donne une fourchette de production P90 / P50 / P10. Si vous activez <b>Dimensionner le forage</b>, vous composez aussi la boue et le tubage face à la pression du bloc.`,`The <b>Advanced production</b> option (Senior, Grand exploration, Permian, or the game options checkbox) adds what happens after drilling: <b>water</b> and <b>BSW</b> (trucking, disposal well, recycling), crude <b>quality</b> and <b>associated gas</b>, processing and export <b>capacity</b>, reservoir <b>pressure</b> and its drive mechanism, then assisted drainage by <b>CO2 injection</b> (miscible above the minimum miscibility pressure, with breakthrough and a per-Mcf cost). The guide then suggests the useful action: expand processing, build a SWD, sell the gas. The map's <b>Uncertainty</b> button hatches the blocks where your measurements say almost nothing, and the drilling summary gives a P90 / P50 / P10 production range. If you turn on <b>Size the drilling programme</b>, you also compose the mud and casing against the block's pressure.`)}<br><br><b>${TR(`À vous de jouer`,`Your turn`)}</b> : ${TR(`le guide ne remplace pas votre jugement. Trois exercices courts, avec les vrais chiffres du jeu : lire le mécanisme d'un puits, décider du camion ou du SWD, décider de la torche ou de l'unité de gaz.`,`the guide does not replace your judgment. Three short exercises with the game's real numbers: read a well's drive mechanism, decide between trucking and a SWD, decide between flaring and a gas unit.`)}<br><button class="study-btn study-btn-compact" style="margin-top:8px;" onclick="document.getElementById('tutoCloseBtn').click(); window.__qz && window.__qz.open('fluides_tuto');">💧 ${TR(`Faire les exercices`,`Do the exercises`)}</button>`,
     },
     {
       title: TR('Prêt à jouer','Ready to play'),
