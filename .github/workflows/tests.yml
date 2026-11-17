@@ -1,0 +1,29 @@
+name: Tests
+
+# La suite de tools/tests tourne sur chaque pull request et sur main (environ 9 minutes) : un échec bloque la fusion avant qu'une régression n'arrive sur le jeu publié.
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Installer Playwright et Chromium
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Lancer la suite
+        run: node tools/run_tests.js
