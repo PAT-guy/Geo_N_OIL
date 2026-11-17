@@ -3301,7 +3301,7 @@ function drillBlock(blockId, method, equip, est, prog){
   if(b.well||b.dryHole){addLog(TR('Ce bloc est déjà foré.','This block is already drilled.'),'bad');return;}
   if(G.drilling.some(d=>d.blockId===blockId)){ const m = TR('Un forage est déjà en cours sur ce bloc.','A drilling is already under way on this block.'); addLog(m,'bad'); toast(m); return; }
   if(method==='strati' && b.strati){ const m = TR('Ce bloc a déjà son sondage.','This block already has its survey hole.'); addLog(m,'bad'); toast(m); return; }
-  if(G.labPick==null && LABOPT.pick && method!=='strati' && G.mode!=='sandbox'){ const m = TR('Désignez d\'abord votre horizon cible sur la coupe (clic sur une ligne de la sismique, boutons H1, H2… ou « viser » du tableau).','First designate your target horizon on the section (click a line on the seismic, the H1, H2… buttons or "aim" in the table).'); addLog(m, 'bad'); toast(m); return; }
+  if(G.labPick==null && LABOPT.pick && method!=='strati' && G.mode!=='sandbox'){ const m = TR('Désignez d\'abord votre horizon cible sur la coupe (clic sur une couche de la sismique, boutons H1, H2… ou « viser » du tableau).','First designate your target horizon on the section (click a layer on the seismic, the H1, H2… buttons or "aim" in the table).'); addLog(m, 'bad'); toast(m); return; }
   if(b.studyLevel<1){addLog(TR('Réalisez au moins une étude (gravimétrie ou sismique) avant de forer.','Do at least one study (gravity or seismic) before drilling.'),'bad');return;}
   if(method==='frac' && (G.simple || b.isOffshore)){ const m = TR('La fracturation n\'est pas proposée ici.','Fracturing is not offered here.'); addLog(m,'bad'); toast(m); return; }
   const depth = method==='frac' ? fracDepthEstimate(b) : drillDepthEstimate(b);
@@ -6296,7 +6296,7 @@ function labTipHtml(){
   const n = STRAT.length;
   const chips = `<div class="lab-chips">${Array.from({length:n},(_,i)=>`<button class="lab-pick ${G.labPick===i?'sel':''}" onclick="labSetPick(${i})">H${i+1}</button>`).join('')}${G.labPick!=null?`<button class="lab-pick" onclick="labClearPick()">${TR('Retirer','Clear')}</button>`:''}</div>`;
   return G.labPick==null
-    ? `<div class="lab-tip">🎯 <b>${TR(`Désignez votre cible`,`Designate your target`)}</b>${TR(` : cliquez sur une ligne de la sismique, sur « viser » dans le tableau, ou choisissez ci-dessous. Forer le mauvais horizon donne un puits sec ; un bon choix rapporte `,` : click a line on the seismic, “aim” in the table, or choose below. Drilling the wrong horizon gives a dry hole; a good choice earns `)}${formatM(LAB_PICK_BONUS)}${TR(`, une fois par province.`,`, once per province.`)}${chips}</div>`
+    ? `<div class="lab-tip">🎯 <b>${TR(`Désignez votre cible`,`Designate your target`)}</b>${TR(` : cliquez sur une couche de la sismique, sur « viser » dans le tableau, ou choisissez ci-dessous. Forer le mauvais horizon donne un puits sec ; un bon choix rapporte `,` : click a layer on the seismic, “aim” in the table, or choose below. Drilling the wrong horizon gives a dry hole; a good choice earns `)}${formatM(LAB_PICK_BONUS)}${TR(`, une fois par province.`,`, once per province.`)}${chips}</div>`
     : `<div class="lab-tip">🎯 <b>${TR(`Cible : H`,`Target: H`)}${G.labPick+1}</b>${TR(`. Les forages la visent. Choisissez un autre horizon pour changer.`,`. Wells aim at it. Pick another horizon to change.`)}${chips}</div>`;
 }
 // temps double moyen en millisecondes en fonction de la profondeur (modèle de vitesse moyen du profil)
@@ -6472,11 +6472,9 @@ function labPickAt(evt){
   const t = (p.x - info.m[0])/info.m[2], d = info.d[0] + (p.y - info.m[1])/info.m[3]*(info.d[1]-info.d[0]);
   let bi = -1, bd = Infinity; info.b.forEach((b,i)=>{ if(!b) return; const dd = Math.abs(b.t - t); if(dd<bd){ bd = dd; bi = i; } });
   if(bi<0) return; const L = info.b[bi].L; let li = -1, best = Infinity;
-  // V5.9 : on vise le réflecteur (toit de couche) le plus proche du clic, pas la couche qui le contient.
-  // Un clic sur une ligne de la sismique désigne donc la couche qui commence à cette ligne.
-  L.forEach((l,i)=>{ if(l[1]<1) return; const dist = Math.abs(d-l[0]); if(dist<best){ best = dist; li = i; } });
-  // clic franchement à l'intérieur d'une couche épaisse (loin de tout toit) : couche contenant le clic
-  L.forEach((l,i)=>{ if(l[1]<1) return; const rng = Math.abs(info.d[1]-info.d[0]); if(d>=l[0] && d<=l[0]+l[1] && best>0.06*rng) li = i; });
+  // V5.10 : la cible est la couche sous le doigt (celle que l'infobulle nomme). Sur une limite exacte, la couche du dessous.
+  // Hors de toute couche (trou entre deux profils), la couche dont le toit ou la base est la plus proche.
+  L.forEach((l,i)=>{ if(l[1]<1) return; const inside = d>=l[0] && d<l[0]+l[1]; const dist = inside ? 0 : Math.min(Math.abs(d-l[0]), Math.abs(d-(l[0]+l[1]))); if(dist<best){ best = dist; li = i; } });
   if(li>=0) labSetPick(li);
 }
 function labResultHtml(b, missed, resIdx){
@@ -7497,7 +7495,7 @@ function guideCompute(){
     if(sc) return {cur:4, text:TR(`La sismique est muette et aucun puits du profil n'a de log : la coupe ne montre pas les roches. Un sondage stratigraphique en (${sc.b.x}, ${sc.b.y}) coûte environ 30 % d'un forage et révèle la lithologie (avec l'analyse de carotte).`,`Seismic is silent and no well on the profile has a log: the section does not show the rocks. A stratigraphic survey hole at (${sc.b.x}, ${sc.b.y}) costs about 30 % of a well and reveals the lithology (with the core analysis).`),
               act:{label:TR(`Sondage en (${sc.b.x}, ${sc.b.y}) · ${formatM(sc.p.cost)}`,`Survey hole at (${sc.b.x}, ${sc.b.y}) · ${formatM(sc.p.cost)}`), call:`guideDo('strati',${sc.b.id})`, ok:G.mode==='sandbox'||money(sc.p.cost), why:TR(`Budget insuffisant (${formatM(sc.p.cost)} requis).`,`Insufficient budget (${formatM(sc.p.cost)} required).`)}}; }
   if(G.labPick==null && LABOPT.pick && ranked.length){
-    return {cur:4, text:TR('Avant de forer, désignez sur la coupe l\'horizon que vous pensez être le réservoir : clic sur la sismique, ou bouton « viser » du tableau. Un mauvais choix donne un puits sec.','Before drilling, designate on the section the horizon you think is the reservoir: click a line on the seismic, the H1, H2… buttons under the section, or “aim” in the table. A wrong choice gives a dry hole.'),
+    return {cur:4, text:TR('Avant de forer, désignez sur la coupe l\'horizon que vous pensez être le réservoir : clic sur la sismique, ou bouton « viser » du tableau. Un mauvais choix donne un puits sec.','Before drilling, designate on the section the horizon you think is the reservoir: click a layer on the seismic, the H1, H2… buttons under the section, or “aim” in the table. A wrong choice gives a dry hole.'),
             act:{label:TR('Aller à la coupe','Go to the section'), call:'labGoSection()', ok:true}};
   }
   if(ranked.length && ranked[0].e.ev > 0){
@@ -9833,7 +9831,7 @@ function _doStartGame(){
         La <b>${TR(`coupe`,`section`)}</b>${TR(` montre une tranche verticale entre deux blocs. Le bouton `,` shows a vertical slice between two blocks. The `)}<i>${TR(`Agrandir la coupe`,`Enlarge the section`)}</i>${TR(` l'ouvre en
         pleine page (sur téléphone, `,` button opens it full page (on a phone, `)}<i>${TR(`Pivoter`,`Rotate`)}</i>${TR(` la couche à l'horizontale). Seule la profondeur est chiffrée :
         la distance n'est pas à l'échelle.`,` puts the layer horizontal). Only depth is quantified:
-        distance is not to scale.`)}<br><br>${TR(`Avec l'option « Désigner la cible soi-même », il faut choisir l'horizon à viser avant de forer : cliquez sur une ligne de la sismique (la couche qui commence à cette ligne est retenue), ou utilisez les boutons H1, H2… sous la coupe. Un second clic ne retire pas la cible, le bouton « Retirer » le fait. Un mauvais horizon donne un puits sec.`,`With the “Designate the target yourself” option, you must pick the horizon to aim at before drilling: click a line on the seismic (the layer starting at that line is chosen), or use the H1, H2… buttons under the section. A second click does not remove the target, the “Clear” button does. A wrong horizon gives a dry hole.`)}`,
+        distance is not to scale.`)}<br><br>${TR(`Avec l'option « Désigner la cible soi-même », il faut choisir l'horizon à viser avant de forer : cliquez sur une couche de la sismique (la couche touchée est retenue), ou utilisez les boutons H1, H2… sous la coupe. Un second clic ne retire pas la cible, le bouton « Retirer » le fait. Un mauvais horizon donne un puits sec.`,`With the “Designate the target yourself” option, you must pick the horizon to aim at before drilling: click a layer on the seismic (the layer you touch is chosen), or use the H1, H2… buttons under the section. A second click does not remove the target, the “Clear” button does. A wrong horizon gives a dry hole.`)}`,
     },
     {
       title: TR('Estimer avant de forer','Estimating before drilling'),
