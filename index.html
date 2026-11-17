@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.12</title>
+<title>GeoExplorer V5.13</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -5136,6 +5136,12 @@ function blockStudiesHtml(b){
   return html;
 }
 
+function anaPanelHtml(b){
+  if(!LABOPT.analyses || G.simple || !(b.well || b.dryHole)) return '';
+  G.anaDone = G.anaDone || {};
+  const btn = (t, label) => `<button class="lab-pick ${G.anaDone[b.id+'|'+t]?'sel':''}" onclick="window.__qz.anaOpen(${b.id},'${t}')">${G.anaDone[b.id+'|'+t]?'✓ ':''}${label}</button>`;
+  return `<div class="ps-section">${TR('Analyses du métier','Trade analyses')}</div><div class="lab-note" style="margin-bottom:6px;">${TR('À vous de calculer, avec les données de ce bloc. Une analyse réussie rapporte une prime.','Do the calculation with this block\'s data. A passed analysis earns a bonus.')}</div><div class="lab-chips">${btn('limiting',TR('🔍 Facteur limitant','🔍 Limiting factor'))}${btn('volumes',TR('📐 Volumes','📐 Volumes'))}${b.well?btn('decline',TR('📉 Déclin','📉 Decline')):''}${b.well?btn('welltest',TR('🧪 Essai de puits','🧪 Well test')):''}</div>`;
+}
 function renderGeoPanel(b){
   const el=document.getElementById('geoContent');
   if(!b){el.innerHTML=TR('<div style="color:var(--muted);font-size:12.5px;padding:16px 0;">Cliquez un bloc sur la carte pour voir ce que vous savez de lui.</div>','<div style="color:var(--muted);font-size:12.5px;padding:16px 0;">Click a block on the map to see what you know about it.</div>');return;}
@@ -5239,6 +5245,7 @@ function renderGeoPanel(b){
     });
   }
 
+  html += anaPanelHtml(b);
   el.innerHTML=html;
 }
 
@@ -6092,12 +6099,12 @@ function labThickFactor(i, x, y, g, structureMap){
   const ang = h2*Math.PI*2, drift = ((x/g - .5)*Math.cos(ang) + (y/g - .5)*Math.sin(ang)) * 0.35 * (h3 - 0.25)*2;
   return clamp(1 + 0.12*Math.tanh(structureMap/400)*sens + drift, 0.6, 1.4);
 }
-const LAB_DEFAULT_OPT = { advfluids:false, rigprog:false, finance:true, thick:true, nolimit:false, mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true, locked:false };
+const LAB_DEFAULT_OPT = { advfluids:false, rigprog:false, analyses:false, finance:true, thick:true, nolimit:false, mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, cheat:true, locked:false };
 const LAB_PRESETS = {
   decouverte: { label:TR('Découverte','Discovery'), d:TR('Coupe lisible comme dans les règles d\'origine, aucune contrainte.','Section readable as in the original rules, no constraint.'), o:{ mute:false, pick:false, cal:false, strati:true, dhi:false, real:false, thick:false, cheat:true } },
   inter:      { label:TR('Intermédiaire','Intermediate'), d:TR('Sismique muette et cible à désigner, calage non exigé.','Silent seismic and target to be designated, tie not required.'), o:{ mute:true, pick:true, cal:false, strati:true, dhi:false, real:false, thick:true, cheat:true } },
-  complet:    { label:'Complet', d:TR('Toutes les règles avancées, bouton « vérité » disponible.','All advanced rules, “truth” button available.'), o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, thick:true, cheat:true } },
-  expert:     { label:'Expert', d:TR('Toutes les règles, sans bouton « vérité ».','All rules, no “truth” button.'), o:{ mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, thick:true, cheat:false } },
+  complet:    { label:'Complet', d:TR('Toutes les règles avancées, bouton « vérité » disponible.','All advanced rules, “truth” button available.'), o:{ analyses:true, mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, thick:true, cheat:true } },
+  expert:     { label:'Expert', d:TR('Toutes les règles, sans bouton « vérité ».','All rules, no “truth” button.'), o:{ analyses:true, mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, thick:true, cheat:false } },
 };
 // Préréglage proposé par niveau : les règles se durcissent avec le niveau (modifiables avant la partie)
 const LAB_MODE_PRESET = { decouverte:'decouverte', junior:'decouverte', expert:'inter', expedition:'complet', tp:'decouverte', sandbox:'decouverte' };
@@ -6140,6 +6147,7 @@ function labOptRender(){
     ${row('nolimit', TR('Aucune limite de temps','No time limit'), TR('La partie ne s\'arrête pas à la fin de la durée prévue du niveau (20, 25 ou 35 ans) : elle ne se termine que par la victoire ou la faillite. Modifiable en cours de partie tant que les options ne sont pas verrouillées.','The game does not stop at the end of the level\'s planned duration (20, 25 or 35 years): it ends only by victory or bankruptcy. Can be changed during the game as long as the options are not locked.'))}
     ${row('advfluids', TR('Production avancée','Advanced production'), TR('Eau et BSW (percée d\'eau, camion, injection, recyclage), qualité du brut et du gaz (API, soufre, GOR, gaz associé), capacité de traitement et d\'export, pression de réservoir et mécanismes de drainage. Désactivée : économie simple, sans ces règles. ','Water and BSW (breakthrough, trucking, injection, recycling), oil and gas quality (API, sulphur, GOR, associated gas), processing and export capacity, reservoir pressure and drive mechanisms. Off: simple economics without these rules. ') + (labOptMode==='start' ? TR('Activée par défaut en Senior et en Grande exploration.','On by default in Senior and Grand Exploration.') : TR('Choisie au lancement : non modifiable en cours de partie.','Chosen at launch: cannot be changed during a game.')), labOptMode!=='start')}
     ${row('rigprog', TR('Dimensionner le forage','Size the drilling programme'), TR('Avant chaque forage, vous composez le programme : densité de boue par section, sabots de tubage, matériel, face à la fenêtre de pression du bloc (pores et fracturation). Une boue trop légère donne une venue d\'effluents, trop lourde des pertes ou un coincement ; un tubage de plus coûte et charge l\'appareil. Désactivé : le forage se lance directement, comme avant.','Before each well you compose the programme: mud density per section, casing shoes, equipment, against the block\'s pressure window (pore and fracture). Mud that is too light gives a kick, too heavy gives losses or sticking; one more casing costs money and loads the rig. Off: the well is launched directly, as before.'))}
+    ${row('analyses', TR('Analyses du métier','Trade analyses'), TR('Sur un bloc foré, vous faites vous-même les calculs : volumes et réserves, déclin et prix d\'équilibre, perméabilité par l\'essai de puits, facteur limitant. Chaque analyse réussie rapporte une prime de 60 k$ (une fois par bloc), sans pénalité si vous vous trompez. Désactivé : le jeu ne vous demande aucun calcul.','On a drilled block you do the calculations yourself: volumes and reserves, decline and break-even price, permeability from the well test, limiting factor. Each analysis passed earns a $60k bonus (once per block), with no penalty if you are wrong. Off: the game asks for no calculation.'))}
     ${row('cheat', TR('Bouton « Voir la vérité » (triche)','“Show the truth” button (cheat)'), TR('Affiche la vraie coupe géologique à tout moment.','Shows the true geological section at any time.'))}
     <label class="lab-opt-row" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px;"><input type="checkbox" ${o.locked?'checked':''} onchange="labOptSet('locked', this.checked)"><span><b>${TR(`🔒 Verrouiller ces options`,`🔒 Lock these options`)}</b><br><span class="lab-mut">${TR(`Aucune modification possible en cours de partie, et le bouton « vérité » est retiré.`,`No changes possible during the game, and the “truth” button is removed.`)}</span></span></label>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;position:sticky;bottom:-14px;background:var(--panel);padding:10px 0 4px;"><button class="lab-pick" onclick="labOptCancel()">${labOptMode==='start'?TR('Retour','Back'):'Annuler'}</button><button class="lab-pick sel" id="labOptGo" onclick="labOptValidate()">${labOptMode==='start'?TR('Lancer la partie','Start the game'):'Appliquer'}</button></div></div>`;
@@ -8707,7 +8715,7 @@ function _doStartGame(){
     uncertaintyLevel: menuConfig.uncertainty,
     budget:         m.budget,
     month:0, speed:1, paused:false, labPick:null, labCal:{}, labProc:{}, labSecPrev:null, labOpt:{ ...LABOPT },
-    price:80, priceHistory:[80], priceAlerts:[], labPickBonusProv:{},
+    price:80, priceHistory:[80], priceAlerts:[], labPickBonusProv:{}, anaDone:{},
     wells:[], drilling:[], sectionA:null, sectionB:null, sectionsHistory:[], marketEvents:[], informant:null, stormMonthsLeft:0, taxMonthsLeft:0, eventLog:[], calibLog:[],
     tool:'select', history:[], lastCF:0, lastRevenue:0, lastOpex:0, lastLoanPayment:0,
     priceTrend:0, priceTrendTarget:0, revealFieldsMode:false,
@@ -9462,6 +9470,75 @@ function _doStartGame(){
        explain:TR('Le déclin est une extrapolation : douze mois donnent une estimation utile mais large, surtout si la courbe est hyperbolique (le déclin ralentit). Plus l\'historique est long, plus la fourchette se resserre.','Decline is an extrapolation: twelve months give a useful but wide estimate, especially if the curve is hyperbolic (decline slows). The longer the history, the narrower the range.')} ],
   };
 
+  // ---------- Analyses sur les vrais puits (V5.13, option « Analyses du métier ») : mêmes calculs que l'Atelier, mais avec les données du bloc ou du puits du joueur ----------
+  const ANA_BONUS = 60000;
+  const ANA_HYP = { bo:1.25, rf:30, opexNote:true };   // hypothèses de travail du bureau d'études, annoncées au joueur (le jeu ne modélise ni Bo ni taux de récupération)
+  function qzOptsAny(good, cands, fmt){
+    for(let i=0;i<cands.length;i++) for(let j=i+1;j<cands.length;j++) for(let k=j+1;k<cands.length;k++){ const o = qzFluidOpts(good, [cands[i],cands[j],cands[k]], fmt); if(o) return o; }
+    return null;
+  }
+  function anaReward(blockId, type){
+    return ok => { if(!ok) return; G.anaDone = G.anaDone || {}; const key = blockId+'|'+type; if(G.anaDone[key]) return; G.anaDone[key] = true;
+      if(G.mode!=='sandbox'){ G.budget += ANA_BONUS; } addLog(TR(`📐 Analyse réussie sur le bloc (${blocks[blockId].x}, ${blocks[blockId].y}) : prime de ${formatM(ANA_BONUS)}.`,`📐 Analysis passed on block (${blocks[blockId].x}, ${blocks[blockId].y}): ${formatM(ANA_BONUS)} bonus.`), 'ev'); if(typeof updateHud==='function') updateHud(); };
+  }
+  function anaBuild(b, type){
+    const res = b.horizons.find(h=>h.role==='reservoir'), w = b.well, e = b.estimate || {};
+    const rw = anaReward(b.id, type), tag = x => ({ ...x, gen:true, onAnswer:rw, _blockId:b.id, _type:type });
+    if(type==='volumes'){
+      const c = e.core; if(!c || c.noReservoir || !c.hcSaturation) return { err:TR('Il faut une analyse de carotte qui a rencontré des hydrocarbures sur ce bloc.','A core analysis that met hydrocarbons is needed on this block.') };
+      const phi = Math.round(c.porosity), sw = 100 - Math.round(+c.hcSaturation), h = Math.round(res.thicknessLocal ?? res.thickness), area = Math.round((3 + 22*(b.trapFactor||0.5))*2)/2, bo = ANA_HYP.bo, rf = ANA_HYP.rf;
+      const st = area*1e6*h*(phi/100)*(1-sw/100)/bo*QZ_BBL_M3/1e6, good = st*rf/100;
+      const o = qzOptsAny(good, [{ v:st, tag:TR('volume en place pris pour des réserves','in-place volume taken for reserves') },{ v:good*bo, tag:TR('oubli de diviser par Bo','forgot to divide by Bo') },{ v:good/(1-sw/100), tag:TR('oubli du facteur (1 − Sw)','forgot the (1 − Sw) factor') },{ v:good*2.303, tag:TR('conversion fautive','faulty conversion') }], v=>`${qzNum(v)} ${TR('millions de barils','million barrels')}`); if(!o) return { err:'?' };
+      return [tag({ chip:TR('Volumes de ce bloc','This block\'s volumes'), facts:[[TR('Surface de fermeture (hypothèse)','Closure area (assumed)'), `${qzNum(area,1)} km²`],[TR('Épaisseur utile (log)','Net pay (log)'), `${h} m`],[TR('Porosité (carotte)','Porosity (core)'), `${phi} %`],[TR('Saturation en eau (carotte)','Water saturation (core)'), `${sw} %`],['Bo', qzNum(bo,2)+TR(' (hypothèse)',' (assumed)')],[TR('Taux de récupération','Recovery factor'), `${rf} % ${TR('(hypothèse)','(assumed)')}`]],
+        ask:TR('Quelles réserves récupérables pour ce bloc ?','What recoverable reserves for this block?'), note:TR('Porosité, saturation et épaisseur viennent de vos mesures. La surface, Bo et le taux de récupération sont des hypothèses du bureau d\'études : le jeu ne les modélise pas.','Porosity, saturation and thickness come from your measurements. Area, Bo and recovery factor are working assumptions: the game does not model them.'),
+        choices:o.choices, correct:o.correct, explain:TR(`Réserves = ${qzNum(good)} millions de barils (STOIIP ${qzNum(st)}). Erreurs proposées : `,`Reserves = ${qzNum(good)} million barrels (STOIIP ${qzNum(st)}). Wrong answers were: `) + o.tags.filter(Boolean).join(' ; ') + '.' })];
+    }
+    if(type==='decline'){
+      if(!w || w.status!=='producing' || !(w.comps && w.comps[0])) return { err:TR('Il faut un puits en production sur ce bloc.','A producing well is needed on this block.') };
+      const cm = w.comps[0], d = cm.dc || DECL, Di = d.Di, bb = d.b, T = 120, qm = cm.q0, qd = qm/30.4;
+      const cum = (q0, Dx, B, t) => Math.abs(1-B)<1e-6 ? q0/Dx*Math.log(1+Dx*t) : q0/(Dx*(1-B))*(1-Math.pow(1+B*Dx*t, -(1-B)/B));
+      const good = cum(qm, Di, bb, T)/1e3;   // k barils sur 10 ans
+      const cands = [{ v:qm/Di*(1-Math.exp(-Di*T))/1e3, tag:TR('courbe exponentielle : le déclin ralentit pourtant (b > 0)','exponential curve: yet the decline slows (b > 0)') },{ v:cum(qm, Di, 1, T)/1e3, tag:TR('courbe harmonique (b = 1) au lieu de b réel','harmonic curve (b = 1) instead of the real b') },{ v:qm*T/1e3*0.5, tag:TR('débit initial moyenné sans déclin','initial rate averaged with no decline') },{ v:cum(qm, Di, bb, 12)/1e3, tag:TR('un an de production pris pour dix ans','one year taken for ten years') },{ v:qd*T/1e3, tag:TR('débit par jour pris pour un débit par mois','daily rate taken as monthly') }];
+      const o = qzOptsAny(good, cands, v=>`${Math.round(v).toLocaleString(DEC===','?'fr-FR':'en-US')} ${TR('k barils','k barrels')}`); if(!o) return { err:'?' };
+      const cost = w.cost, fixed = w.offshore ? OFFSHORE_OPEX : 8000, varOp = (w.offshore?14:4)+6, be = (cost + fixed*T)/(good*1e3) + varOp;
+      const o2 = qzOptsAny(be, [{ v:cost/(good*1e3), tag:TR('exploitation oubliée','operating cost forgotten') },{ v:cost/(good*1e3)+varOp, tag:TR('frais fixes mensuels oubliés','fixed monthly costs forgotten') },{ v:(cost+fixed*T)/(good*1e3), tag:TR('coût variable par baril oublié','variable cost per barrel forgotten') },{ v:be*1.8, tag:TR('coût compté deux fois','cost counted twice') }], v=>`${Math.round(v)} $/bbl`);
+      const out = [tag({ chip:TR('Déclin de ce puits','This well\'s decline'), facts:[[TR('Débit initial','Initial rate'), `${Math.round(qd)} bbl/${TR('j','d')}`],[TR('Déclin initial (nominal)','Initial decline (nominal)'), TR(`${(Di*100).toFixed(1).replace('.',DEC)} % par mois`,`${(Di*100).toFixed(1)} % per month`)],[TR('Exposant b (hyperbolique)','Exponent b (hyperbolic)'), qzNum(bb,2)],[TR('Horizon','Horizon'), TR('10 ans (120 mois)','10 years (120 months)')]],
+        ask:TR('Quelle production cumulée sur 10 ans ?','What cumulative production over 10 years?'), note:TR('Hyperbolique : cumul = q × [1 − (1 + b·Di·t)^(−(1−b)/b)] ÷ (Di·(1−b)), avec q en barils par mois (débit par jour × 30,4). Pour b = 1 : q × ln(1 + Di·t) ÷ Di.','Hyperbolic: cumulative = q × [1 − (1 + b·Di·t)^(−(1−b)/b)] ÷ (Di·(1−b)), with q in barrels per month (daily rate × 30.4). For b = 1: q × ln(1 + Di·t) ÷ Di.'),
+        choices:o.choices, correct:o.correct, explain:TR(`Cumul sur 10 ans = ${Math.round(good).toLocaleString('fr-FR')} k barils, la courbe que le jeu applique à ce puits. Erreurs proposées : `,`10-year cumulative = ${Math.round(good).toLocaleString('en-US')} k barrels, the curve the game applies to this well. Wrong answers were: `) + o.tags.filter(Boolean).join(' ; ') + '.' })];
+      if(o2) out.push(tag({ chip:TR('Prix d\'équilibre de ce puits','This well\'s break-even price'), facts:[[TR('Coût du puits','Well cost'), qzM(cost)],[TR('Production sur 10 ans','10-year production'), `${Math.round(good).toLocaleString('fr-FR')} ${TR('k barils','k barrels')}`],[TR('Frais fixes','Fixed costs'), `${fixed.toLocaleString('fr-FR')} $/${TR('mois','month')}`],[TR('Coût variable','Variable cost'), `${varOp} $/bbl`]],
+        ask:TR('Quel prix du brut couvre ce puits sur 10 ans (sans actualisation) ?','What oil price covers this well over 10 years (undiscounted)?'), note:TR('Prix d\'équilibre = (coût du puits + frais fixes × 120 mois) ÷ production + coût variable.','Break-even price = (well cost + fixed costs × 120 months) ÷ production + variable cost.'),
+        choices:o2.choices, correct:o2.correct, explain:TR(`Prix d'équilibre = ${Math.round(be)} $/bbl, à comparer au cours actuel (${Math.round(G.price)} $/bbl). Erreurs proposées : `,`Break-even price = $${Math.round(be)}/bbl, to compare with today's price ($${Math.round(G.price)}/bbl). Wrong answers were: `) + o2.tags.filter(Boolean).join(' ; ') + '.' }));
+      return out;
+    }
+    if(type==='welltest'){
+      if(!w || w.status!=='producing' || w.method==='frac' || b.isGas || !res) return { err:TR('Il faut un puits conventionnel à l\'huile en production.','A conventional oil well in production is needed.') };
+      const q = Math.round(wellRate(w)/30.4/10)*10 || 10, mu = 1.0, B = 1.2, hft = Math.round((res.thicknessLocal ?? res.thickness)*3.281), kTrue = res.permeability, m = 162.6*q*B*mu/(kTrue*hft);
+      if(m < 6 || !isFinite(m)) return { err:TR('Perméabilité trop forte : la remontée de pression est trop rapide pour se lire sur ce puits.','Permeability too high: the build-up is too fast to read on this well.') };
+      const mr = m < 30 ? Math.round(m*10)/10 : Math.round(m), k = 162.6*q*B*mu/(mr*hft);
+      const o = qzOptsAny(k, [{ v:k*2.303, tag:TR('logarithme népérien pris pour décimal (facteur 2,303)','natural log taken for base 10 (factor 2.303)') },{ v:162.6*q*B*mu/mr, tag:TR('épaisseur oubliée','thickness forgotten') },{ v:k/mu*0.5, tag:TR('facteur de volume oublié','volume factor forgotten') },{ v:k*3.281, tag:TR('épaisseur en mètres au lieu de pieds','thickness in metres instead of feet') }], v=>`${qzNum(v,v<10?1:0)} mD`); if(!o) return { err:'?' };
+      return [tag({ chip:TR('Essai de ce puits','This well\'s test'), facts:[[TR('Débit avant fermeture','Rate before shut-in'), `${q} bbl/${TR('j','d')}`],[TR('Viscosité','Viscosity'), `${qzNum(mu,1)} cP`],['Bo', qzNum(B,2)],[TR('Épaisseur utile','Net pay'), `${hft} ft`],[TR('Pente de Horner','Horner slope'), `${qzNum(mr, m<30?1:0)} psi/${TR('cycle','cycle')}`]],
+        ask:TR('Quelle perméabilité (mD) ?','What permeability (mD)?'), note:TR('k = 162,6 × q × Bo × µ ÷ (m × h), avec q en bbl/j, µ en cP, h en ft et m en psi par cycle.','k = 162.6 × q × Bo × µ ÷ (m × h), with q in bbl/d, µ in cP, h in ft and m in psi per cycle.'),
+        choices:o.choices, correct:o.correct, explain:TR(`k = ${qzNum(k,k<10?1:0)} mD${e.core ? ` (la carotte donnait ${e.core.permeability.toFixed(1).replace('.',DEC)} mD : la carotte mesure un point, l'essai la moyenne autour du puits)` : ''}. Erreurs proposées : `,`k = ${qzNum(k,k<10?1:0)} mD${e.core ? ` (the core gave ${e.core.permeability.toFixed(1)} mD: a core measures one point, the test the average around the well)` : ''}. Wrong answers were: `) + o.tags.filter(Boolean).join(' ; ') + '.' })];
+    }
+    if(type==='limiting'){
+      if(!(b.well || b.dryHole) || (b.well && b.well.method==='frac')) return { err:TR('Il faut un bloc foré de façon conventionnelle.','A conventionally drilled block is needed.') };
+      const F = [[TR('Piège','Trap'), b.trapFactor, TR('sismique 3D','3D seismic')],[TR('Réservoir','Reservoir'), b.resFactor, TR('log et carotte','log and core')],[TR('Couverture','Seal'), b.sealFactor, TR('log et sismique','log and seismic')],[TR('Charge','Charge'), b.srcFactor, TR('Rock-Eval','Rock-Eval')]];
+      const v = F.map(f=>f[1]), mn = Math.min(...v), worst = v.indexOf(mn);
+      return [tag({ chip:TR('Facteur limitant de ce bloc','This block\'s limiting factor'), facts:F.map(f=>[f[0], `${Math.round(f[1]*100)} %`]), ask:TR('Quel facteur limitait ce bloc, et quelle étude l\'aurait précisé avant de forer ?','Which factor limited this block, and which study would have clarified it before drilling?'),
+        note:TR('Les facteurs réels du bloc sont révélés par le forage. Le plus faible pèse le plus sur la probabilité.','The block\'s real factors are revealed by drilling. The weakest weighs most on the probability.'),
+        choices:F.map(f=>`${f[0]} : ${f[2]}`), correct:worst, explain:TR(`${F[worst][0]} à ${Math.round(mn*100)} % : c'est le maillon faible de ce bloc. L'étude adaptée : ${F[worst][2]}.`,`${F[worst][0]} at ${Math.round(mn*100)} %: the weak link of this block. The matching study: ${F[worst][2]}.`) })];
+    }
+    return { err:'?' };
+  }
+  function anaOpen(blockId, type){
+    const b = blocks[blockId]; if(!b) return;
+    const r = anaBuild(b, type);
+    if(!Array.isArray(r)){ toast((r && r.err && r.err!=='?') ? r.err : TR('Pas assez de données sur ce bloc pour cette analyse.','Not enough data on this block for this analysis.')); return; }
+    const titles = { volumes:TR('📐 Volumes du bloc','📐 Block volumes'), decline:TR('📉 Déclin du puits','📉 Well decline'), welltest:TR('🧪 Essai de puits','🧪 Well test'), limiting:TR('🔍 Facteur limitant','🔍 Limiting factor') };
+    QUIZ_BANKS.ana_real = { title: titles[type], gen: ()=>r.map(q=>({ ...q })), ordered:true, questions:[] };
+    qzOpen('ana_real');
+  }
+
   const QZ_ROUND = 8; // questions par manche, tirées au hasard sans répétition
 
   function qzShuffled(arr){ return [...arr].sort(()=>Math.random()-.5); }
@@ -9931,6 +10008,7 @@ function _doStartGame(){
         const fb = document.getElementById('qzFeedback'), okk = chosen===q.correct;
         fb.innerHTML = `<span class="qz-verdict">${okk ? '✓ Correct' : TR('✗ Pas tout à fait','✗ Not quite')}</span>` + (q.explainHtml ? q.explainHtml : qzEsc(q.explain));
         fb.classList.add('show', okk ? 'ok' : 'ko');
+        if(q.onAnswer){ try{ q.onAnswer(okk); }catch(err){} }
         document.getElementById('qzNextBtn').style.display = '';
         { const m = document.getElementById('quizModal'); m.scrollTo({top: Math.max(0, fb.offsetTop - 96), behavior:'smooth'}); }
       });
@@ -9970,7 +10048,7 @@ function _doStartGame(){
   document.querySelectorAll('.mg-card[data-quiz]').forEach(card=>{
     card.addEventListener('click', ()=>qzOpen(card.dataset.quiz));
   });
-  window.__qz = { qzGenAnalyses, qzGenFluids, qzGenFluidsTuto, qzGenLogTraps, qzGenForage, qzGenMaturation, qzGenRockeval, qzGenSeismic, qzGenLitho, qzLithProto, qzLithDist, qzBuildRound, QUIZ_BANKS, open: qzOpen, order: () => qzOrder };   // pour les tests
+  window.__qz = { anaBuild, anaOpen, qzGenAnalyses, qzGenFluids, qzGenFluidsTuto, qzGenLogTraps, qzGenForage, qzGenMaturation, qzGenRockeval, qzGenSeismic, qzGenLitho, qzLithProto, qzLithDist, qzBuildRound, QUIZ_BANKS, open: qzOpen, order: () => qzOrder };   // pour les tests
   document.getElementById('qzCloseBtn').addEventListener('click', ()=>{
     document.getElementById('quizModal').classList.remove('open');
   });
