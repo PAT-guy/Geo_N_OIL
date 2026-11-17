@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.16</title>
+<title>GeoExplorer V5.17</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3701,18 +3701,18 @@ function co2Stop(blockId){
   addLog(TR(`Injection de CO2 arrêtée sur le puits (${b.x},${b.y}). Le gain disparaît, le soutien de pression aussi.`,`CO2 injection stopped on well (${b.x},${b.y}). The gain goes, and so does the pressure support.`), 'ev');
   updateHud(); renderStudiesPanel(b); renderGisementsPanel();
 }
-function co2Rows(w){
+function co2Rows(w, nb){
   if(!G.advOn || !w.rd || !w.fp || w.fp.kind!=='oil' || w.offshore || w.rd.mech==='tight' || w.rd.mech==='gasdep') return '';
   const b = blocks[w.blockId], st = co2State(w); let h = '';
   if(st){
     h += infoRow(TR('Injection de CO2','CO2 injection'), TR(`${st.misc?'miscible':'immiscible'} : +${Math.round(st.extra*100)} % de production${st.breakthrough?' (percée de CO2, le gain retombe)':''}`,`${st.misc?'miscible':'immiscible'}: +${Math.round(st.extra*100)} % production${st.breakthrough?' (CO2 breakthrough, gain fading)':''}`));
     h += infoRow(TR('Pression / MMP','Pressure / MMP'), `${Math.round(st.p)} bar / ${Math.round(st.mmp)} bar`);
     h += infoRow(TR('Coût du CO2','CO2 cost'), TR(`${st.util} Mcf par baril supplémentaire à ${co2Price().toFixed(2)} $/Mcf`,`${st.util} Mcf per incremental barrel at $${co2Price().toFixed(2)}/Mcf`));
-    h += `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" onclick="co2Stop(${b.id})">${TR('Arrêter le CO2','Stop CO2')}</button></div>`;
+    if(!nb) h += `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" onclick="co2Stop(${b.id})">${TR('Arrêter le CO2','Stop CO2')}</button></div>`;
   } else {
     const why = co2Eligible(w);
     h += infoRow(TR('CO2 : conditions du réservoir','CO2: reservoir conditions'), TR(`${Math.round(b.tempAtRes ?? 60)} °C, API ${w.fp.api}, MMP ≈ ${Math.round(co2Mmp(b, w.fp))} bar, pression actuelle ${Math.round(w.rd.pi*pressureFrac(w))} bar`,`${Math.round(b.tempAtRes ?? 60)} °C, API ${w.fp.api}, MMP ≈ ${Math.round(co2Mmp(b, w.fp))} bar, current pressure ${Math.round(w.rd.pi*pressureFrac(w))} bar`));
-    h += why ? `<div class="lab-note" style="margin:4px 0;">${why}</div>` : `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" ${G.budget>=CO2.capex||G.mode==='sandbox'?'':'disabled'} onclick="co2Buy(${b.id})">${TR('💨 Injecter du CO2','💨 Inject CO2')} · ${formatM(CO2.capex)}</button></div>`;
+    if(!nb) h += why ? `<div class="lab-note" style="margin:4px 0;">${why}</div>` : `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" ${G.budget>=CO2.capex||G.mode==='sandbox'?'':'disabled'} onclick="co2Buy(${b.id})">${TR('💨 Injecter du CO2','💨 Inject CO2')} · ${formatM(CO2.capex)}</button></div>`;
   }
   return h;
 }
@@ -3746,26 +3746,54 @@ function gasInjStop(blockId){
   addLog(TR(`Réinjection du gaz arrêtée sur le puits (${b.x},${b.y}) : le gaz est de nouveau vendu ou brûlé.`,`Gas reinjection stopped on well (${b.x},${b.y}): the gas is sold or flared again.`), 'ev');
   updateHud(); renderStudiesPanel(b); renderGisementsPanel();
 }
-function gasInjRows(w){
+function gasInjRows(w, nb){
   if(!G.advOn || !w.rd || !w.fp || w.fp.kind!=='oil' || w.offshore || w.rd.mech==='tight' || w.rd.mech==='gasdep') return '';
   const b = blocks[w.blockId], mcf = wellEconomics(w).assocMcf; let h = '';
   if(w.gasInj){
     h += infoRow(TR('Réinjection du gaz','Gas reinjection'), TR(`active : +${Math.round((gasInjBoost(w)-1)*100)} % de production, ${Math.round(mcf).toLocaleString('fr-FR')} Mcf par mois recomprimés`,`active: +${Math.round((gasInjBoost(w)-1)*100)} % production, ${Math.round(mcf).toLocaleString('en-US')} Mcf per month recompressed`));
-    h += `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" onclick="gasInjStop(${b.id})">${TR('Arrêter la réinjection','Stop reinjection')}</button></div>`;
+    if(!nb) h += `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" onclick="gasInjStop(${b.id})">${TR('Arrêter la réinjection','Stop reinjection')}</button></div>`;
   } else {
     const why = gasInjEligible(w);
     h += infoRow(TR('Gaz associé','Associated gas'), TR(`${Math.round(mcf).toLocaleString('fr-FR')} Mcf par mois (${gasState().plant ? 'vendu' : 'brûlé'})`,`${Math.round(mcf).toLocaleString('en-US')} Mcf per month (${gasState().plant ? 'sold' : 'flared'})`));
-    h += why ? `<div class="lab-note" style="margin:4px 0;">${why}</div>` : `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" ${G.budget>=GASINJ.capex||G.mode==='sandbox'?'':'disabled'} onclick="gasInjBuy(${b.id})">${TR('⛽ Réinjecter le gaz','⛽ Reinject the gas')} · ${formatM(GASINJ.capex)}</button></div>`;
+    if(!nb) h += why ? `<div class="lab-note" style="margin:4px 0;">${why}</div>` : `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" ${G.budget>=GASINJ.capex||G.mode==='sandbox'?'':'disabled'} onclick="gasInjBuy(${b.id})">${TR('⛽ Réinjecter le gaz','⛽ Reinject the gas')} · ${formatM(GASINJ.capex)}</button></div>`;
   }
   return h;
 }
-// Drainage assisté d'un puits : EOR générique (mode finance), injection de CO2 et réinjection du gaz (production avancée). Affiché dans la fiche Gisements.
+// Drainage assisté d'un puits : EOR générique (mode finance), injection de CO2 et réinjection du gaz (production avancée). Les commandes sont des pastilles à côté du puits (drainIcons) ;
+// la fiche ne garde que les informations (état de chaque dispositif, conditions du réservoir, gaz associé).
 function assistedRows(w){
   let h = '';
-  if(G.financeMode && !w.eorActive) h += `<div style="text-align:right;margin-top:4px;"><button class="cg-close" style="padding:2px 8px;" ${G.budget>=500000?'':'disabled'} onclick="activateEOR(${w.blockId})">${TR('⚡ EOR : +35 % pendant 24 mois','⚡ EOR: +35 % for 24 months')} · ${formatM(500000)}</button></div>`;
-  else if(G.financeMode && w.eorActive) h += infoRow('EOR', TR(`actif, encore ${w.eorMonthsLeft} mois`,`active, ${w.eorMonthsLeft} months left`));
-  h += co2Rows(w) + gasInjRows(w);
+  if(G.financeMode && w.eorActive) h += infoRow('EOR', TR(`actif, encore ${w.eorMonthsLeft} mois`,`active, ${w.eorMonthsLeft} months left`));
+  h += co2Rows(w, true) + gasInjRows(w, true);
   return h ? `<div style="margin-top:8px;padding-top:6px;border-top:1px dashed var(--line);"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">${TR('Drainage assisté','Assisted drainage')}</div>${h}</div>` : '';
+}
+// Pastilles ⚡ EOR, 💨 CO2, ⛽ Gaz à côté du nom du puits : active (pleine), disponible (cliquable, confirmation avec le coût), indisponible (grisée, la raison s'affiche au toucher).
+function drainKinds(w){
+  const k = [];
+  if(G.financeMode) k.push({ id:'eor', ico:'⚡', lbl:'EOR', on:!!w.eorActive, why: w.eorActive ? null : (G.budget<500000 ? TR('Budget insuffisant.','Insufficient budget.') : null), cost:500000 });
+  if(G.advOn && w.rd && w.fp && w.fp.kind==='oil' && !w.offshore && w.rd.mech!=='tight' && w.rd.mech!=='gasdep'){
+    k.push({ id:'co2', ico:'💨', lbl:'CO2', on:!!w.co2, why: w.co2 ? null : (co2Eligible(w) || (G.budget<CO2.capex && G.mode!=='sandbox' ? TR('Budget insuffisant.','Insufficient budget.') : null)), cost:CO2.capex });
+    k.push({ id:'gas', ico:'⛽', lbl:TR('Gaz','Gas'), on:!!w.gasInj, why: w.gasInj ? null : (gasInjEligible(w) || (G.budget<GASINJ.capex && G.mode!=='sandbox' ? TR('Budget insuffisant.','Insufficient budget.') : null)), cost:GASINJ.capex });
+  }
+  return k;
+}
+function drainIcons(w){
+  const ks = drainKinds(w); if(!ks.length) return '';
+  const nm = { eor:TR('EOR : +35 % pendant 24 mois','EOR: +35 % for 24 months'), co2:TR('Injection de CO2','CO2 injection'), gas:TR('Réinjection du gaz associé','Associated-gas reinjection') };
+  return `<div class="drain-row">${ks.map(k=>`<button class="drain-ic ${k.on?'on':''} ${(!k.on && k.why)?'off':''}" title="${(k.why||nm[k.id]).replace(/"/g,'&quot;')}" onclick="drainTap(${w.blockId},'${k.id}')">${k.ico} ${k.lbl}${k.on?' ✓':''}</button>`).join('')}</div>`;
+}
+function drainTap(blockId, kind){
+  const b = blocks[blockId], w = b && b.well; if(!w) return;
+  const k = drainKinds(w).find(x=>x.id===kind); if(!k) return;
+  const act = { eor:[()=>activateEOR(blockId), null], co2:[()=>co2Buy(blockId), ()=>co2Stop(blockId)], gas:[()=>gasInjBuy(blockId), ()=>gasInjStop(blockId)] }[kind];
+  const names = { eor:'EOR', co2:TR('l\'injection de CO2','CO2 injection'), gas:TR('la réinjection du gaz','gas reinjection') };
+  if(k.on){
+    if(!act[1]){ toast(TR('L\'EOR dure 24 mois, il s\'arrête seul.','EOR lasts 24 months and stops by itself.')); return; }
+    askConfirm(TR(`Arrêter ${names[kind]} ?`,`Stop ${names[kind]}?`), TR(`Puits (${b.x},${b.y}) : le gain disparaît et l'investissement déjà payé est perdu.`,`Well (${b.x},${b.y}): the gain goes and the investment already paid is lost.`), TR('Arrêter','Stop'), act[1]); return;
+  }
+  if(k.why){ toast(k.why); return; }
+  const detail = { eor:TR('+35 % de production pendant 24 mois.','+35 % production for 24 months.'), co2:TR(`Miscible au-dessus de ${Math.round(co2Mmp(b, w.fp))} bar (pression actuelle ${Math.round(w.rd.pi*pressureFrac(w))} bar). Le CO2 se paie ${co2Price().toFixed(2)} $/Mcf.`,`Miscible above ${Math.round(co2Mmp(b, w.fp))} bar (current pressure ${Math.round(w.rd.pi*pressureFrac(w))} bar). CO2 costs $${co2Price().toFixed(2)}/Mcf.`), gas:TR(`Le gaz associé n'est plus vendu ni brûlé. Recompression ${GASINJ.compress.toFixed(1)} $/Mcf.`,`Associated gas is no longer sold or flared. Recompression $${GASINJ.compress.toFixed(1)}/Mcf.`) }[kind];
+  askConfirm(TR(`Lancer ${names[kind]} ?`,`Start ${names[kind]}?`), TR(`Puits (${b.x},${b.y}) : ${formatM(k.cost)}. ${detail}`,`Well (${b.x},${b.y}): ${formatM(k.cost)}. ${detail}`), TR('Lancer','Start'), act[0]);
 }
 
 // Ce que le joueur peut déduire après 18 mois de production : la chute de pression rapportée au volume produit
@@ -4228,6 +4256,7 @@ function renderGisementsPanel(){
         <b style="font-size:13px;">${TR(`${TR(`Bloc (`,`Block (`)}`,`Block (`)}${b.x},${b.y})${b.isOffshore?' 🌊':''}</b>
         <span style="font-size:10px;color:${color};">${label}</span>
       </div>
+      ${w.status==='producing' ? drainIcons(w) : ''}
       ${body}
     </div>`;
   });
@@ -11399,6 +11428,10 @@ function _doStartGame(){
 .lab-status{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 6px;}
 .lab-chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--text);}
 .lab-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;}.lab-chips .lab-pick{min-width:40px;min-height:34px;}
+.drain-row{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px;}
+.drain-ic{min-height:40px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:12.5px;font-weight:600;cursor:pointer;}
+.drain-ic.on{background:var(--amber);border-color:var(--amber);color:#fff;}
+.drain-ic.off{opacity:.45;}
 .lab-tip{background:rgba(176,96,18,.09);border:1px solid rgba(176,96,18,.35);border-radius:8px;padding:9px 12px;margin:8px 0;font-size:12.5px;line-height:1.55;}
 .lab-help{margin-top:8px;border-top:1px solid var(--line);padding-top:6px;}
 .lab-help summary{cursor:pointer;font-weight:600;color:var(--amber);padding:5px 0;}
