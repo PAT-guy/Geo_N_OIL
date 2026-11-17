@@ -23,6 +23,7 @@ const MODE = process.argv[2] || 'decouverte', N = parseInt(process.argv[3] || '4
           if(/guideDo\('section'\)/.test(call)){ const c = blocks.filter(b=>!b.inSalt).sort((u,w)=>(w.estimate?.structPos??-1)-(u.estimate?.structPos??-1)); const A = c[0], B = c.find(x=>x.id!==A.id && Math.hypot(x.x-A.x,x.y-A.y)>=2 && Math.hypot(x.x-A.x,x.y-A.y)<=4) || c[1]; G.sectionA = A.id; G.sectionB = B.id; secRemember(A.id, B.id); setTool('select'); renderSection(); }
           else if(/guideDo\('drill',(\d+)\)/.test(call)){ const id = +/guideDo\('drill',(\d+)\)/.exec(call)[1], b = blocks[id], pl = drillPlan(b,'vertical'); if(!pl || !pl.equip) break; drillBlock(id,'vertical',pl.equip,b.playerEst, LABOPT.rigprog ? progAuto(b, Math.round(progTrueTD(b,'vertical')/10)*10) : undefined); }
           else if(/guideDo\('strati',(\d+)\)/.test(call)){ launchStrati(+/guideDo\('strati',(\d+)\)/.exec(call)[1]); }
+          else if(/guideDo\('frac',(\d+)\)/.test(call)){ const id = +/guideDo\('frac',(\d+)\)/.exec(call)[1], b = blocks[id], pl = drillPlan(b,'frac'); if(!pl || !pl.equip) break; drillBlock(id,'frac',pl.equip,null, LABOPT.rigprog ? progAuto(b, Math.round(progTrueTD(b,'frac')/10)*10) : undefined); }
           else (0, eval)(call);
         }catch(e){ break; } flush(); }
         if(G.advOn && /lev/.test(strat)){ try{

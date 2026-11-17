@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.5</title>
+<title>GeoExplorer V5.6</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -7308,6 +7308,54 @@ let GUIDE_STUDY_CAP = 0.35;
 function guideStudySpent(){
   return blocks.reduce((s,b)=>s+b.studies.reduce((t,st)=>t+((st.type==='gravity'||st.type==='seismic2d'||st.type==='seismic3d') ? (st.cost||0) : 0),0),0);
 }
+// Exploitation (V5.6) : conseils du guide une fois que des puits produisent, et piste de la frac. Ils ne remplacent aucune étape d'exploration : ils passent devant seulement quand l'argent se perd (bridage, eau, gaz) ou quand l'exploration ne rapporte plus.
+function guideOps(){
+  if(G.simple || !G.advOn || !G.wells.some(w=>w.status==='producing')) return null;
+  const money = c => G.budget >= c + 1e6, prod = G.wells.filter(w=>w.status==='producing');
+  // 1. production bridée : le traitement ou la route d'export sature
+  const st = infraState();
+  if(st){ const s = infraFactor(); if(s < 0.9){ const L = infraLoad(), lim = L.liquid/L.procCap >= L.oil/L.routeCap ? 'proc' : 'route';
+    if(lim==='proc' && st.proc < INFRA.procCap.length-1){ const c = INFRA.procCapex[st.proc+1];
+      return { cur:4, text:TR(`Exploitation : vos puits sont bridés de ${Math.round((1-s)*100)} % faute de capacité de traitement. Agrandir l'unité libère les ventes différées.`,`Operations: your wells are curtailed by ${Math.round((1-s)*100)} % for lack of processing capacity. Expanding the unit releases the deferred sales.`),
+        act:{ label:TR(`Agrandir le traitement · ${formatM(c)}`,`Expand processing · ${formatM(c)}`), call:'infraUpgradeProc()', ok:money(c), why:TR(`Budget insuffisant (${formatM(c)} plus une réserve).`,`Insufficient budget (${formatM(c)} plus a reserve).`) } }; }
+    if(lim==='route' && st.pipe < INFRA.pipeCap.length-1){ const c = INFRA.pipeCapex[st.pipe+1];
+      return { cur:4, text:TR(`Exploitation : la route d'export est saturée, vos puits sont bridés de ${Math.round((1-s)*100)} %. Un pipeline coûte moins au baril que le camion.`,`Operations: the export route is saturated, your wells are curtailed by ${Math.round((1-s)*100)} %. A pipeline costs less per barrel than trucking.`),
+        act:{ label:TR(`${st.pipe<0?'Construire un pipeline':'Agrandir le pipeline'} · ${formatM(c)}`,`${st.pipe<0?'Build a pipeline':'Expand the pipeline'} · ${formatM(c)}`), call:'infraBuildPipe()', ok:money(c), why:TR(`Budget insuffisant (${formatM(c)} plus une réserve).`,`Insufficient budget (${formatM(c)} plus a reserve).`) } }; } } }
+  // 2. eau : un puits d'injection se rentabilise quand le volume est grand
+  const ws = waterState(), waterMonth = prod.reduce((a,w)=>a + (w.offshore ? 0 : wellEconomics(w).waterBbl), 0);
+  if(!ws.swd && waterMonth*(WATER.truck-WATER.swd)*36 > WATER.swdCapex*1.3)
+    return { cur:4, text:TR(`Exploitation : vos puits produisent ${Math.round(waterMonth).toLocaleString()} barils d'eau par mois, évacués par camion à ${WATER.truck.toFixed(1)} $/bbl. Un puits d'injection (SWD) ramène le coût à ${WATER.swd.toFixed(1)} $/bbl et se rembourse en moins de trois ans.`,`Operations: your wells produce ${Math.round(waterMonth).toLocaleString()} barrels of water per month, trucked at ${WATER.truck.toFixed(1)} $/bbl. A disposal well (SWD) brings the cost down to ${WATER.swd.toFixed(1)} $/bbl and pays back in under three years.`),
+      act:{ label:TR(`Construire un SWD · ${formatM(WATER.swdCapex)}`,`Build a SWD · ${formatM(WATER.swdCapex)}`), call:"waterBuild('swd')", ok:money(WATER.swdCapex), why:TR('Budget insuffisant.','Insufficient budget.') } };
+  // 3. gaz associé brûlé : une unité de traitement le vend
+  const gs = gasState(), mcf = prod.reduce((a,w)=>a + wellEconomics(w).assocMcf, 0);
+  if(!gs.plant && mcf*gasNetPrice()*36 > FLUID.gasPlantCapex*1.3)
+    return { cur:4, text:TR(`Exploitation : ${Math.round(mcf).toLocaleString()} Mcf de gaz associé partent à la torche chaque mois. Une unité de traitement les vendrait environ ${gasNetPrice().toFixed(1)} $/Mcf net.`,`Operations: ${Math.round(mcf).toLocaleString()} Mcf of associated gas are flared every month. A processing unit would sell them for about ${gasNetPrice().toFixed(1)} $/Mcf net.`),
+      act:{ label:TR(`Construire l'unité de gaz · ${formatM(FLUID.gasPlantCapex)}`,`Build the gas unit · ${formatM(FLUID.gasPlantCapex)}`), call:'gasBuild()', ok:money(FLUID.gasPlantCapex), why:TR('Budget insuffisant.','Insufficient budget.') } };
+  // 4. maintien de pression : seulement quand le mécanisme lu après 18 mois est le gaz dissous
+  for(const w of prod){ if(!w.maint && !w.offshore && driveGuess(w)==='solgas' && wellEconomics(w).waterBbl >= MAINT.minWater){ const gain = (DRIVE.solgas.boost-1)*w.production*(G.price-14)*36, b = blocks[w.blockId];
+    if(gain > MAINT.capex*1.3) return { cur:4, text:TR(`Exploitation : la pression du puits (${b.x}, ${b.y}) chute vite et son GOR monte, signature d'un gaz dissous. Réinjecter son eau produite maintient la pression et ajoute environ 15 % de production.`,`Operations: the pressure of well (${b.x}, ${b.y}) drops fast and its GOR rises, the signature of solution gas. Reinjecting its produced water maintains pressure and adds about 15 % production.`),
+      act:{ label:TR(`Maintenir la pression (${b.x}, ${b.y}) · ${formatM(MAINT.capex)}`,`Maintain pressure (${b.x}, ${b.y}) · ${formatM(MAINT.capex)}`), call:`maintBuy(${b.id})`, ok:money(MAINT.capex), why:TR('Budget insuffisant.','Insufficient budget.') } }; } }
+  return null;
+}
+// Piste de la frac : Rock-Eval favorable puis frac, sinon sondage et carotte pour tester la roche-mère. Proposée quand l'exploration conventionnelle ne rapporte plus (ou d'emblée dans le Permien).
+function guideFrac(){
+  if(G.simple || G.revealFieldsMode) return null;
+  const free = b => !b.inSalt && !b.isOffshore && !b.well && !b.dryHole && !G.drilling.some(d=>d.blockId===b.id);
+  const reserve = 0.2*(MODES[G.mode].budget||0);
+  const ready = blocks.filter(b=>free(b) && b.studies.some(s=>s.type==='rockeval')).map(b=>{ const se = shaleEstimate(b), pl = drillPlan(b,'frac'); if(!se.ok || !pl || !pl.equip) return null;
+    const pj = projectWell(fracProdOf(se.q, se.thick, 2000, b), G.price, false, !!b.estimate?.isGas, pl.cost, 120, SHALE_DECL, waterCfg(b,true), fluidCfg(b,true)); return pj.payback!==null && pj.payback<=48 ? { b, pl, pb:pj.payback } : null; }).filter(Boolean).sort((a,z)=>a.pb-z.pb);
+  if(ready.length){ const r = ready[0], b = r.b, okc = G.budget >= r.pl.cost + reserve;
+    return { cur:4, text:TR(`Roche-mère exploitable en (${b.x}, ${b.y}) : la Rock-Eval est favorable. Une frac se rembourserait en ${r.pb} mois environ, sans la loterie du piège.`,`Exploitable source rock at (${b.x}, ${b.y}): the Rock-Eval is favourable. A frac would pay back in about ${r.pb} months, without the trap lottery.`),
+      act:{ label:TR(`Frac sur (${b.x}, ${b.y}) · ${formatM(r.pl.cost)}`,`Frac at (${b.x}, ${b.y}) · ${formatM(r.pl.cost)}`), call:`guideDo('frac',${b.id})`, ok:okc, why:TR(`Budget insuffisant : ${formatM(r.pl.cost)} plus une réserve.`,`Insufficient budget: ${formatM(r.pl.cost)} plus a reserve.`) } }; }
+  const cored = blocks.find(b=>free(b) && b.strati && labCored(b) && !b.studies.some(s=>s.type==='rockeval'));
+  if(cored){ const c = STUDIES.rockeval.cost; return { cur:4, text:TR(`Le sondage (${cored.x}, ${cored.y}) est carotté : une Rock-Eval mesure le TOC et la maturité, donc dit si la roche-mère se fracture.`,`The survey hole (${cored.x}, ${cored.y}) is cored: a Rock-Eval measures TOC and maturity, so it tells whether the source rock can be fracked.`),
+      act:{ label:TR(`Rock-Eval (${cored.x}, ${cored.y}) · ${formatM(c)}`,`Rock-Eval (${cored.x}, ${cored.y}) · ${formatM(c)}`), call:`guideDo('rockeval',${cored.id})`, ok:G.budget >= c, why:TR('Budget insuffisant.','Insufficient budget.') } }; }
+  if(!blocks.some(b=>b.strati && !b.well && !b.dryHole)){ const sc = blocks.filter(b=>free(b) && b.studyLevel>=1).map(b=>({b, p:stratiPlan(b)})).filter(x=>x.p && x.p.equip).sort((a,z)=>a.p.cost-z.p.cost)[0];
+    if(sc) return { cur:4, text:TR(`Les blocs étudiés ne rapportent plus assez en conventionnel. La roche-mère elle-même est une cible : un sondage avec carotte puis une Rock-Eval diront si elle est mûre, riche et assez épaisse pour une frac.`,`The studied blocks no longer pay off conventionally. The source rock itself is a target: a survey hole with core then a Rock-Eval will tell whether it is mature, rich and thick enough for a frac.`),
+      act:{ label:TR(`Sondage en (${sc.b.x}, ${sc.b.y}) · ${formatM(sc.p.cost)}`,`Survey hole at (${sc.b.x}, ${sc.b.y}) · ${formatM(sc.p.cost)}`), call:`guideDo('strati',${sc.b.id})`, ok:G.budget >= sc.p.cost + reserve, why:TR('Budget insuffisant.','Insufficient budget.') } }; }
+  return null;
+}
+
 function guideCompute(){
   if(!blocks.length) return null;
   const m = MODES[G.mode];
@@ -7326,6 +7374,7 @@ function guideCompute(){
     if(sb){ const c = STUDIES.core.cost*(sb.isOffshore?STUDIES.core.offMult:1)*(G.mode==='sandbox'?0:1);
       return {cur:4, text:TR(`Le sondage du bloc (${sb.x}, ${sb.y}) est foré. Son analyse de carotte livre la lithologie, qui sert à caler la sismique avant de forer cher.`,`The survey hole on block (${sb.x}, ${sb.y}) is drilled. Its core analysis gives the lithology, which is used to tie the seismic before an expensive well.`),
               act:{label:TR(`Carotte du sondage (${sb.x}, ${sb.y}) · ${G.mode==='sandbox'?'gratuite':formatM(c)}`,`Survey hole core (${sb.x}, ${sb.y}) · ${G.mode==='sandbox'?'free':formatM(c)}`), call:`guideDo('core',${sb.id})`, ok:G.mode==='sandbox'||money(c), why:TR(`Budget insuffisant (${formatM(c)} requis).`,`Insufficient budget (${formatM(c)} required).`)}}; } }
+  { const ops = guideOps(); if(ops) return ops; }   // exploitation : bridage, eau, gaz, pression
   // Meilleur bloc à forer : estimation 3D (ou log) la plus haute
   const drillable = blocks.filter(b=>free(b) && b.estimate?.prob!==undefined && b.studies.some(st=>st.type==='seismic3d'))
                           .sort((a,z)=>z.estimate.prob-a.estimate.prob);
@@ -7337,7 +7386,9 @@ function guideCompute(){
   const initBudget = MODES[G.mode].budget || 0;
   const studySpent = guideStudySpent(), studyCap = GUIDE_STUDY_CAP*initBudget;
   const capped = studySpent >= studyCap && ranked.length>0;
+  if(G.basinType==='permian' && !blocks.some(b=>b.well)){ const gf0 = guideFrac(); if(gf0) return gf0; }   // dans le Permien la roche-mère est la cible naturelle
   if(capped && !(ranked[0].e.ev > 0)){
+    { const gf = guideFrac(); if(gf) return gf; }
     const producing = G.wells.some(w=>w.status==='producing'), busy = G.drilling.length>0;
     const capTxt = TR(`Plafond d'études atteint (${formatM(studySpent)} dépensés pour ${formatM(studyCap)} conseillés). Aucun bloc étudié n'est rentable sur le papier : `,`Study cap reached (${formatM(studySpent)} spent out of ${formatM(studyCap)} advised). No studied block is profitable on paper: `);
     if(producing || busy)
@@ -7424,6 +7475,7 @@ function guideCompute(){
     return {cur:4, text:TR(`Bloc (${b.x}, ${b.y}) : probabilité estimée ${Math.round(b.estimate.prob*100)} %, gain net espéré ${formatM(ranked[0].e.ev)} sur 10 ans. Forer est le seul moyen de savoir : le puits sera productif ou sec.`,`Block (${b.x}, ${b.y}): estimated probability ${Math.round(b.estimate.prob*100)} %, expected net gain ${formatM(ranked[0].e.ev)} over 10 years. Drilling is the only way to know: the well will be productive or dry.`),
             act:drillAct};
   }
+  { const gf = guideFrac(); if(gf) return gf; }
   const best = ranked[0] ? TR(`meilleur gain net espéré ${formatM(ranked[0].e.ev)} sur 10 ans, forage non rentable`,`best expected net gain ${formatM(ranked[0].e.ev)} over 10 years, drilling not profitable`) : TR('aucun bloc étudié en 3D','no block studied in 3D');
   return {cur:1, text:TR(`Les blocs étudiés ne rapportent pas assez (${best}). Cherchez ailleurs avec une nouvelle coupe.`,`The studied blocks do not pay enough (${best}). Look elsewhere with a new section.`),
           act:{label:TR("Nouvelle coupe","New section"), call:"guideDo('section')", ok:true}};
@@ -7480,6 +7532,13 @@ function guideDo(kind, id){
   }
   if(kind==='stratilog'){ stratiLog(id); guideSelect(id); return; }
   if(kind==='core'){ performStudy(id,'core'); guideSelect(id); return; }
+  if(kind==='rockeval'){ performStudy(id,'rockeval'); guideSelect(id); return; }
+  if(kind==='frac'){
+    guideSelect(id);
+    if(isMobileLayout()) showMobileScreen('studies'); else switchTab('studies');
+    setTimeout(()=>{ const sel = document.getElementById('drillMethod'); if(sel){ sel.value = 'frac'; sel.dispatchEvent(new Event('change')); } document.getElementById('drillBtn')?.scrollIntoView({block:'center', behavior:'smooth'}); }, 60);
+    return;
+  }
   if(kind==='strati'){
     guideSelect(id);
     if(isMobileLayout()) showMobileScreen('studies'); else switchTab('studies');
@@ -9819,6 +9878,14 @@ function _doStartGame(){
         Accidents are possible: blowout, strike, environmental incident. The game then stops and a
         window explains the consequences, you resume whenever you like. Practice mode switches finance off: only
         the choice of your two best targets counts.`)}`,
+    },
+    {
+      title: TR('Roche-mère et frac','Source rock and frac'),
+      body: `${TR(`En Junior et au-delà, la roche-mère elle-même peut être une cible : la méthode <b>Horizontal + fracturation</b> la fore sur 1 000 à 3 000 m et la fracture par étages. Elle exige une roche mûre, riche (TOC d'au moins 1,5 %) et assez épaisse. Le chemin : un <b>sondage avec carotte</b>, puis une <b>Rock-Eval</b> qui mesure TOC et maturité, puis la frac. Les puits fracturés produisent beaucoup au départ, puis déclinent d'environ 68 % la première année : l'argent se gagne dans les premiers mois. Le bassin permien est fait pour cela.`,`In Junior and beyond, the source rock itself can be a target: the <b>Horizontal + fracturing</b> method drills it over 1,000 to 3,000 m and fractures it in stages. It needs a mature, rich (TOC of at least 1.5 %) and thick enough rock. The path: a <b>survey hole with core</b>, then a <b>Rock-Eval</b> that measures TOC and maturity, then the frac. Fracked wells produce a lot at the start, then decline by about 68 % in the first year: the money is made in the first months. The Permian Basin is built for this.`)}`,
+    },
+    {
+      title: TR('Production avancée et incertitude','Advanced production and uncertainty'),
+      body: `${TR(`L'option <b>Production avancée</b> (Senior, Grande exploration, Permien, ou case des options de partie) ajoute ce qui se passe après le forage : l'<b>eau</b> et le <b>BSW</b> (camion, puits d'injection, recyclage), la <b>qualité</b> du brut et le <b>gaz associé</b>, la <b>capacité</b> de traitement et d'export, la <b>pression</b> du réservoir et son mécanisme de drainage. Le guide vous propose alors l'action utile : agrandir le traitement, construire un SWD, vendre le gaz. Le bouton <b>Incertitude</b> de la carte hachure les blocs où vos mesures ne disent presque rien, et le résumé de forage donne une fourchette de production P90 / P50 / P10. Si vous activez <b>Dimensionner le forage</b>, vous composez aussi la boue et le tubage face à la pression du bloc.`,`The <b>Advanced production</b> option (Senior, Grand exploration, Permian, or the game options checkbox) adds what happens after drilling: <b>water</b> and <b>BSW</b> (trucking, disposal well, recycling), crude <b>quality</b> and <b>associated gas</b>, processing and export <b>capacity</b>, reservoir <b>pressure</b> and its drive mechanism. The guide then suggests the useful action: expand processing, build a SWD, sell the gas. The map's <b>Uncertainty</b> button hatches the blocks where your measurements say almost nothing, and the drilling summary gives a P90 / P50 / P10 production range. If you turn on <b>Size the drilling programme</b>, you also compose the mud and casing against the block's pressure.`)}`,
     },
     {
       title: TR('Prêt à jouer','Ready to play'),
