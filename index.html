@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.8</title>
+<title>GeoExplorer V5.9</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -6293,9 +6293,11 @@ function labHelpHtml(){
 // Rappel d'une ligne sur la cible
 function labTipHtml(){
   if(!LABOPT.pick) return '';
+  const n = STRAT.length;
+  const chips = `<div class="lab-chips">${Array.from({length:n},(_,i)=>`<button class="lab-pick ${G.labPick===i?'sel':''}" onclick="labSetPick(${i})">H${i+1}</button>`).join('')}${G.labPick!=null?`<button class="lab-pick" onclick="labClearPick()">${TR('Retirer','Clear')}</button>`:''}</div>`;
   return G.labPick==null
-    ? `<div class="lab-tip">🎯 <b>${TR(`Désignez votre cible`,`Designate your target`)}</b>${TR(` : cliquez sur la sismique ou sur « viser » dans le tableau. Forer le mauvais horizon donne un puits sec ; un bon choix rapporte `,` : click on the seismic or on “aim” in the table. Drilling the wrong horizon gives a dry hole; a good choice earns `)}${formatM(LAB_PICK_BONUS)}${TR(`, une fois par province.`,`, once per province.`)}</div>`
-    : `<div class="lab-tip">🎯 <b>${TR(`Cible : H`,`Target: H`)}${G.labPick+1}</b>${TR(`. Les forages la visent. Cliquez sur une autre ligne pour changer, ou sur « cible » pour la retirer.`,`. Wells aim at it. Click another row to change, or “target” to remove it.`)}</div>`;
+    ? `<div class="lab-tip">🎯 <b>${TR(`Désignez votre cible`,`Designate your target`)}</b>${TR(` : cliquez sur une ligne de la sismique, sur « viser » dans le tableau, ou choisissez ci-dessous. Forer le mauvais horizon donne un puits sec ; un bon choix rapporte `,` : click a line on the seismic, “aim” in the table, or choose below. Drilling the wrong horizon gives a dry hole; a good choice earns `)}${formatM(LAB_PICK_BONUS)}${TR(`, une fois par province.`,`, once per province.`)}${chips}</div>`
+    : `<div class="lab-tip">🎯 <b>${TR(`Cible : H`,`Target: H`)}${G.labPick+1}</b>${TR(`. Les forages la visent. Choisissez un autre horizon pour changer.`,`. Wells aim at it. Pick another horizon to change.`)}${chips}</div>`;
 }
 // temps double moyen en millisecondes en fonction de la profondeur (modèle de vitesse moyen du profil)
 function labTwtFn(dispData){
@@ -6449,10 +6451,14 @@ function labHorizonTable(dispData, lv){
 // réservoir) ; s'il a raison, il touche un bonus d'interprétation.
 const LAB_PICK_BONUS = 120000;
 function labPickDepth(b){ if(G.labPick==null) return null; try { const L = getBlockLayerData(b); const l = L && L[G.labPick]; return l && isFinite(l.top) ? l.top : null; } catch(e){ return null; } }
+function labClearPick(){ if(G.labPick==null) return; G.labPick = null; labPickRefresh(); addLog(TR('Cible retirée.','Target removed.'), 'ev'); }
 function labSetPick(li){
-  G.labPick = (G.labPick===li) ? null : li;
-  if(G.labPick!==null){ addLog(TR('🎯 Cible désignée : horizon H','🎯 Target designated: horizon H') + (li+1) + '.', 'ev'); toast(TR('Cible : horizon H','Target: horizon H') + (li+1) + TR('. Les forages la viseront.','. Wells will aim at it.')); }
-  else { addLog(TR('Cible retirée.','Target removed.'), 'ev'); }
+  // V5.9 : un clic sur l'horizon déjà visé ne le retire plus (retrait explicite via labClearPick)
+  G.labPick = li;
+  { addLog(TR('🎯 Cible désignée : horizon H','🎯 Target designated: horizon H') + (li+1) + '.', 'ev'); toast(TR('Cible : horizon H','Target: horizon H') + (li+1) + TR('. Les forages la viseront.','. Wells will aim at it.')); }
+  labPickRefresh();
+}
+function labPickRefresh(){
   renderSection();
   if(selectedBlock!==null){ renderGeoPanel(blocks[selectedBlock]); renderStudiesPanel(blocks[selectedBlock]); }
   if(typeof renderGuide==='function') renderGuide();
@@ -6466,7 +6472,11 @@ function labPickAt(evt){
   const t = (p.x - info.m[0])/info.m[2], d = info.d[0] + (p.y - info.m[1])/info.m[3]*(info.d[1]-info.d[0]);
   let bi = -1, bd = Infinity; info.b.forEach((b,i)=>{ if(!b) return; const dd = Math.abs(b.t - t); if(dd<bd){ bd = dd; bi = i; } });
   if(bi<0) return; const L = info.b[bi].L; let li = -1, best = Infinity;
-  L.forEach((l,i)=>{ if(l[1]<1) return; const mid = l[0] + l[1]/2, inside = d>=l[0] && d<=l[0]+l[1]; const dist = inside ? 0 : Math.min(Math.abs(d-l[0]), Math.abs(d-(l[0]+l[1]))); if(dist<best){ best = dist; li = i; } });
+  // V5.9 : on vise le réflecteur (toit de couche) le plus proche du clic, pas la couche qui le contient.
+  // Un clic sur une ligne de la sismique désigne donc la couche qui commence à cette ligne.
+  L.forEach((l,i)=>{ if(l[1]<1) return; const dist = Math.abs(d-l[0]); if(dist<best){ best = dist; li = i; } });
+  // clic franchement à l'intérieur d'une couche épaisse (loin de tout toit) : couche contenant le clic
+  L.forEach((l,i)=>{ if(l[1]<1) return; const rng = Math.abs(info.d[1]-info.d[0]); if(d>=l[0] && d<=l[0]+l[1] && best>0.06*rng) li = i; });
   if(li>=0) labSetPick(li);
 }
 function labResultHtml(b, missed, resIdx){
@@ -10879,6 +10889,7 @@ function _doStartGame(){
 .lab-tab td .lab-mut{white-space:nowrap;}
 .lab-status{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 6px;}
 .lab-chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--text);}
+.lab-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;}.lab-chips .lab-pick{min-width:40px;min-height:34px;}
 .lab-tip{background:rgba(176,96,18,.09);border:1px solid rgba(176,96,18,.35);border-radius:8px;padding:9px 12px;margin:8px 0;font-size:12.5px;line-height:1.55;}
 .lab-help{margin-top:8px;border-top:1px solid var(--line);padding-top:6px;}
 .lab-help summary{cursor:pointer;font-weight:600;color:var(--amber);padding:5px 0;}
