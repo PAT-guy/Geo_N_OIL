@@ -10194,7 +10194,7 @@ function _doStartGame(){
   }
   const QZ_ROUND = 8; // questions par manche, tirées au hasard sans répétition
 
-  function qzShuffled(arr){ return [...arr].sort(()=>Math.random()-.5); }
+  function qzShuffled(arr){ const a=[...arr]; for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }   // Fisher-Yates : le tri à comparateur aléatoire est biaisé (le dernier élément sortait deux fois moins)
 
 
   // ── Questions générées par le moteur géologique (Maturation, Rock-Eval) ──
