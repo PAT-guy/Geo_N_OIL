@@ -26,7 +26,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(R.seed>=0.6, 'la carte de la graine 17174 (bassin aléatoire 12×12) a un bloc à '+Math.round(R.seed*100)+' % (avant : 40 %)');
   ok(R.weak<0.15 && R.noTrap<0.1 && R.strong>0.7, 'un maillon faible reste mortel : bon système '+Math.round(R.strong*100)+' %, charge à 0,1 '+Math.round(R.weak*100)+' %, piège absent '+Math.round(R.noTrap*100)+' %');
   ok(R.midV1>0.3 && R.midV1<0.45 && R.weakV1>0.2, 'échelle 1 conservée pour les anciennes sauvegardes ('+Math.round(R.midV1*100)+' % pour un bon bloc moyen)');
-  ok(R.roseV===2 && R.saved===2, 'une nouvelle partie écrit l\'échelle 2 dans sa sauvegarde');
+  ok(R.roseV===3 && R.saved===3, 'une nouvelle partie écrit l\'échelle 3 dans sa sauvegarde');
   ok(R.oldV===1 && R.oldAdv===false && R.stored, 'une sauvegarde sans version est rechargée à l\'échelle 1 et sans production avancée, même si la partie en cours était récente');
   ok(errs.length===0,'aucune erreur JS '+errs.join('|'));
   await br.close(); console.log(ko?'ECHECS: '+ko:'TOUT OK'); process.exit(ko?1:0); })();

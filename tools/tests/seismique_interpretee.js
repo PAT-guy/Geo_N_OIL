@@ -27,7 +27,7 @@ const { chromium, devices } = require('playwright'); const path = require('path'
   ok(T.tapBad.length===0, 'le jugement accepte les pointés à 40 m, refuse à 70 m ou sur une mauvaise colonne, et situe la faille '+JSON.stringify(T.tapBad.slice(0,2)));
   ok(T.isolated, 'la géologie de la partie en cours est intacte après génération');
   // parcours au doigt
-  await pg.locator('#quickTrain button[data-open="sei"]').tap(); await pg.waitForTimeout(500);
+  await pg.locator('#quickMiniBtn').tap(); await pg.locator('#quickTrain button[data-open="sei"]').tap(); await pg.waitForTimeout(500);
   const ui = await pg.evaluate(()=>{ const m=document.getElementById('seiGameModal'), svg=document.getElementById('seiSvg'), r=svg?svg.getBoundingClientRect():null; return { open:m.classList.contains('open'), svg:!!svg, w:r?Math.round(r.width):0, fits: r && r.right<=window.innerWidth+1, q:document.getElementById('seiQ').textContent.slice(0,60), over: document.documentElement.scrollWidth>window.innerWidth+1 }; });
   ok(ui.open && ui.svg && ui.fits && !ui.over && /Le puits/.test(ui.q), 'téléphone : la coupe s\'affiche dans la largeur sans débordement ('+ui.w+' px) avec la question du puits');
   const tapAt = async (frac)=>{ const p = await pg.evaluate(src=>{ const S=window.__sei, R=S.rounds[S.state().ri], svg=document.getElementById('seiSvg').getBoundingClientRect(); const pt=(new Function('R','S',src))(R,S); return { x: svg.left + pt.x/S.VBW*svg.width, y: svg.top + pt.y/S.VBH*svg.height }; }, frac); await pg.touchscreen.tap(p.x, p.y); await pg.waitForTimeout(120); };

@@ -11,7 +11,7 @@ const { chromium } = require('playwright'); const path = require('path');
   const st = await pg.evaluate(id=>({ well: !!blocks[id].well, status: blocks[id].well?.status, dry: !!blocks[id].dryHole }), bid);
   ok(st.well && st.status==='producing','puits productif obtenu pour le test '+JSON.stringify(st));
   await pg.evaluate(id=>{ performStudy(id,'core'); selectedBlock=id; renderGeoPanel(blocks[id]); }, bid);
-  const btns = await pg.evaluate(()=>[...document.querySelectorAll('#geoContent .lab-chips button')].map(b=>b.textContent.trim()));
+  const btns = await pg.evaluate(()=>[...document.querySelectorAll('#geoContent .lab-chips button[onclick*="anaOpen"]')].map(b=>b.textContent.trim()));
   ok(btns.length===4,'quatre boutons d\'analyse sur un bloc foré '+JSON.stringify(btns));
   // déclin : cumul 10 ans = formule hyperbolique, et cohérent avec la boucle du jeu
   const dec = await pg.evaluate(id=>{ const b=blocks[id], w=b.well, q=window.__qz.anaBuild(b,'decline'); if(!Array.isArray(q)) return { err:q.err }; const num=t=>parseFloat(String(t).replace(/\s/g,'').replace(',','.').replace(/[^\d.]/g,'')); const cm=w.comps[0], d=cm.dc||DECL; let sum=0; for(let m=0;m<120;m++) sum+=cm.q0*declineFactor(m,d); const got=num(q[0].choices[q[0].correct])*1e3; return { n:q.length, got, sum, rel:Math.abs(got-sum)/sum }; }, bid);
@@ -37,6 +37,6 @@ const { chromium } = require('playwright'); const path = require('path');
   const b2 = await pg.evaluate(()=>G.budget); ok(Math.round(b2-b1)===0,'pas de seconde prime sur la même analyse '+(b2-b1));
   // option coupée : aucun bouton
   await pg.evaluate(id=>{ LABOPT.analyses=false; document.getElementById('quizModal').classList.remove('open'); renderGeoPanel(blocks[id]); }, bid);
-  ok(await pg.evaluate(()=>!document.querySelector('#geoContent .lab-chips')),'option coupée : aucun bouton d\'analyse');
+  ok(await pg.evaluate(()=>!document.querySelector('#geoContent button[onclick*="anaOpen"]')),'option coupée : aucun bouton d\'analyse');
   ok(errs.length===0,'aucune erreur JS '+errs.join('|'));
   await br.close(); console.log(ko?'ECHECS: '+ko:'TOUT OK'); process.exit(ko?1:0); })();
