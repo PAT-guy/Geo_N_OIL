@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.20</title>
+<title>GeoExplorer V5.21</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -481,6 +481,13 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 #menuBackRow{padding:6px 0 4px;}
 #menuBackRow #menuSimpleBtn{margin:0;}
 #quickMiniBtn,#menuCustomBtn{margin-top:14px;}
+#quickMiniBtn{justify-content:space-between;text-align:left;gap:12px;padding:14px 16px;border:2px solid var(--amber);background:rgba(176,96,18,.09);}
+#quickMiniBtn:hover{border-color:var(--amber);background:rgba(176,96,18,.16);}
+#quickMiniBtn .mini-ico{font-size:26px;line-height:1;}
+#quickMiniBtn .mini-txt{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;}
+#quickMiniBtn .mini-txt b{font-size:16px;}
+#quickMiniBtn .mini-txt>span{font-size:12px;font-weight:400;color:var(--muted);line-height:1.4;}
+#quickMiniBtn .mini-chip{flex:none;font-family:var(--mono);font-size:12px;font-weight:600;color:#fff;background:var(--amber);border-radius:999px;padding:4px 10px;}
 #quickMiniBtn+#menuCustomBtn{margin-top:8px;}
 #miniGamesModal .q-train{margin-top:6px;}
 #tpAddTargetBtn:disabled{opacity:.55;cursor:default;}
@@ -721,7 +728,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
       <select id="quickBasin" class="drill-select" aria-label="Bassin géologique"></select>
       <div class="q-brief" id="quickBrief"></div>
       <div class="q-sum" id="quickSummary"></div>
-      <button type="button" id="quickMiniBtn">🎮 <span class="i18n" data-fr="Mini-jeux" data-en="Mini-games">Mini-jeux</span></button>
+      <button type="button" id="quickMiniBtn"><span class="mini-ico" aria-hidden="true">🎮</span><span class="mini-txt"><b><span class="i18n" data-fr="Mini-jeux" data-en="Mini-games">Mini-jeux</span></b><span class="i18n" data-fr="S'entraîner entre deux parties : quiz, lecture de logs, sismique, console de forage" data-en="Practice between games: quizzes, log reading, seismic, drilling console">S'entraîner entre deux parties : quiz, lecture de logs, sismique, console de forage</span></span><span class="mini-chip" id="quickMiniCount"></span></button>
       <button type="button" class="est-clear" id="menuCustomBtn">⚙ <span class="i18n" data-fr="Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)" data-en="Customize (map, seed, difficulty, display, mini-games)">Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)</span></button>
     </div>
 
@@ -8483,6 +8490,7 @@ const QUICK_BASINS = [['random',TR('🎲 Aléatoire (libre)','🎲 Random (free)
   }));
 })();
 function quickRefresh(){
+  { const n = document.querySelectorAll('#quickTrain button').length, c = document.getElementById('quickMiniCount'); if(c) c.textContent = TR(`${n} jeux`,`${n} games`); }
   document.querySelectorAll('#quickModes .q-mode').forEach(b=>b.classList.toggle('sel', b.dataset.mode===menuConfig.mode));
   const sel = document.getElementById('quickBasin'); if(sel) sel.value = menuConfig.basinType;
   const br = document.getElementById('quickBrief'); if(br) br.textContent = BASIN_BRIEFS[menuConfig.basinType] || '';
