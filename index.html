@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.18</title>
+<title>GeoExplorer V5.19</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2408,10 +2408,10 @@ function generateGeology(gridSize, basinType, offshore, seed){
 // Probabilité géologique de succès (méthode de Rose) : Pg = P(piège) × P(réservoir) × P(couverture) × P(charge). Le piège est une fermeture : sa qualité vaut sa probabilité.
 // Réservoir, couverture et charge sont des qualités de 0 à 1 converties en probabilité d'être efficace (25 % même pour un faciès médiocre, 95 % au mieux : un élément « bon » vaut 0,8 à 0,9 dans la pratique de l'industrie).
 // Version de l'échelle de Rose : 1 (V4.89 à V5.4) donnait au meilleur bloc d'une carte environ 43 % ; 2 (V5.5) relève les facteurs pour qu'une carte ait une province vraiment productive
-// (meilleur bloc d'environ 79 %, 6 % des blocs à 50 % ou plus). Les sauvegardes gardent la version de leur création (G.roseV).
-let ROSE_V = 2;
+// (meilleur bloc d'environ 79 %, 6 % des blocs à 50 % ou plus). Échelle 3 (V5.19, demande « un peu plus de blocs à probabilité haute ») : milieu de la sigmoïde 0,27 et facteur de piège 1,75, soit environ 20 % de probabilité moyenne en plus, 50 % de blocs à 60 % ou plus en plus et le double de blocs à 80 %. Les sauvegardes gardent la version de leur création (G.roseV).
+let ROSE_V = 3;
 // Échelle 2 : chaque facteur passe par une sigmoïde (pente 10, milieu à 0,30) : un facteur bon (0,6) vaut 0,95, un facteur faible (0,1) vaut 0,12, donc un piège sans charge reste vide
-const ROSE_PAR = { 1:{ a:0.25, b:0.7, tk:1.15, cx:1 }, 2:{ sig:true, k:10, q0:0.30, tk:1.6, cx:1 } };
+const ROSE_PAR = { 1:{ a:0.25, b:0.7, tk:1.15, cx:1 }, 2:{ sig:true, k:10, q0:0.30, tk:1.6, cx:1 }, 3:{ sig:true, k:10, q0:0.27, tk:1.75, cx:1 } };
 const roseEff = q => { const p = ROSE_PAR[ROSE_V] || ROSE_PAR[1], x = Math.max(0, Math.min(1, q)); return p.sig ? 1/(1 + Math.exp(-p.k*(x - p.q0))) : p.a + p.b*Math.sqrt(x); };
 const roseP = (t, r, se, c) => { const p = ROSE_PAR[ROSE_V] || ROSE_PAR[1]; return Math.max(0.01, Math.min(0.95, Math.min(0.95, p.tk*t) * roseEff(r) * roseEff(se) * roseEff(Math.pow(Math.max(0, c), p.cx)))); };
 const TRAP_CLOSURE_FRAC = 0.3; // hauteur de fermeture d'un anticlinal / relief de sa crête
@@ -2435,7 +2435,7 @@ let _pRawFor = null, _pRawSorted = null;
 function mapRichness(){
   const n = blocks.length || 1, mean = blocks.reduce((t,b)=>t+b.trueProbability,0)/n;
   const rose = PCAL_MODE==='rose';
-  const label = rose ? (ROSE_V===2 ? (mean < 0.075 ? 'pauvre' : mean > 0.13 ? 'riche' : 'moyen') : (mean < 0.044 ? 'pauvre' : mean > 0.07 ? 'riche' : 'moyen')) : (mean < 0.175 ? 'pauvre' : mean > 0.33 ? 'riche' : 'moyen'); // seuils aux 20e et 80e centiles de 400 cartes
+  const label = rose ? (ROSE_V>=3 ? (mean < 0.09 ? 'pauvre' : mean > 0.155 ? 'riche' : 'moyen') : ROSE_V===2 ? (mean < 0.075 ? 'pauvre' : mean > 0.13 ? 'riche' : 'moyen') : (mean < 0.044 ? 'pauvre' : mean > 0.07 ? 'riche' : 'moyen')) : (mean < 0.175 ? 'pauvre' : mean > 0.33 ? 'riche' : 'moyen'); // seuils aux 20e et 80e centiles de 400 cartes
   const top = [...blocks].sort((a,z)=>z.trueProbability-a.trueProbability).slice(0, Math.max(1, Math.round(n*0.1))); // meilleurs blocs : ce que visent les forages
   return { mean:+mean.toFixed(3), label, hi:+(blocks.filter(b=>b.trueProbability>=0.6).length/n).toFixed(3), top: rose ? +(top.reduce((t,b)=>t+b.trueProbability,0)/top.length).toFixed(3) : undefined };
 }
@@ -2483,7 +2483,7 @@ function gauss(rng){
   return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
 }
 // Estimation de la probabilité par la sismique 3D : a priori régional (moyenne en cotes = celle du potentiel régional de la carte moins 0,39 ; écart-type 1,29 à l'intérieur d'une carte, mesurés).
-const SEIS3D_PAR = { 1:{ off:0.61, tau2:1.75 }, 2:{ off:0.35, tau2:3.2 } };   // décalage de la moyenne a priori (cotes) et variance a priori, par version de l'échelle de Rose
+const SEIS3D_PAR = { 1:{ off:0.61, tau2:1.75 }, 2:{ off:0.35, tau2:3.2 }, 3:{ off:0.35, tau2:3.2 } };   // décalage de la moyenne a priori (cotes) et variance a priori, par version de l'échelle de Rose
 const SEIS3D_MU = -3.3, SEIS3D_TAU2 = 1.75; // repli (anciennes parties) ; la moyenne a priori suit en fait le potentiel régional de la carte
 const STUDIES = {
   gravity: {
@@ -3350,12 +3350,14 @@ function drillBlock(blockId, method, equip, est, prog){
 
 // Le résultat d'un forage ne doit pas apparaître (icône, journal, compteur) avant la révélation : on le retient jusqu'à la fin du suspense.
 function resolveDrilling(d){
+  if(d.devwell) return resolveDevWell(d);
   if(d.sidetrack) return resolveSidetrack(d);
   if(d.method==='strati') return labResolveStrati(d);
   const b0 = blocks[d.blockId]; b0.revealPending = true; window.__logHold = [];
   try { resolveDrillingCore(d); } finally { b0.__held = window.__logHold || []; window.__logHold = null; }
 }
 function resolveDrillingCore(d){
+  if(d.devwell) return resolveDevWell(d);
   if(d.sidetrack) return resolveSidetrack(d);
   if(d.method==='strati') return labResolveStrati(d);
   const b = blocks[d.blockId];
@@ -3477,6 +3479,67 @@ function reentryHtml(b){
   const msg = st.kind==='tech' ? TR('Panne technique : la géologie était bonne. Reprenez avec un matériel qui tient.','Technical failure: the geology was good. Re-enter with equipment that holds.') : TR('Mauvais horizon visé : le log a montré où était le réservoir. Désignez-en un autre, puis reprenez.','Wrong horizon aimed at: the log showed where the reservoir was. Designate another one, then re-enter.');
   const chips = ['leger','standard','renforce'].map(id=>{ const c = reentryCost(b, id), eq = EQUIPMENT[id]; return `<button class="lab-pick ${c.tooDeep?'':''}" ${c.tooDeep?'disabled':''} title="${c.tooDeep?TR('Au-delà de la limite de profondeur du matériel','Beyond the equipment depth limit'):''}" onclick="reentryTap(${b.id},'${id}')">${eq.label.replace(TR('Matériel ','Equipment '),'')} · ${formatM(c.cost)}</button>`; }).join('');
   return head + `<div class="lab-note" style="margin-bottom:6px;">${msg} ${TR(`Coût : ${Math.round(REENTRY_FRAC*100)} % d'un puits neuf, une seule tentative.`,`Cost: ${Math.round(REENTRY_FRAC*100)} % of a new well, one attempt only.`)}</div><div class="lab-chips">${chips}</div>`;
+}
+// =====================================================================
+// PUITS DE DÉVELOPPEMENT (V5.19) : dans un champ découvert, le risque géologique est levé (le piège, le réservoir, la couverture et la charge existent) ; il reste un risque local
+// (continuité du réservoir, compartiments, technique). Dans l'industrie, les puits de développement réussissent 75 à 90 % du temps, contre 15 à 30 % pour l'exploration. Ici : 72 % + 18 % x facteur
+// de réservoir du bloc, borné à 75-90 %. Le puits ajoute une venue au puits existant (comme le side-track), à 60 %, 45 % puis 35 % du débit initial (le champ se vide, les puits interfèrent),
+// trois puits au plus par bloc, un frais fixe de 50 % en plus par puits supplémentaire. Coût : 90 % d'un puits d'exploration à la profondeur connue. Règles de jeu simplifiées, non sourcées ;
+// les taux de réussite sont de l'ordre des statistiques de l'industrie (ordres de grandeur, pas une étude).
+// =====================================================================
+const DEV = { cost:0.9, share:[0.60, 0.45, 0.35], max:3, fixedExtra:0.5, pMin:0.75, pMax:0.90 };
+const devProb = b => clamp(0.72 + 0.18*(b.resFactor ?? 0.5), DEV.pMin, DEV.pMax);
+function devState(b){
+  const w = b && b.well; if(!w || w.status!=='producing') return null;
+  if(w.method==='frac' || w.method==='strati') return { why:TR('Pas de puits de développement sur un puits fracturé.','No development well on a fracked well.') };
+  if(G.drilling.some(d=>d.blockId===b.id)) return { why:TR('Un forage est en cours sur ce bloc.','A drilling is under way on this block.') };
+  const n = w.devN||0; if(n >= DEV.max) return { why:TR(`Champ saturé : ${DEV.max} puits de développement au plus.`,`Field saturated: ${DEV.max} development wells at most.`) };
+  return { ok:true, n, share:DEV.share[n], p:devProb(b) };
+}
+function devCost(b, equip){
+  const eq = EQUIPMENT[equip], depth = b.topOfReservoir;
+  return { depth, cost: DEV.cost * depth * eq.costM * METHODS.vertical.costMult * siteCost(b, drillCostFactor()), tooDeep: depth > eq.maxDepth };
+}
+function launchDevWell(blockId, equip){
+  const b = blocks[blockId], st = devState(b);
+  if(!st || !st.ok){ toast(st && st.why ? st.why : TR('Puits de développement impossible.','Development well impossible.')); return; }
+  const eq = EQUIPMENT[equip], c = devCost(b, equip);
+  if(c.tooDeep){ toast(TR(`Matériel insuffisant : profondeur ${Math.round(c.depth)} m > max ${eq.maxDepth} m.`,`Insufficient equipment: depth ${Math.round(c.depth)} m > max ${eq.maxDepth} m.`)); return; }
+  if(G.budget < c.cost && G.mode!=='sandbox'){ toast(TR('Budget insuffisant pour ce puits.','Insufficient budget for this well.')); return; }
+  if(G.mode!=='sandbox') G.budget -= c.cost;
+  const months = Math.max(2, Math.round(c.depth/600));
+  G.drilling.push({ blockId, method:'vertical', equip, cost:c.cost, depth:c.depth, cf:drillCostFactor(), lat:0, prog:null, startMonth:G.month, endMonth:G.month+months, est:null, devwell:true });
+  b.el?.classList.add('drilling');
+  addLog(TR(`➕ Puits de développement lancé : bloc (${b.x},${b.y}), ${months} mois, ${formatM(c.cost)}.`,`➕ Development well started: block (${b.x},${b.y}), ${months} months, ${formatM(c.cost)}.`),'ev');
+  updateHud(); renderBlock(b);
+}
+function resolveDevWell(d){
+  const b = blocks[d.blockId], w = b.well; b.el?.classList.remove('drilling');
+  if(!w){ updateHud(); renderBlock(b); return; }
+  const n = w.devN||0, rd = SR('dev', `${d.blockId}|${n}`), eq = EQUIPMENT[d.equip];
+  const geoOk = rd() < devProb(b), techOk = rd() < eqReliability(eq, b.topOfReservoir);
+  w.cost = (w.cost||0) + d.cost;
+  if(geoOk && techOk){
+    const c0 = w.comps && w.comps[0] ? w.comps[0] : { q0:w.production }, added = c0.q0 * DEV.share[Math.min(n, DEV.share.length-1)];
+    w.comps = w.comps || [{ q0:w.production, t0:0 }]; w.comps.push({ q0:added, t0:w.monthsActive||0, ...(c0.dc ? { dc:c0.dc } : {}) });
+    w.devN = n + 1;
+    addLog(TR(`✓ Puits de développement productif : bloc (${b.x},${b.y}), +${Math.round(added)} ${w.isGas?'Mcf':'barils'}/mois.`,`✓ Productive development well: block (${b.x},${b.y}), +${Math.round(added)} ${w.isGas?'Mcf':'barrels'}/month.`),'good');
+  } else {
+    w.devN = n + 1; w.devFailed = (w.devFailed||0) + 1;
+    addLog(TR(`✗ Puits de développement infructueux : bloc (${b.x},${b.y}), ${geoOk?'échec technique':'compartiment sec ou réservoir discontinu'}. Le coût est perdu.`,`✗ Unsuccessful development well: block (${b.x},${b.y}), ${geoOk?'technical failure':'dry compartment or discontinuous reservoir'}. The cost is lost.`),'bad');
+  }
+  refreshNeighbors(b); updateHud(); renderBlock(b);
+}
+function devTap(blockId, equip){
+  const b = blocks[blockId], c = devCost(b, equip), eq = EQUIPMENT[equip], st = devState(b);
+  askConfirm(TR('Forer un puits de développement ?','Drill a development well?'), TR(`Bloc (${b.x},${b.y}) avec ${eq.label.toLowerCase()} : ${formatM(c.cost)}. Réussite d'environ ${Math.round(st.p*100)} %, production attendue ${Math.round(st.share*100)} % du puits initial.`,`Block (${b.x},${b.y}) with ${eq.label.toLowerCase()}: ${formatM(c.cost)}. About ${Math.round(st.p*100)} % chance of success, expected production ${Math.round(st.share*100)} % of the initial well.`), TR('Forer','Drill'), ()=>launchDevWell(blockId, equip));
+}
+function devHtml(b){
+  const st = devState(b); if(!st) return '';
+  const head = `<div class="ps-section">${TR('Puits de développement','Development wells')}</div>`;
+  if(!st.ok) return head + `<div class="lab-note" style="margin-bottom:6px;">${st.why}</div>`;
+  const chips = ['leger','standard','renforce'].map(id=>{ const c = devCost(b, id), eq = EQUIPMENT[id]; return `<button class="lab-pick" ${c.tooDeep?'disabled':''} onclick="devTap(${b.id},'${id}')">${eq.label.replace(TR('Matériel ','Equipment '),'')} · ${formatM(c.cost)}</button>`; }).join('');
+  return head + `<div class="lab-note" style="margin-bottom:6px;">${TR(`Champ prouvé : le risque géologique est levé, il reste un risque local. Réussite d'environ ${Math.round(st.p*100)} %, le puits ajoute ${Math.round(st.share*100)} % du débit initial. ${st.n} puits de développement sur ${DEV.max}.`,`Proven field: the geological risk is gone, only local risk remains. About ${Math.round(st.p*100)} % chance of success, the well adds ${Math.round(st.share*100)} % of the initial rate. ${st.n} of ${DEV.max} development wells.`)}</div><div class="lab-chips">${chips}</div>`;
 }
 // Side-track : forer latéralement depuis le puits existant pour atteindre un
 // second réservoir plus profond, moins cher qu'un puits neuf puisqu'on
@@ -3916,7 +3979,7 @@ function logFluidCardHtml(b){
 function wellEconomicsRaw(w){
   const prodEffective = w.production * (w.eorActive ? 1.35 : 1.0) * maintBoost(w) * co2Boost(w) * gasInjBoost(w);
   const priceWell = w.isGas ? G.price*.18 : (G.financeMode && G.hedgeContract?.monthsLeft>0 ? G.hedgeContract.lockedPrice : G.price);
-  const fixedOp = w.offshore ? OFFSHORE_OPEX : 8000;
+  const fixedOp = (w.offshore ? OFFSHORE_OPEX : 8000) * (1 + DEV.fixedExtra*(w.devN||0));
   const varOp   = (w.offshore?14:4) + 6;
   const pf = fluidPf(w.fp), st = gasState();
   const oilRev = prodEffective * priceWell * pf;
@@ -5420,6 +5483,7 @@ function renderGeoPanel(b){
   }
 
   html += reentryHtml(b);
+  html += devHtml(b);
   html += anaPanelHtml(b);
   el.innerHTML=html;
 }
@@ -8911,7 +8975,7 @@ function _doStartGame(){
   G.seedShown = seedShown;
   const seedNum = seedToInt(seedShown);
   G.seedNum = seedNum;
-  ROSE_V = 2;   // nouvelle partie : échelle de Rose de la V5.5
+  ROSE_V = 3;   // nouvelle partie : échelle de Rose de la V5.19 (V5.5 : échelle 2)
   generateGeology(menuConfig.gridSize, menuConfig.basinType, menuConfig.offshore, seedNum);
   G.pcalW = PCAL_W; G.pmode = PCAL_MODE; G.roseV = ROSE_V;
   { const ri = mapRichness(); G.richness = ri; }
