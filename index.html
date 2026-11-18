@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.17</title>
+<title>GeoExplorer V5.18</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3361,9 +3361,10 @@ function resolveDrillingCore(d){
   const b = blocks[d.blockId];
   b.el?.classList.remove('drilling');
   const eq = EQUIPMENT[d.equip], me = METHODS[d.method];
-  const rd = SR('drill', `${d.blockId}|${d.method}`);
+  const rd = SR('drill', `${d.blockId}|${d.method}` + (d.reentry ? '|re' : ''));   // reprise : nouveau tirage pour la panne, pas de seconde chance sur la géologie
   const isFrac = d.method==='frac', sh = isFrac ? shaleTrue(b) : null;
   let geoOk  = isFrac ? (rd(), sh.ok) : rd() < clamp(b.trueProbability*discoveryBoost(b), 0, 0.95);
+  if(d.reentry) geoOk = d.priorTechFail ? true : (SR('drill', `${d.blockId}|${d.method}`)() < clamp(b.trueProbability*discoveryBoost(b), 0, 0.95));
   const labResIdx = STRAT.findIndex(l=>l.role==='reservoir');
   const labMissed = !isFrac && G.labPick!=null && G.labPick!==labResIdx;
   if(labMissed && !isFrac) geoOk = false;
@@ -3399,6 +3400,7 @@ function resolveDrillingCore(d){
                   production:initProd, comps:[isFrac ? {q0:initProd, t0:0, dc:SHALE_DECL} : {q0:initProd, t0:0}], wp: G.advOn ? waterParams(b, isFrac) : null, fp: G.advOn ? fluidParams(b, isFrac) : null, rd: null, cum:0, monthsActive:0, status:'producing',
                   isGas:b.isGas, offshore:b.isOffshore, eorActive:false, eorMonthsLeft:0};
     if(G.advOn){ well.rd = driveParams(b, well.fp, isFrac); if(!isFrac && well.rd.mech!=='gasdep') well.comps[0].dc = { Di: DECL.Di*DRIVE[well.rd.mech].di, b: DECL.b }; }
+    if(d.reentry){ const prev = b.dryHoleInfo; well.cost += (prev && prev.cost) || 0; well.reentry = true; b.reentryFrom = prev; b.reentryDone = true; b.dryHole = false; b.wrongTarget = false; b.dryHoleInfo = null; b.el?.classList.remove('dry-hole'); }
     G.wells.push(well);
     prodOut = initProd;
     b.well = well;
@@ -3410,9 +3412,11 @@ function resolveDrillingCore(d){
     injectWellLog(b);
     revealTrueGeology(b);
     if(isFrac) b.fracInfo = { ...sh, lat:d.lat||2000, ip:0, why: geoOk ? '' : sh.why };
+    const prevDry = d.reentry ? b.dryHoleInfo : null;
+    if(d.reentry){ d.cost += (prevDry && prevDry.cost) || 0; b.reentryDone = true; }
     b.dryHole = true;
     b.wrongTarget = !!labMissed;
-    b.dryHoleInfo = {method:d.method, cost:d.cost, studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month, techFail: (progRes && progRes.lost) ? true : (!geoOk ? false : true),
+    b.dryHoleInfo = {pick: G.labPick, reentry: !!d.reentry, method:d.method, cost:d.cost, studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month, techFail: (progRes && progRes.lost) ? true : (!geoOk ? false : true),
       techDetail: (!geoOk ? null : {equip:d.equip, depth:Math.round(trueDepth), rel:techRel, tooDeep})};
     b.el?.classList.add('dry-hole');
     const why = (progRes && progRes.lost) ? TR('incident de forage','drilling incident') : !geoOk ? (isFrac ? FRAC_WHY()[sh.why] : TR('aucun HC (puits sec)','no HC (dry hole)')) : TR('échec technique','technical failure');
@@ -3428,6 +3432,52 @@ function resolveDrillingCore(d){
   showDrillReveal(b, geoOk, techOk, labMissed ? 'labmiss' : limitingFactor, calibHtml);
 }
 
+// =====================================================================
+// REPRISE DE PUITS (V5.18) : un puits perdu pour une raison qui n'est pas la géologie du bloc se reprend une fois. Deux cas : panne technique (la géologie était bonne, le matériel a lâché ou n'atteignait pas
+// la profondeur) et mauvais horizon visé (le log a montré où était le réservoir ; il faut viser un autre horizon). Un vrai puits sec ne se reprend pas. La reprise réutilise le trou : 55 % du coût d'un
+// puits neuf, plus court, une seule tentative par bloc, tirage propre à la reprise. Après une panne la géologie est acquise (réussite si le matériel tient) ; après un mauvais horizon la géologie est celle
+// du premier tirage (la reprise échoue si le bloc était en réalité stérile). Si elle réussit, le coût du premier forage reste imputé au puits.
+// =====================================================================
+const REENTRY_FRAC = 0.55;
+function reentryState(b){
+  if(!b || !b.dryHole || !b.dryHoleInfo) return null;
+  const info = b.dryHoleInfo; if(info.method==='frac' || info.method==='strati') return null;
+  if(G.drilling.some(d=>d.blockId===b.id)) return { why:TR('Un forage est en cours sur ce bloc.','A drilling is under way on this block.') };
+  if(b.reentryDone) return { why:TR('Reprise déjà tentée sur ce bloc.','Re-entry already attempted on this block.') };
+  if(!info.techFail && !b.wrongTarget) return { why:TR('Puits sec par la géologie : le bloc ne se reprend pas.','Dry by geology: the block cannot be re-entered.') };
+  return { ok:true, kind: b.wrongTarget ? 'target' : 'tech' };
+}
+function reentryCost(b, equip){
+  const eq = EQUIPMENT[equip], me = METHODS.vertical, depth = drillDepthEstimate(b);
+  return { depth, cost: REENTRY_FRAC * depth * eq.costM * me.costMult * siteCost(b, drillCostFactor()), tooDeep: depth > eq.maxDepth };
+}
+function launchReentry(blockId, equip){
+  const b = blocks[blockId], st = reentryState(b);
+  if(!st || !st.ok){ toast(st && st.why ? st.why : TR('Reprise impossible.','Re-entry impossible.')); return; }
+  if(LABOPT.pick && G.mode!=='sandbox' && G.labPick==null){ const m = TR('Désignez d\'abord votre horizon cible sur la coupe avant de reprendre le puits.','First designate your target horizon on the section before re-entering the well.'); addLog(m,'bad'); toast(m); return; }
+  if(st.kind==='target' && LABOPT.pick && G.labPick!=null && G.labPick===b.dryHoleInfo.pick){ const m = TR('Vous visez toujours l\'horizon qui a échoué : choisissez-en un autre.','You are still aiming at the horizon that failed: pick another one.'); addLog(m,'bad'); toast(m); return; }
+  const eq = EQUIPMENT[equip], c = reentryCost(b, equip);
+  if(c.tooDeep){ const m = TR(`Matériel insuffisant : profondeur estimée ${Math.round(c.depth)} m > max ${eq.maxDepth} m.`,`Insufficient equipment: estimated depth ${Math.round(c.depth)} m > max ${eq.maxDepth} m.`); addLog(m,'bad'); toast(m); return; }
+  if(G.budget < c.cost && G.mode!=='sandbox'){ toast(TR('Budget insuffisant pour cette reprise.','Insufficient budget for this re-entry.')); return; }
+  if(G.mode!=='sandbox') G.budget -= c.cost;
+  const months = Math.max(2, Math.round(c.depth/600*0.7));
+  G.drilling.push({ blockId, method:'vertical', equip, cost:c.cost, depth:c.depth, cf:drillCostFactor(), lat:0, prog:null, startMonth:G.month, endMonth:G.month+months, est:null, reentry:true, priorTechFail:!!b.dryHoleInfo.techFail });
+  b.el?.classList.add('drilling');
+  addLog(TR(`🔁 Reprise du puits lancée : bloc (${b.x},${b.y}), ${months} mois, ${formatM(c.cost)} (${Math.round(REENTRY_FRAC*100)} % d'un puits neuf).`,`🔁 Well re-entry started: block (${b.x},${b.y}), ${months} months, ${formatM(c.cost)} (${Math.round(REENTRY_FRAC*100)} % of a new well).`),'ev');
+  updateHud(); renderBlock(b);
+}
+function reentryTap(blockId, equip){
+  const b = blocks[blockId], c = reentryCost(b, equip), eq = EQUIPMENT[equip];
+  askConfirm(TR('Reprendre ce puits ?','Re-enter this well?'), TR(`Bloc (${b.x},${b.y}) avec ${eq.label.toLowerCase()} : ${formatM(c.cost)}. Une seule reprise par bloc, résultat incertain.`,`Block (${b.x},${b.y}) with ${eq.label.toLowerCase()}: ${formatM(c.cost)}. One re-entry per block, uncertain result.`), TR('Reprendre','Re-enter'), ()=>launchReentry(blockId, equip));
+}
+function reentryHtml(b){
+  const st = reentryState(b); if(!st) return '';
+  const head = `<div class="ps-section">${TR('Reprise du puits','Well re-entry')}</div>`;
+  if(!st.ok) return head + `<div class="lab-note" style="margin-bottom:6px;">${st.why}</div>`;
+  const msg = st.kind==='tech' ? TR('Panne technique : la géologie était bonne. Reprenez avec un matériel qui tient.','Technical failure: the geology was good. Re-enter with equipment that holds.') : TR('Mauvais horizon visé : le log a montré où était le réservoir. Désignez-en un autre, puis reprenez.','Wrong horizon aimed at: the log showed where the reservoir was. Designate another one, then re-enter.');
+  const chips = ['leger','standard','renforce'].map(id=>{ const c = reentryCost(b, id), eq = EQUIPMENT[id]; return `<button class="lab-pick ${c.tooDeep?'':''}" ${c.tooDeep?'disabled':''} title="${c.tooDeep?TR('Au-delà de la limite de profondeur du matériel','Beyond the equipment depth limit'):''}" onclick="reentryTap(${b.id},'${id}')">${eq.label.replace(TR('Matériel ','Equipment '),'')} · ${formatM(c.cost)}</button>`; }).join('');
+  return head + `<div class="lab-note" style="margin-bottom:6px;">${msg} ${TR(`Coût : ${Math.round(REENTRY_FRAC*100)} % d'un puits neuf, une seule tentative.`,`Cost: ${Math.round(REENTRY_FRAC*100)} % of a new well, one attempt only.`)}</div><div class="lab-chips">${chips}</div>`;
+}
 // Side-track : forer latéralement depuis le puits existant pour atteindre un
 // second réservoir plus profond, moins cher qu'un puits neuf puisqu'on
 // réutilise le trou déjà foré. Ne crée pas un nouveau puits : la production
@@ -5369,6 +5419,7 @@ function renderGeoPanel(b){
     });
   }
 
+  html += reentryHtml(b);
   html += anaPanelHtml(b);
   el.innerHTML=html;
 }
