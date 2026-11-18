@@ -19,7 +19,7 @@ const { chromium } = require('playwright'); const path = require('path');
     for(const bt of ['hydrogen','helium']){ generateGeology(12, bt, false, 777); const k=RESOURCE_BASINS[bt]; G.resource=k; const pu=blocks.map(b=>blockPurity(b)); out[bt]={ min:Math.min(...pu), max:Math.max(...pu), again:blocks.slice(0,20).every(b=>blockPurity(b)===blockPurity(b)) }; }
     // fuite : même facteurs, couverture moyenne, p plus faible quand la puissance est 1,6
     ROSE_SEAL_POW=1; const p1=roseP(.8,.8,.5,.8); ROSE_SEAL_POW=1.6; const p2=roseP(.8,.8,.5,.8); const p3=roseP(.8,.8,.95,.8); ROSE_SEAL_POW=1; out.leak={p1,p2,p3};
-    // charge continue : plancher de 30 % pour l'hydrogène, épuisement pour l'hélium
+    // charge continue : plancher de 20 % pour l'hydrogène, épuisement pour l'hélium
     out.decl={ h2:declineFactor(400, RESOURCES.h2.decl), he:declineFactor(400, RESOURCES.he.decl), he0:declineFactor(0, RESOURCES.he.decl) };
     // économie : revenu = production × cours × pureté
     G.resource='he'; generateGeology(12,'helium',false,777); G.price=80; const b=blocks[10]; const w={ blockId:b.id, status:'producing', production:1000, comps:[{q0:1000,t0:0}], monthsActive:0, isGas:true, res:'he', purity:0.05, offshore:false, cost:1e6 }; const e=wellEconomicsRaw(w);
@@ -31,7 +31,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(r.hydrogen.min>=0.35 && r.hydrogen.max<=0.97 && r.hydrogen.max>0.8,'pureté de l\'hydrogène : 35 à 97 % '+r.hydrogen.min.toFixed(2)+' à '+r.hydrogen.max.toFixed(2));
   ok(r.helium.min>=0.003 && r.helium.max<=0.09 && r.helium.max>0.03,'teneur en hélium : 0,3 à 9 % '+(r.helium.min*100).toFixed(1)+' à '+(r.helium.max*100).toFixed(1)+' %');
   ok(r.leak.p2<r.leak.p1*0.8 && r.leak.p3>r.leak.p2,'l\'hydrogène fuit : une couverture médiocre coûte plus cher qu\'en pétrole, une excellente le garde '+JSON.stringify([r.leak.p1.toFixed(3),r.leak.p2.toFixed(3),r.leak.p3.toFixed(3)]));
-  ok(r.decl.h2>=0.3-1e-9 && r.decl.h2>0.29 && r.decl.he<0.3 && r.decl.he0===1,'charge continue : plancher de 30 % pour l\'hydrogène, l\'hélium s\'épuise '+JSON.stringify(r.decl));
+  ok(r.decl.h2>=0.2-1e-9 && r.decl.h2<0.21 && r.decl.he<0.2 && r.decl.he0===1,'charge continue : plancher de 20 % pour l\'hydrogène, l\'hélium s\'épuise '+JSON.stringify(r.decl));
   ok(Math.abs(r.eco.rev-r.eco.expect)<1 && Math.abs(r.eco.opexVar-r.eco.expectVar)<1e-6,'économie : revenu = gaz brut × cours × teneur, coût variable propre à la ressource '+JSON.stringify(r.eco));
   ok(Math.abs(r.eco2-r.eco.rev/2)<1,'le revenu suit le cours du marché (indice 40 : moitié)');
   ok(r.fracRefused,'pas de fracturation de shale pour ces ressources');
@@ -49,6 +49,20 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(sv.kAfter===sv.k && sv.spAfter===sv.sp,'sauvegarde : ressource et puissance de couverture rétablies au chargement '+JSON.stringify(sv));
   const sv2 = await pg.evaluate(async()=>{ document.getElementById('geoSeed').value='1002'; menuConfig.mode='h2he'; menuConfig.basinType='random'; menuConfig.seed='1002'; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); setSpeed(0); const k=G.resource, sp=ROSE_SEAL_POW; saveGame(); ROSE_SEAL_POW=1; G.resource='oil'; loadGame(); return { k, kAfter:G.resource, sp, spAfter:ROSE_SEAL_POW }; });
   ok(sv2.k==='h2' && sv2.sp===1.6 && sv2.kAfter==='h2' && sv2.spAfter===1.6,'sauvegarde d\'une partie d\'hydrogène : la fuite par la couverture (puissance 1,6) est rétablie '+JSON.stringify(sv2));
+  // levé de gaz du sol (V5.25) : propre au mode, sans forage, dit la charge du socle et signale une couverture suspecte
+  const sg = await pg.evaluate(async()=>{ document.getElementById('geoSeed').value='1002'; menuConfig.mode='h2he'; menuConfig.basinType='random'; menuConfig.seed='1002'; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); setSpeed(0); G.budget=30e6; performStudy(null,'gravity');
+    const land = blocks.filter(b=>!b.inSalt && !b.isOffshore && b.genStrength!=null); const rich = land.slice().sort((a,z)=>z.genStrength-a.genStrength)[0], poor = land.slice().sort((a,z)=>a.genStrength-z.genStrength)[0];
+    const b0 = G.budget; performStudy(rich.id,'soilgas'); const cost = b0-G.budget; performStudy(poor.id,'soilgas'); selectedBlock=rich.id; renderGeoPanel(rich); renderStudiesPanel(rich);
+    const kn = blockKnowledge(rich).find(k=>/Socle/.test(k.n)); const again = G.budget; performStudy(rich.id,'soilgas');
+    // une série de blocs : le signal suit la charge
+    const srt = land.slice().sort((a,z)=>a.genStrength-z.genStrength), n3 = Math.floor(srt.length/3); const mean = arr => arr.reduce((t,b)=>t+STUDIES.soilgas.do(b, makeRng(7+b.id)).raw,0)/arr.length; const hiMean0 = mean(srt.slice(-n3)), loMean0 = mean(srt.slice(0,n3));
+    const html = blockStudiesHtml(rich);
+    return { cost, richDone:rich.studies.some(s=>s.type==='soilgas'), poorDone:poor.studies.some(s=>s.type==='soilgas'), knSt:kn&&kn.st, knTxt:kn&&kn.t, noDouble:again===G.budget, hiMean:hiMean0, loMean:loMean0, hasRow:/Levé de gaz du sol|Soil gas survey/.test(html), name:STUDIES.soilgas.name }; });
+  ok(sg.cost===38e3 && sg.richDone && sg.poorDone && sg.noDouble,'levé de gaz du sol : 38 k$, sans forage, une seule fois par bloc '+sg.cost);
+  ok(sg.knSt==='ind' && /Gaz du sol/.test(sg.knTxt||''),'la carte « Socle (charge) » affiche l\'anomalie : '+sg.knTxt);
+  ok(sg.hasRow && sg.hiMean>sg.loMean+0.15,'le signal suit la charge du socle (tiers riche '+sg.hiMean.toFixed(2)+' contre tiers pauvre '+sg.loMean.toFixed(2)+') et figure dans la liste des études');
+  const oil0 = await pg.evaluate(async()=>{ document.getElementById('geoSeed').value='55'; menuConfig.mode='junior'; menuConfig.basinType='paris'; menuConfig.seed='55'; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); setSpeed(0); return !/Levé de gaz du sol|Soil gas survey/.test(blockStudiesHtml(blocks[5])); });
+  ok(oil0,'le levé de gaz du sol n\'apparaît pas en jeu pétrolier');
   // un jeu pétrolier reste inchangé
   const oil = await pg.evaluate(async()=>{ document.getElementById('geoSeed').value='55'; menuConfig.mode='junior'; menuConfig.basinType='paris'; menuConfig.seed='55'; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); setSpeed(0); return { res:G.resource, unit:document.querySelector('#hudPrice + .hud-unit').textContent, sp:ROSE_SEAL_POW, price:document.getElementById('hudPrice').textContent, st:STUDIES.rockeval.name, alert:getComputedStyle(document.getElementById('btnPriceAlert')).display!=='none' }; });
   ok(oil.res==='oil' && oil.unit==='$/bbl' && oil.sp===1 && oil.alert && /Rock-Eval/.test(oil.st),'jeu pétrolier inchangé : brut en $/bbl, Rock-Eval, alerte de prix');

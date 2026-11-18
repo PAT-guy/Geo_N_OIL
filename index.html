@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.24</title>
+<title>GeoExplorer V5.25</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -1369,7 +1369,7 @@ const BASIN_BRIEFS = {
   passive:   TR('📋 Marge passive : séquences progradantes, coin sédimentaire, possibilité de sel (évaporites). Réservoirs turbiditiques ou carbonatés de plateforme.','📋 Passive margin: prograding sequences, sedimentary wedge, possible salt (evaporites). Turbidite or shelf carbonate reservoirs.'),
   foreland:  TR('📋 Bassin d\'avant-pays : plissement compressif, anticlinaux en chevrons, chevauchements. Structures souvent bien définies mais profondeur variable.','📋 Foreland basin: compressional folding, chevron anticlines, thrusts. Structures are often well defined but depth varies.'),
   aquitaine: TR('📋 Bassin d\'Aquitaine : profondeurs modérées (1300-2600m), failles et plis liés à l\'orogenèse pyrénéenne, sel triasique localisé. Onshore dominant avec une frange offshore (type Parentis). Bon cas intermédiaire entre Paris et Mer du Nord.','📋 Aquitaine Basin: moderate depths (1300-2600 m), faults and folds linked to the Pyrenean orogeny, localized Triassic salt. Mostly onshore with an offshore fringe (Parentis type). A good intermediate case between Paris and the North Sea.'),
-  hydrogen:  TR('📋 Hydrogène naturel : socle ultramafique ou riche en fer qui fabrique de l\'hydrogène en continu (serpentinisation, radiolyse), couvert par des sills de dolérite ou des argilites, comme à Bourakébougou (Mali). L\'hydrogène fuit à travers la plupart des couvertures : seule une couverture excellente le garde. Le gaz est plus ou moins pur (azote, méthane) et se vend au kilo. Le champ se recharge, donc la production baisse peu.','📋 Natural hydrogen: ultramafic or iron-rich basement that makes hydrogen continuously (serpentinization, radiolysis), covered by dolerite sills or claystones, as at Bourakébougou (Mali). Hydrogen leaks through most seals: only an excellent seal keeps it. The gas is more or less pure (nitrogen, methane) and sold by the kilogram. The field recharges, so production declines little.'),
+  hydrogen:  TR('📋 Hydrogène naturel : socle ultramafique ou riche en fer qui fabrique de l\'hydrogène en continu (serpentinisation, radiolyse), couvert par des sills de dolérite ou des argilites, comme à Bourakébougou (Mali). L\'hydrogène fuit à travers la plupart des couvertures : seule une couverture excellente le garde. Le gaz est plus ou moins pur (azote, méthane) et se vend au kilo. Hypothèse de jeu : le champ se recharge un peu, donc la production plafonne à 20 % du débit initial ; la vraie vitesse de recharge est mal connue.','📋 Natural hydrogen: ultramafic or iron-rich basement that makes hydrogen continuously (serpentinization, radiolysis), covered by dolerite sills or claystones, as at Bourakébougou (Mali). Hydrogen leaks through most seals: only an excellent seal keeps it. The gas is more or less pure (nitrogen, methane) and sold by the kilogram. Game assumption: the field recharges a little, so output levels off at 20 % of the initial rate; the real recharge rate is poorly known.'),
   helium:    TR('📋 Hélium : craton archéen riche en uranium et en thorium, dont la désintégration produit de l\'hélium radiogénique qui monte et se piège sous le sel ou l\'anhydrite (Rukwa, Hugoton). Il arrive en faible proportion, mêlé à l\'azote et au méthane : la teneur décide du prix. Un gaz à 0,3 % ne se vend pas, un gaz à 8 % vaut une fortune. Le champ se vide comme un champ de gaz.','📋 Helium: Archaean craton rich in uranium and thorium, whose decay produces radiogenic helium that rises and is trapped under salt or anhydrite (Rukwa, Hugoton). It arrives in small proportions, mixed with nitrogen and methane: the concentration decides the price. A 0.3 % gas is not sold, an 8 % gas is worth a fortune. The field depletes like a gas field.'),
   permian:   TR('📋 Bassin permien (Texas) : grès turbiditiques conventionnels du Delaware sous le sel de l\'Ochoan, et surtout roche-mère du Wolfcamp épaisse, riche et mûre, exploitable par forage horizontal et fracturation. À terre. Le défi est l\'eau : eau de frac, BSW des puits fracturés, capacité de traitement et d\'évacuation. La production avancée est activée par défaut.','📋 Permian Basin (Texas): conventional Delaware turbidite sandstones beneath the Ochoan salt, and above all a thick, rich, mature Wolfcamp source rock that can be exploited by horizontal drilling and fracturing. Onshore. The challenge is water: frac water, BSW of fracked wells, processing and disposal capacity. Advanced production is on by default.'),
   gulf_coast:TR('📋 Gulf Coast : bassin cénozoïque très subsident (2200-5000m), tectonique salifère intense (sel Louann), failles de croissance, quasi aucune exhumation (bassin toujours en subsidence, pas soulevé). Offshore dominant. Cas pédagogique pour la différence subsidence continue vs exhumation.','📋 Gulf Coast: highly subsiding Cenozoic basin (2200-5000 m), intense salt tectonics (Louann salt), growth faults, almost no exhumation (basin still subsiding, not uplifted). Mostly offshore. Teaching case for the difference between continuous subsidence and exhumation.'),
@@ -2821,6 +2821,23 @@ const STUDIES = {
   },
 };
 
+// LEVÉ DE GAZ DU SOL (V5.25) : méthode de surface propre à l'hydrogène et à l'hélium (mode Hydrogène et hélium). La mesure donne la teneur du gaz qui fuit jusqu'à la surface : elle dépend de la charge du socle,
+// mais aussi de l'étanchéité de la couverture. Une anomalie forte avec une couverture suspecte signale un système qui se vide ; une anomalie faible ne prouve pas l'absence de gaz (bon sceau). Elle ne remplace pas la sismique : elle éclaire la charge, pas le piège.
+STUDIES.soilgas = {
+  get name(){ return TR('Levé de gaz du sol','Soil gas survey'); },
+  get desc(){ return resKind()==='he' ? TR('Prélèvements de gaz à un mètre de profondeur sur le bloc, analysés pour l\'hélium (spectromètre de masse). Un signal élevé dit que de l\'hélium remonte du socle ; un sceau intact peut aussi garder un sol muet.','Gas samples taken one metre down across the block and analysed for helium (mass spectrometer). A high reading means helium rises from the basement; an intact seal can also leave the soil silent.')
+                                           : TR('Prélèvements de gaz à un mètre de profondeur sur le bloc, analysés pour l\'hydrogène (capteur électrochimique). Un signal élevé dit que de l\'hydrogène remonte du socle ; il peut aussi trahir une couverture qui fuit.','Gas samples taken one metre down across the block and analysed for hydrogen (electrochemical sensor). A high reading means hydrogen rises from the basement; it can also betray a leaking seal.'); },
+  get reveals(){ return TR('Charge du socle (gaz qui remonte), sans forer','Basement charge (gas rising to the surface), without drilling'); },
+  cost: 38e3, offMult: 1, level: 0, resOnly: true,
+  do(b, rng){
+    const gs = clamp((b.genStrength ?? 0.1)/0.9, 0, 1), leak = 1 - (b.sealFactor ?? 0.5);
+    const raw = clamp(0.72*gs + 0.28*leak + (rng()-.5)*0.22*uncertaintyMult(), 0, 1);
+    const level = raw > 0.62 ? 'forte' : raw > 0.38 ? 'moyenne' : raw > 0.18 ? 'faible' : 'nulle';
+    const suspectSeal = raw > 0.5 && leak > 0.62 && rng() < 0.8;   // un gaz qui sort en abondance est souvent un gaz qui s'échappe
+    return { level, raw, suspectSeal };
+  },
+};
+
 function performStudy(blockId, studyKey){
   const st = STUDIES[studyKey];
   if(!st) return;
@@ -3087,6 +3104,8 @@ function updateBlockEstimate(b){
   if(rockevalStudy){
     est.rockeval = rockevalStudy.result;
   }
+  const soilStudy = b.studies.find(s=>s.type==='soilgas');
+  if(soilStudy){ est.soilgas = soilStudy.result; }
   if(LABOPT.dhi && !logStudy && seis3dStudy && est.prob!==undefined){
     const pf = est.prob, cls = pf<0.08?0:pf<0.18?1:pf<0.32?2:3;
     est.probFine = pf; est.dhiClass = cls; est.prob = [0.04,0.13,0.25,0.42][cls]; est.probErr = 0.08;
@@ -3135,12 +3154,12 @@ const DECL = { Di: 0.011, b: 0.5 };
 // =====================================================================
 // RESSOURCES HORS PÉTROLE (V5.24) : hydrogène naturel et hélium. Un puits produit un gaz brut (en Mcf, comme les puits à gaz du jeu) ; ce qui se vend est la fraction utile : la PURETÉ du gaz
 // (hydrogène 35 à 97 %, hélium 0,3 à 9 % mêlé à l'azote et au méthane) décide du revenu. Le cours reste l'indice de marché du jeu (G.price, 80 = référence) ; il est affiché en $/kg d'hydrogène
-// (2 $/kg à l'indice 80, ordre de grandeur des prévisions) ou en $/Mcf d'hélium (350 $/Mcf à l'indice 80, ordre de grandeur du marché). Hydrogène : charge continue (le champ se recharge, un plancher
-// de 30 % du débit initial), molécule qui fuit (couverture élevée à la puissance 1,6). Hélium : champ qui s'épuise comme un gaz, couverture évaporitique. Production multipliée par 8 : un puits de gaz brut
+// (2 $/kg à l'indice 80, ordre de grandeur des prévisions) ou en $/Mcf d'hélium (350 $/Mcf à l'indice 80, ordre de grandeur du marché). Hydrogène : charge continue (le champ se recharge, 
+// de 20 % du débit initial, hypothèse discutée : la recharge réelle est incertaine), molécule qui fuit (couverture élevée à la puissance 1,6). Hélium : champ qui s'épuise comme un gaz, couverture évaporitique. Production multipliée par 8 : un puits de gaz brut
 // vaut moins qu'un puits de pétrole par unité, la règle remet les deux économies à une échelle comparable. Règles de jeu simplifiées, non sourcées ; les ordres de grandeur sont ceux de la pratique.
 // =====================================================================
 const RESOURCES = {
-  h2: { name:TR('hydrogène','hydrogen'), refPrice:1.7, perUnit:7, priceUnit:'$/kg', priceDec:2, purityPrior:0.7, varOp:4, prodMult:8, sealPow:1.6, decl:{ Di:0.007, b:0.5, floor:0.30 } },
+  h2: { name:TR('hydrogène','hydrogen'), refPrice:1.7, perUnit:7, priceUnit:'$/kg', priceDec:2, purityPrior:0.7, varOp:4, prodMult:8, sealPow:1.6, decl:{ Di:0.007, b:0.5, floor:0.20 } },
   he: { name:TR('hélium','helium'), refPrice:400, perUnit:1, priceUnit:'$/Mcf', priceDec:0, purityPrior:0.025, varOp:3.5, prodMult:8, sealPow:1.0, decl:{ Di:0.013, b:0.5 } },
 };
 const RESOURCE_BASINS = { hydrogen:'h2', helium:'he' };
@@ -5512,7 +5531,11 @@ function blockKnowledge(b){
     out.push({n:TR('Réservoir','Reservoir'), st:'ind', t: (G.labPick==null && pd!==null) ? TR(`Horizon vers ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.`,`Horizon at about ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.`) : G.labPick==null ? TR('À identifier vous-même sur la coupe : aucun horizon n\'est désigné comme réservoir.','To be identified by yourself on the section: no horizon is designated as the reservoir.') : (pd!==null ? TR(`Votre cible H${G.labPick+1} vers ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.`,`Your target H${G.labPick+1} at about ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.`) : TR(`Votre cible H${G.labPick+1} : profondeur à préciser par la sismique 2D sur ce bloc.`,`Your target H${G.labPick+1}: depth to be refined by 2D seismic on this block.`))});
   } else out.push({n:TR('Réservoir','Reservoir'), st:'inc', t:TR('Précisé par la sismique 2D.','Refined by 2D seismic.')});
   out.push({n:'Couverture', st:'inc', t:TR('Connue seulement après un forage.','Known only after drilling.')});
-  out.push({n:isRes() ? TR('Socle (charge)','Basement (charge)') : TR('Roche-mère','Source rock'), st:'inc', t:TR('Rock-Eval, après un forage.','Rock-Eval, after drilling.')});
+  if(isRes() && e?.soilgas){
+    const sg = e.soilgas, lv = { forte:TR('forte','strong'), moyenne:TR('moyenne','moderate'), faible:TR('faible','weak'), nulle:TR('nulle','none') }[sg.level];
+    out.push({n:TR('Socle (charge)','Basement (charge)'), st:'ind', t:TR(`Gaz du sol : anomalie ${lv}.`,`Soil gas: ${lv} anomaly.`) + (sg.suspectSeal ? TR(' Couverture suspecte : le gaz s\'échappe peut-être.',' Seal suspect: the gas may be escaping.') : sg.level==='nulle' ? TR(' Un sol muet n\'exclut pas un bon sceau.',' A silent soil does not rule out a good seal.') : '') + TR(' Analyse du gaz du socle après un forage.',' Basement gas analysis after drilling.')});
+  } else
+  out.push({n:isRes() ? TR('Socle (charge)','Basement (charge)') : TR('Roche-mère','Source rock'), st:'inc', t:isRes() ? TR('Levé de gaz du sol, puis analyse du gaz après un forage.','Soil gas survey, then gas analysis after drilling.') : TR('Rock-Eval, après un forage.','Rock-Eval, after drilling.')});
   return out;
 }
 
@@ -5527,6 +5550,8 @@ function blockStudiesHtml(b){
   const items0 = [
     {k:'gravity',   n:TR('Gravimétrie régionale','Regional gravity'), done:gravDone, locked:null,
       act:`performStudy(null,'gravity')`, label:price(cost('gravity')), c:cost('gravity')},
+    ...(isRes() ? [{k:'soilgas', n:TR('Levé de gaz du sol','Soil gas survey'), done:has('soilgas'), locked:drilled ? TR('Avant un forage','Before drilling') : null,
+      act:`performStudy(${b.id},'soilgas')`, label:price(cost('soilgas')), c:cost('soilgas')}] : []),
     {k:'seismic2d', n:TR('Sismique 2D (profil A→B)','2D seismic (profile A→B)'), done:has('seismic2d'), locked:!gravDone ? TR('Après la gravimétrie','After gravity') : drilled ? TR('Avant un forage','Before drilling') : null,
       act:`setTool('section')`, label:TR('Tracer une coupe','Draw a section'), c:0, nopay:true},
     {k:'seismic3d', n:TR('Sismique 3D','3D seismic'), done:has('seismic3d'), locked:!has('seismic2d') ? TR('Nécessite la sismique 2D','Requires 2D seismic') : drilled ? TR('Avant un forage','Before drilling') : null,
