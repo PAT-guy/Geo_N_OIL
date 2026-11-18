@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.21</title>
+<title>GeoExplorer V5.22</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -345,6 +345,13 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .log-entry.good{color:var(--green);}
 .log-entry.bad{color:var(--red);}
 .log-entry .le-date{color:var(--muted); font-size:10px;}
+.log-entry.clickable{cursor:pointer;border-radius:6px;padding-left:4px;padding-right:4px;}
+.log-entry.clickable:hover,.log-entry.clickable:focus-visible{background:var(--panel2);outline:none;}
+.log-entry.clickable::after{content:' ›';color:var(--muted);}
+#logDetailModal{position:fixed;inset:0;z-index:1450;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:14px;}
+#logDetailModal.open{display:flex;}
+.ld-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:560px;width:100%;max-height:88vh;overflow-y:auto;padding:16px;}
+.ld-msg{font-size:13.5px;line-height:1.6;color:var(--text);}
 
 /* ── MENU ── */
 #menu{position:fixed;inset:0;z-index:999;background:var(--bg);display:flex;flex-direction:column;align-items:center;padding:20px;overflow-y:auto;}
@@ -3289,7 +3296,7 @@ function progBuild(){
   const secName = i => i===0 && k===0 ? TR('Trou entier','Whole hole') : TR(`Section ${i+1}`,`Section ${i+1}`);
   el.innerHTML = `<div class="prog-box"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><b style="font-size:15px;">${TR(`Programme de forage : bloc (${b.x},${b.y})`,`Drilling programme: block (${b.x},${b.y})`)}</b><button class="lab-pick" onclick="progClose()">${TR('Annuler','Cancel')}</button></div>
     <div class="lab-note" style="margin:4px 0 6px;">${TR(`La boue doit rester au-dessus de la pression des pores (sinon venue d'effluents) et sous la pression de fracturation (sinon pertes). Un tubage isole une section pour changer de densité, mais coûte et charge l'appareil. Le profil montré est prévu : la vérité s'en écarte (±${b.studies.some(s=>s.type==='seismic2d'||s.type==='seismic3d')?'0,05':'0,15'} sg, toit de la surpression à ±${b.studies.some(s=>s.type==='seismic2d'||s.type==='seismic3d')?60:150} m).`,`The mud must stay above the pore pressure (otherwise a kick) and below the fracture pressure (otherwise losses). Casing isolates a section so the density can change, but costs money and loads the rig. The profile shown is predicted: the truth differs from it (±${b.studies.some(s=>s.type==='seismic2d'||s.type==='seismic3d')?'0.05':'0.15'} sg, top of the overpressure ±${b.studies.some(s=>s.type==='seismic2d'||s.type==='seismic3d')?60:150} m).`)}</div>
-    <svg id="progSvg" viewBox="0 0 320 250" style="width:100%;height:auto;background:var(--panel2);border:1px solid var(--line);border-radius:8px;"></svg>
+    <svg id="progSvg" viewBox="0 0 320 296" style="width:100%;height:auto;background:var(--panel2);border:1px solid var(--line);border-radius:8px;"></svg>
     <div class="lab-chips" style="margin:6px 0;"><span style="font-size:12px;align-self:center;">${TR('Tubages intermédiaires','Intermediate casings')}</span>${[0,1,2].map(n=>`<button class="lab-pick ${n===k?'sel':''}" onclick="progSetK(${n})">${n}</button>`).join('')}<button class="lab-pick" onclick="progAutoFill()" title="${TR('Sabot avant la surpression prévue, boue = pore prévu + 0,03 sg : ignore l\'incertitude de la prévision','Shoe before the predicted overpressure, mud = predicted pore + 0.03 sg: ignores the forecast uncertainty')}">${TR('Programme conseillé','Suggested programme')}</button></div>
     ${P.prog.shoes.map((z,i)=>`<div class="prog-row"><span>${TR(`Sabot ${i+1}`,`Shoe ${i+1}`)}</span><input type="range" min="200" max="${P.TD-100}" step="10" value="${z}" oninput="progSetShoe(${i}, this.value)"><b id="progShoeV${i}">${z} m</b></div>`).join('')}
     ${P.prog.mud.map((w,i)=>`<div class="prog-row"><span>${TR('Boue','Mud')} · ${secName(i)}</span><input type="range" min="1" max="1.9" step="0.02" value="${w}" oninput="progSetMud(${i}, this.value)"><b id="progMudV${i}">${w.toFixed(2)} sg</b></div>`).join('')}
@@ -3301,20 +3308,30 @@ function progBuild(){
 function progRefresh(){
   const P = PROGUI; if(!P) return; const b = blocks[P.blockId], W = progWorld(b, P.TD), svg = document.getElementById('progSvg'), fore = document.getElementById('progFore'); if(!svg||!fore) return;
   P.prog.shoes.forEach((z,i)=>{ const e = document.getElementById('progShoeV'+i); if(e) e.textContent = z+' m'; }); P.prog.mud.forEach((w,i)=>{ const e = document.getElementById('progMudV'+i); if(e) e.textContent = w.toFixed(2)+' sg'; });
-  const XL=34, XR=312, YT=10, YB=232, gx = g => XL + (XR-XL)*(g-0.9)/(2.1-0.9), zmax = P.TDe*1.08, gy = z => YT + (YB-YT)*Math.min(z,zmax)/zmax;
-  let h = `<line x1="${XL}" y1="${YT}" x2="${XL}" y2="${YB}" stroke="var(--muted)"/><line x1="${XL}" y1="${YB}" x2="${XR}" y2="${YB}" stroke="var(--muted)"/>`;
-  for(let g=1;g<=2.0;g+=0.2) h += `<text x="${gx(g).toFixed(1)}" y="${YB+11}" font-size="8" text-anchor="middle" fill="var(--muted)">${g.toFixed(1)}</text>`;
-  for(let i=0;i<=4;i++){ const z = zmax*i/4; h += `<text x="${XL-3}" y="${(gy(z)+3).toFixed(1)}" font-size="8" text-anchor="end" fill="var(--muted)">${Math.round(z/100)*100}</text>`; }
-  h += `<text x="${(XL+XR)/2}" y="${YB+22}" font-size="9" text-anchor="middle" fill="var(--muted)">${TR('densité équivalente (sg)','equivalent density (sg)')}</text>`;
+  const XL=34, XR=312, YT=14, YB=236, gx = g => XL + (XR-XL)*(g-0.9)/(2.1-0.9), zmax = P.TDe*1.08, gy = z => YT + (YB-YT)*Math.min(z,zmax)/zmax;
   const zs = []; for(let z=0; z<=zmax; z+=10) zs.push(z);
+  const up = z => W.gpPred(z) + (z>W.zopP ? W.u : 0), lo = z => W.gpPred(z), fr = z => W.gfPred(z);
+  const edge = (f1, f2) => `${zs.map((z,i)=>(i?'L':'M')+gx(f1(z)).toFixed(1)+' '+gy(z).toFixed(1)).join('')}${[...zs].reverse().map(z=>'L'+gx(f2(z)).toFixed(1)+' '+gy(z).toFixed(1)).join('')}Z`;
   const pts = f => zs.map((z,i)=>(i?'L':'M')+gx(f(z)).toFixed(1)+' '+gy(z).toFixed(1)).join('');
-  const up = z => W.gpPred(z) + (z>W.zopP ? W.u : 0), lo = z => W.gpPred(z);
-  h += `<path d="${zs.map((z,i)=>(i?'L':'M')+gx(up(z)).toFixed(1)+' '+gy(z).toFixed(1)).join('')}${[...zs].reverse().map(z=>'L'+gx(lo(z)).toFixed(1)+' '+gy(z).toFixed(1)).join('')}Z" fill="rgba(60,120,220,.22)"/>`;
-  h += `<path d="${pts(W.gpPred)}" fill="none" stroke="#2f6fd0" stroke-width="1.8"/><path d="${pts(W.gfPred)}" fill="none" stroke="#c0392b" stroke-width="1.8"/>`;
-  progSections(P.prog, P.TD).forEach(s=>{ const y0 = gy(s.z0), y1 = gy(Math.min(s.z1, zmax)); h += `<path d="M${gx(s.w).toFixed(1)} ${y0.toFixed(1)}L${gx(s.w).toFixed(1)} ${y1.toFixed(1)}" stroke="#1e9e55" stroke-width="3" fill="none"/>`; });
-  P.prog.shoes.forEach(z=>{ h += `<line x1="${XL}" y1="${gy(z).toFixed(1)}" x2="${XR}" y2="${gy(z).toFixed(1)}" stroke="var(--text)" stroke-dasharray="3 3" opacity=".6"/>`; });
+  let h = '';
+  // trois zones : à gauche des pores (venue d'effluents), entre les deux courbes (fenêtre sûre), à droite de la fracturation (pertes)
+  h += `<path d="${edge(()=>0.9, up)}" fill="rgba(200,60,50,.10)"/><path d="${edge(up, fr)}" fill="rgba(30,160,85,.10)"/><path d="${edge(fr, ()=>2.1)}" fill="rgba(200,60,50,.10)"/>`;
+  h += `<path d="${edge(up, lo)}" fill="rgba(60,120,220,.22)"/>`;
+  h += `<line x1="${XL}" y1="${YT}" x2="${XL}" y2="${YB}" stroke="var(--muted)"/><line x1="${XL}" y1="${YB}" x2="${XR}" y2="${YB}" stroke="var(--muted)"/>`;
+  for(let g=1;g<=2.0;g+=0.2) h += `<line x1="${gx(g).toFixed(1)}" y1="${YB}" x2="${gx(g).toFixed(1)}" y2="${YB+3}" stroke="var(--muted)"/><text x="${gx(g).toFixed(1)}" y="${YB+12}" font-size="8" text-anchor="middle" fill="var(--muted)">${g.toFixed(1)}</text>`;
+  for(let i=0;i<=4;i++){ const z = zmax*i/4; h += `<text x="${XL-3}" y="${(gy(z)+3).toFixed(1)}" font-size="8" text-anchor="end" fill="var(--muted)">${Math.round(z/100)*100}</text>`; }
+  h += `<text x="4" y="9" font-size="8" fill="var(--muted)">${TR('profondeur (m)','depth (m)')}</text><text x="${(XL+XR)/2}" y="${YB+25}" font-size="9" text-anchor="middle" fill="var(--text)">${TR('densité de boue équivalente (sg)','equivalent mud density (sg)')}</text>`;
+  h += `<path d="${pts(W.gpPred)}" fill="none" stroke="#2f6fd0" stroke-width="1.8"/><path d="${pts(fr)}" fill="none" stroke="#c0392b" stroke-width="1.8"/>`;
+  P.prog.shoes.forEach(z=>{ h += `<line x1="${XL}" y1="${gy(z).toFixed(1)}" x2="${XR}" y2="${gy(z).toFixed(1)}" stroke="var(--text)" stroke-dasharray="3 3" opacity=".6"/><text x="${XL+3}" y="${(gy(z)-2).toFixed(1)}" font-size="7.5" fill="var(--text)" opacity=".8">${TR('sabot de tubage','casing shoe')} ${z} m</text>`; });
+  // la boue de chaque section : verte si la marge est bonne, orange si elle est mince, rouge si elle sort de la fenêtre
+  const fcs = progForecast(b, P.prog, P.TD);
+  progSections(P.prog, P.TD).forEach((sc, i)=>{ const y0 = gy(sc.z0), y1 = gy(Math.min(sc.z1, zmax)), f1 = fcs[i], col = (f1.kick < 0 || f1.loss < 0) ? '#c0392b' : (f1.kick < 0.03 || f1.loss < 0.03) ? '#d98a00' : '#1e9e55', ym = (y0 + y1)/2;
+    h += `<path d="M${gx(sc.w).toFixed(1)} ${y0.toFixed(1)}L${gx(sc.w).toFixed(1)} ${y1.toFixed(1)}" stroke="${col}" stroke-width="3.2" fill="none"/><rect x="${(gx(sc.w)+4).toFixed(1)}" y="${(ym-6).toFixed(1)}" width="92" height="12" rx="3" fill="var(--panel)" stroke="${col}" stroke-width=".8"/><text x="${(gx(sc.w)+50).toFixed(1)}" y="${(ym+2.8).toFixed(1)}" font-size="8" text-anchor="middle" fill="${col}" font-weight="600">${TR('boue','mud')} ${sc.w.toFixed(2)}${f1.kick < 0 ? ' ⚠ '+TR('venue','kick') : f1.loss < 0 ? ' ⚠ '+TR('pertes','loss') : ''}</text>`; });
   h += `<line x1="${XL}" y1="${gy(P.TDe).toFixed(1)}" x2="${XR}" y2="${gy(P.TDe).toFixed(1)}" stroke="var(--muted)" stroke-dasharray="1 3"/><text x="${XR}" y="${(gy(P.TDe)-2).toFixed(1)}" font-size="8" text-anchor="end" fill="var(--muted)">${TR('profondeur visée (estimée)','target depth (estimated)')}</text>`;
-  h += `<g font-size="8"><text x="${XL+4}" y="${YT+8}" fill="#2f6fd0">${TR('pores prévus','predicted pore')}</text><text x="${XL+62}" y="${YT+8}" fill="#c0392b">${TR('fracturation prévue','predicted fracture')}</text><text x="${XL+150}" y="${YT+8}" fill="#1e9e55">${TR('votre boue','your mud')}</text></g>`;
+  // légende sous le graphique : une ligne par signification
+  const lg = (x, y, col, txt, area) => `<${area?'rect':'line'} ${area?`x="${x}" y="${y-5}" width="10" height="7" fill="${col}"`:`x1="${x}" y1="${y-1}" x2="${x+10}" y2="${y-1}" stroke="${col}" stroke-width="2.4"`}/><text x="${x+14}" y="${y+2}" font-size="8" fill="var(--text)">${txt}</text>`;
+  h += lg(XL, YB+40, '#2f6fd0', TR('pression des pores (prévue)','pore pressure (predicted)')) + lg(XL+150, YB+40, '#c0392b', TR('fracturation (prévue)','fracture (predicted)'))
+     + lg(XL, YB+53, 'rgba(30,160,85,.35)', TR('fenêtre sûre pour la boue','safe mud window'), true) + lg(XL+150, YB+53, 'rgba(200,60,50,.25)', TR('hors fenêtre : venue ou pertes','outside: kick or losses'), true);
   svg.innerHTML = h;
   const f = progForecast(b, P.prog, P.TD), c = progCost(P);
   const sv = (m, a, bad) => m < 0 ? `<span class="ds-bad">${bad}</span>` : m < a ? `<span class="ds-warn">${TR('marge faible','thin margin')}</span>` : `<span class="ds-good">OK</span>`;
@@ -7365,7 +7382,8 @@ function renderSection(){
     const pts = []; dispData.forEach(bd=>{ const l = bd.layers && bd.layers[G.labPick]; if(l && l.thickness>=1) pts.push({x:xOf(bd.t), y:yOf(l.top)}); });
     if(pts.length>=2){
       svg += `<path d="M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}${secSmoothPath(pts, faultPx)}" fill="none" stroke="var(--amber)" stroke-width="2.4" stroke-linecap="round" pointer-events="none"/>`;
-      const q = pts[pts.length-1]; svg += `<rect x="${(q.x-44).toFixed(1)}" y="${(q.y-13).toFixed(1)}" width="42" height="11" rx="3" fill="var(--amber)"/><text x="${(q.x-23).toFixed(1)}" y="${(q.y-5).toFixed(1)}" font-size="7.5" font-weight="700" fill="#fff" text-anchor="middle" pointer-events="none">🎯 H${G.labPick+1}</text>`;
+      const q = pts[pts.length-1], lbl = (typeof labPickLabel==='function' ? labPickLabel(G.labPick) : 'H'+(G.labPick+1)), lw = Math.min(150, 20 + lbl.length*4.6);   // étiquette centrée sur la ligne (et non au-dessus : elle ressemblait à un point haut sur un horizon plat)
+      svg += `<rect x="${(q.x-lw-2).toFixed(1)}" y="${(q.y-5.5).toFixed(1)}" width="${lw.toFixed(1)}" height="11" rx="5.5" fill="var(--amber)" stroke="var(--panel)" stroke-width="1.2" pointer-events="none"/><text x="${(q.x-2-lw/2).toFixed(1)}" y="${(q.y+2.4).toFixed(1)}" font-size="7.5" font-weight="700" fill="#fff" text-anchor="middle" pointer-events="none">🎯 ${lbl}</text>`;
     }
   }
   svg += `</g>`;
@@ -7976,9 +7994,56 @@ function addLog(msg, type=''){
   div.className='log-entry'+(type?' '+type:'');
   const d=new Date(2026,0,1); d.setMonth(d.getMonth()+G.month);
   const months=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
-  div.innerHTML=`<span class="le-date">${months[d.getMonth()]} ${d.getFullYear()}</span> ${msg}`;
+  div.innerHTML=`<span class="le-date">${months[d.getMonth()]} ${d.getFullYear()}</span> <span class="le-msg">${msg}</span>`;
+  // un clic ouvre le détail : description, et rapport de forage si l'événement concerne un bloc (repéré par ses coordonnées « (x,y) »)
+  { const m = /\((\d+)\s*,\s*(\d+)\)/.exec(String(msg).replace(/<[^>]+>/g,'')); const bk = m ? blocks.find(b=>b.x===+m[1] && b.y===+m[2]) : null; if(bk) div.dataset.bid = bk.id; div.dataset.type = type; div.dataset.month = G.month; div.dataset.date = months[d.getMonth()]+' '+d.getFullYear();
+    div.classList.add('clickable'); div.tabIndex = 0; div.setAttribute('role','button'); }
   el.prepend(div);
 }
+
+// ---------- Détail d'un événement du journal (V5.22) ----------
+function logBlockSummary(b){
+  const w = b.well;
+  if(G.drilling.some(d=>d.blockId===b.id)) return TR('Forage en cours','Drilling in progress');
+  if(w) return TR(`Puits ${w.status==='producing'?'producteur':w.status==='depleted'?'épuisé':w.status==='closed'?'fermé':w.status}`,`Well ${w.status}`) + (w.status==='producing' ? ` · ${Math.round(wellRate(w))} ${w.isGas?'Mcf':TR('barils','barrels')}/${TR('mois','month')}` : '') + ` · ${formatM(w.cost||0)}` + (w.devN ? ` · ${w.devN} ${TR('puits de développement','development wells')}` : '') + (w.sidetrackDone ? ' · side-track' : '') + (w.co2 ? ' · CO2' : '') + (w.gasInj ? ' · '+TR('gaz réinjecté','gas reinjected') : '') + (w.eorActive ? ' · EOR' : '');
+  if(b.dryHole) return TR('Puits sec','Dry hole') + (b.dryHoleInfo ? ` · ${formatM(b.dryHoleInfo.cost||0)}` : '') + (b.wrongTarget ? TR(' · mauvais horizon',' · wrong horizon') : b.dryHoleInfo && b.dryHoleInfo.techFail ? TR(' · échec technique',' · technical failure') : '') + (b.reentryDone ? TR(' · reprise tentée',' · re-entry attempted') : '');
+  return TR('Bloc non foré','Block not drilled') + (b.studies && b.studies.length ? ` · ${b.studies.length} ${TR('étude(s)','study(ies)')}` : '');
+}
+function logDetailHtml(div){
+  const kind = { good:TR('✓ Résultat favorable','✓ Favourable result'), bad:TR('✗ Problème ou échec','✗ Problem or failure'), ev:TR('● Événement de jeu','● Game event') }[div.dataset.type] || TR('Information','Information');
+  const msg = div.querySelector('.le-msg') ? div.querySelector('.le-msg').innerHTML : div.innerHTML;
+  let h = `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;"><b style="font-size:15px;">${TR('Détail de l\'événement','Event detail')}</b><button class="cg-close" onclick="logDetailClose()">✕ ${TR('Fermer','Close')}</button></div>`
+        + `<div class="lab-note" style="margin:6px 0 8px;">${div.dataset.date || ''} · ${kind}</div><div class="ld-msg">${msg}</div>`;
+  const b = div.dataset.bid != null ? blocks[+div.dataset.bid] : null;
+  if(b){
+    h += `<div class="ps-section" style="margin-top:12px;">${TR(`Bloc (${b.x},${b.y})`,`Block (${b.x},${b.y})`)}</div><div class="lab-note" style="margin-bottom:6px;">${logBlockSummary(b)}</div>`;
+    const rep = [];
+    try { if(b.reentryFrom && b.reentryFrom.factors) rep.push([TR('Premier forage','First drilling'), debriefEntry(b, b.reentryFrom, false)]); } catch(e){}
+    try { const info = b.well || b.dryHoleInfo; if(info && info.factors) rep.push([TR('Rapport de forage','Drilling report'), debriefEntry(b, info, !!b.well)]); } catch(e){}
+    rep.forEach(([t, html])=>{ h += `<div class="ps-section" style="margin-top:10px;">${t}</div>${html}`; });
+    if(!rep.length) h += `<div class="lab-note">${TR('Aucun forage terminé sur ce bloc : pas encore de rapport.','No completed drilling on this block: no report yet.')}</div>`;
+    h += `<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap;"><button class="lab-pick sel" onclick="logDetailGo(${b.id})">${TR('Voir le bloc','Open the block')}</button></div>`;
+  } else {
+    h += `<div class="lab-note" style="margin-top:10px;">${TR('Cet événement ne concerne pas un bloc précis (marché, finance, informations générales).','This event does not concern a specific block (market, finance, general information).')}</div>`;
+  }
+  return h;
+}
+function logDetailOpen(div){
+  let el = document.getElementById('logDetailModal'); if(!el){ el = document.createElement('div'); el.id = 'logDetailModal'; el.addEventListener('click', e=>{ if(e.target===el) logDetailClose(); }); document.body.appendChild(el); }
+  el.innerHTML = `<div class="ld-box">${logDetailHtml(div)}</div>`; el.classList.add('open');
+}
+function logDetailClose(){ document.getElementById('logDetailModal')?.classList.remove('open'); }
+function logDetailGo(id){
+  const b = blocks[id]; if(!b) return; logDetailClose();
+  selectedBlock = id; rerenderAllBlocks(); renderGeoPanel(b); renderStudiesPanel(b); if(typeof renderSection==='function') renderSection(); if(typeof renderGuide==='function') renderGuide();
+  if(typeof isMobileLayout==='function' && isMobileLayout()) showMobileScreen('geo'); else switchTab('geo');
+}
+(function initLogDetail(){
+  const el = document.getElementById('logEntries'); if(!el) return;
+  el.addEventListener('click', e=>{ const d = e.target.closest('.log-entry'); if(d && el.contains(d)) logDetailOpen(d); });
+  el.addEventListener('keydown', e=>{ if((e.key==='Enter' || e.key===' ') && e.target.classList && e.target.classList.contains('log-entry')){ e.preventDefault(); logDetailOpen(e.target); } });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') logDetailClose(); });
+})();
 
 // Montants à la française : « 13,94 M$ », « 144 k$ » (espace insécable avant l'unité).
 function formatM(v){
