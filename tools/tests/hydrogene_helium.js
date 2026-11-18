@@ -43,6 +43,9 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(!d.err,'un puits productif est obtenu pour le test '+(d.err||''));
   ok(d.res===G_res(d) && d.inRange && d.floor,'le puits porte sa ressource, sa pureté et sa courbe de déclin propre '+JSON.stringify([d.res,d.purity&&d.purity.toFixed(3)]));
   function G_res(x){ return x.res; }
+  const pw = await pg.evaluate(()=>{ const b = blocks.find(x=>x.well && x.well.res); const w=b.well; selectedBlock=b.id; renderStudiesPanel(b); const t0=document.getElementById('studiesContent').textContent; const pur0=w.purity; w.purity=0.002; const e0=wellEconomics(w); renderStudiesPanel(b); const t1=document.getElementById('studiesContent').textContent; return { res:w.res, shown:/(Teneur en hélium|Pureté en hydrogène) du gaz/.test(t0), be:/Teneur d'équilibre/.test(t0), net:e0.net, warn:/Puits productif mais non rentable/.test(t1) }; });
+  ok(pw.shown && pw.be,'fiche du puits : teneur ou pureté du gaz et teneur d\'équilibre affichées '+pw.res);
+  ok(pw.net<0 && pw.warn,'un puits productif à gaz trop pauvre est signalé comme non rentable (net '+Math.round(pw.net)+')');
   ok(d.rockeval && d.geoHtml && /socle/.test(d.studyName),'l\'étude de géochimie devient l\'analyse du gaz du socle : « '+d.studyName+' »');
   // sauvegarde et chargement : la ressource et la puissance de couverture sont rétablies
   const sv = await pg.evaluate(()=>{ const k=G.resource, sp=ROSE_SEAL_POW; saveGame(); ROSE_SEAL_POW=1; G.resource='oil'; loadGame(); return { k, kAfter:G.resource, sp, spAfter:ROSE_SEAL_POW }; });

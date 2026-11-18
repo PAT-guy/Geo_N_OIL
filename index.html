@@ -6115,7 +6115,14 @@ function renderStudiesPanel(b){
     html+=infoRow(TR('Revenu brut/mois','Gross revenue/month'),formatM(econ.revenue));
     html+=infoRow(TR('Coûts d\'exploitation/mois','Operating costs/month'),formatM(econ.opex));
     html+=`<div class="tr"><span class="tl">${TR(`${TR(`Net/mois`,`Net/month`)}`,`Net/month`)}</span><span style="color:${econ.net>=0?'var(--green)':'var(--red)'};font-weight:bold;">${formatM(econ.net)}</span></div>`;
-    if(econ.net<0){
+    if(w.res && w.purity!=null){   // V5.25 : la composition du gaz est mesurée en tête de puits ; c'est elle qui décide du revenu
+      const be = econ.opex / Math.max(1, w.production*resUnitPx(G.price, 1)), pf = v => (v*100).toFixed(v<0.1?2:1).replace('.',DEC)+' %';
+      html+=infoRow(w.res==='he' ? TR('Teneur en hélium du gaz','Helium content of the gas') : TR('Pureté en hydrogène du gaz','Hydrogen purity of the gas'), pf(w.purity));
+      html+=infoRow(TR('Teneur d\'équilibre (à ce cours)','Break-even content (at this price)'), pf(be));
+    }
+    if(w.res && econ.net<0){
+      html+=`<div style="font-size:11px;color:var(--red);margin-top:6px;">${TR(`⚠ Puits productif mais non rentable : le gaz est trop pauvre pour payer son extraction à ce cours. Un cours plus haut ou un puits fermé (abandon) sont les seules issues.`,`⚠ Productive but unprofitable well: the gas is too lean to pay for its extraction at this price. A higher price or closing the well (abandonment) are the only ways out.`)}</div>`;
+    } else if(econ.net<0){
       html+=`<div style="font-size:11px;color:var(--red);margin-top:6px;">${TR(`⚠ Ce puits coûte actuellement plus qu'il ne rapporte (coûts fixes d'exploitation supérieurs au revenu à ce niveau de production).`,`⚠ This well currently costs more than it earns (fixed operating costs above revenue at this production level).`)}</div>`;
     }
     const stInfo = getSecondReservoirInfo(b);
