@@ -87,7 +87,7 @@ const { chromium, devices } = require('playwright'); const path = require('path'
   const ctx=await br.newContext({...devices['iPhone 13'],viewport:{width:390,height:760}}); const ph2=await ctx.newPage(); ph2.on('pageerror',e=>errs.push(e.message));
   await ph2.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}});
   await ph2.goto('file://'+path.resolve(__dirname,'../../index.html')); await ph2.waitForTimeout(300);
-  await ph2.locator('#quickTrain button[data-open="rig"]').tap(); await ph2.waitForTimeout(500);
+  await ph2.locator('#quickMiniBtn').tap(); await ph2.locator('#quickTrain button[data-open="rig"]').tap(); await ph2.waitForTimeout(500);
   // récapitulatif du projet : affiché d'abord, sans commandes, avec objectif, formations prévues (± incertitude), pression et risques
   const br_ = await ph2.evaluate(()=>{ const t=document.getElementById('rgBody').innerText, sc=window.__rig.S.sc; return { brief: window.__rig.S.brief, objectif:/Objectif/.test(t) && t.includes(String(sc.resPred)+' m'), tableau:/Top prévu/.test(t) && /±/.test(t) && /GR attendu/.test(t), risques:/Risques à gérer/.test(t) && /Surpression/.test(t), pasDeCurseurs: !document.getElementById('rgMw'), start: !!document.getElementById('rgStart'), chart: !!document.querySelector('#rgChart svg') }; });
   ok(br_.brief && br_.objectif && br_.tableau && br_.risques && br_.pasDeCurseurs && br_.start && br_.chart, 'téléphone : récapitulatif du projet affiché avant de forer (objectif, formations prévues avec incertitude, risques), sans commandes');

@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.19</title>
+<title>GeoExplorer V5.20</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -394,7 +394,7 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .q-train button i{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--muted);font-weight:400;}
 .q-train button i.rec{color:var(--green);}
 .q-sum{font-family:var(--mono);font-size:11.5px;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin:12px 0 4px;line-height:1.5;}
-@media (max-width:720px){ .q-train button{padding:8px 10px;font-size:12px;} .q-modes{grid-template-columns:1fr;} .q-mode{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:2px 10px;} .q-mode span{flex-basis:100%;} .q-mode i{margin-top:0;} }
+@media (max-width:720px){ .q-train button{padding:8px 10px;font-size:12px;} .q-modes{grid-template-columns:1fr 1fr;} .q-mode{grid-column:1/-1;} .q-mode{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:2px 10px;} .q-mode span{flex-basis:100%;} .q-mode i{margin-top:0;} .q-mode.sm{grid-column:auto;flex-direction:column;flex-wrap:nowrap;align-items:flex-start;gap:4px;} .q-mode.sm span{flex-basis:auto;} }
 .menu-section.active{display:block;}
 .adv-group{margin-bottom:16px;}
 .adv-group-title{font-size:11px;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--line);}
@@ -475,9 +475,14 @@ html.phone-mode .study-btn-compact{padding:8px 10px !important; min-height:36px 
 .pause-nav-btn{width:100%;text-align:left;margin-top:8px;font-size:12px;padding:12px 14px;}
 /* Les boutons secondaires des menus (pause, accueil, TP) étaient rendus en simples liens soulignés
    par la classe .adv-reset : ils deviennent de vrais boutons, lisibles et assez grands pour le doigt. */
-.pause-nav-btn,#continueSavedBtn,#openTutorialBtn,#openLithoHomeBtn,#tpAddTargetBtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;margin:8px 0 0;padding:13px 14px;font-size:14px;color:var(--text);text-decoration:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;cursor:pointer;font-family:var(--sans);}
-.pause-nav-btn:hover,#continueSavedBtn:hover,#openTutorialBtn:hover,#openLithoHomeBtn:hover,#tpAddTargetBtn:hover:not(:disabled){border-color:var(--ink);}
-#continueSavedBtn,#openTutorialBtn,#openLithoHomeBtn{justify-content:center;text-align:center;}
+.pause-nav-btn,#continueSavedBtn,#openTutorialBtn,#openLithoHomeBtn,#tpAddTargetBtn,#dailyBtn,#menuCustomBtn,#menuSimpleBtn,#quickMiniBtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;margin:8px 0 0;padding:13px 14px;font-size:14px;color:var(--text);text-decoration:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;cursor:pointer;font-family:var(--sans);}
+.pause-nav-btn:hover,#continueSavedBtn:hover,#openTutorialBtn:hover,#openLithoHomeBtn:hover,#tpAddTargetBtn:hover:not(:disabled),#dailyBtn:hover,#menuCustomBtn:hover,#menuSimpleBtn:hover,#quickMiniBtn:hover{border-color:var(--ink);}
+#continueSavedBtn,#openTutorialBtn,#openLithoHomeBtn,#dailyBtn,#menuCustomBtn,#menuSimpleBtn,#quickMiniBtn{justify-content:center;text-align:center;}
+#menuBackRow{padding:6px 0 4px;}
+#menuBackRow #menuSimpleBtn{margin:0;}
+#quickMiniBtn,#menuCustomBtn{margin-top:14px;}
+#quickMiniBtn+#menuCustomBtn{margin-top:8px;}
+#miniGamesModal .q-train{margin-top:6px;}
 #tpAddTargetBtn:disabled{opacity:.55;cursor:default;}
 .pause-nav-btn.danger{color:var(--red);}
 #pauseSummary{margin:12px 0 4px;}
@@ -709,26 +714,15 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
         <button type="button" class="q-mode" data-mode="junior"><b>🟡 Junior</b><span class="i18n" data-fr="Budget confortable. Pour découvrir le jeu." data-en="Comfortable budget. To discover the game.">Budget confortable. Pour découvrir le jeu.</span><i>15 M$ · 25 ans</i></button>
         <button type="button" class="q-mode" data-mode="expert"><b>🔴 Senior</b><span class="i18n" data-fr="Budget serré, marché volatile. Chaque forage compte." data-en="Tight budget, volatile market. Every well counts.">Budget serré, marché volatile. Chaque forage compte.</span><i>8 M$ · 20 ans</i></button>
         <button type="button" class="q-mode" data-mode="expedition"><b>🌍 Grande exploration</b><span class="i18n" data-fr="Carte 30×30, plusieurs provinces géologiques, budget étendu." data-en="30×30 map, several geological provinces, larger budget.">Carte 30×30, plusieurs provinces géologiques, budget étendu.</span><i>45 M$ · 35 ans</i></button>
+        <button type="button" class="q-mode sm" data-mode="tp"><b>🎓 Mode TP</b><span class="i18n" data-fr="Objectif géologique, pas financier : identifiez les 2 meilleures cibles et justifiez-les." data-en="Geological goal, not financial: identify the 2 best targets and justify them.">Objectif géologique, pas financier : identifiez les 2 meilleures cibles et justifiez-les.</span></button>
+        <button type="button" class="q-mode sm" data-mode="sandbox"><b>⚙ Bac à sable</b><span class="i18n" data-fr="Budget illimité, géologie révélée d'emblée. Pour explorer les mécaniques." data-en="Unlimited budget, geology revealed from the start. To explore the mechanics.">Budget illimité, géologie révélée d'emblée. Pour explorer les mécaniques.</span></button>
       </div>
       <div class="q-lbl"><span class="i18n" data-fr="Bassin" data-en="Basin">Bassin</span></div>
       <select id="quickBasin" class="drill-select" aria-label="Bassin géologique"></select>
       <div class="q-brief" id="quickBrief"></div>
       <div class="q-sum" id="quickSummary"></div>
-      <div class="q-lbl"><span class="i18n" data-fr="S'entraîner" data-en="Practice">S'entraîner</span></div>
-      <div class="q-train" id="quickTrain">
-        <button type="button" data-open="cards">🃏 Assembler un prospect<i>~2 min</i></button>
-        <button type="button" data-quiz="lithofacies">🪨 Quiz lithofaciès<i data-best="lithofacies">8 questions</i></button>
-        <button type="button" data-quiz="maturation">🌡️ Quiz maturation<i data-best="maturation">8 questions</i></button>
-        <button type="button" data-quiz="rockeval">🧪 Quiz Rock-Eval<i data-best="rockeval">8 questions</i></button>
-        <button type="button" data-quiz="seismic">📡 Quiz sismique<i data-best="seismic">8 questions</i></button>
-        <button type="button" data-open="logs">📈 Lire un log<i data-best="logs">8 questions</i></button>
-        <button type="button" data-quiz="forage">⛏ Dimensionner son forage<i data-best="forage">8 questions</i></button>
-        <button type="button" data-quiz="fluides">💧 Eau, gaz et pression<i data-best="fluides">8 questions</i></button>
-        <button type="button" data-quiz="analyses">📐 Atelier d'analyses<i data-best="analyses">8 questions</i></button>
-        <button type="button" data-open="sei">📡 Interpréter une coupe sismique<i data-best="sei">6 questions</i></button>
-        <button type="button" data-open="rig">🏗 Console de forage<i data-best="rig">~6 min</i></button>
-      </div>
-      <button type="button" class="est-clear" id="menuCustomBtn" style="margin-top:14px;">⚙ <span class="i18n" data-fr="Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)" data-en="Customize (map, seed, difficulty, display, mini-games)">Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)</span></button>
+      <button type="button" id="quickMiniBtn">🎮 <span class="i18n" data-fr="Mini-jeux" data-en="Mini-games">Mini-jeux</span></button>
+      <button type="button" class="est-clear" id="menuCustomBtn">⚙ <span class="i18n" data-fr="Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)" data-en="Customize (map, seed, difficulty, display, mini-games)">Personnaliser la partie (carte, seed, difficulté, affichage, mini-jeux)</span></button>
     </div>
 
     <div class="menu-section active" id="tab-mode">
@@ -944,6 +938,29 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
     <button class="adv-reset" id="openTutorialBtn" style="width:100%;text-align:center;margin-bottom:8px;">🎓 <span class="i18n" data-fr="Tutoriel (2 min)" data-en="Tutorial (2 min)">Tutoriel (2 min)</span></button>
     <button class="adv-reset" id="dailyBtn" style="width:100%;text-align:center;margin-bottom:8px;">🎯 <span id="dailyLbl">Défi du jour</span></button>
     <button class="start-btn" id="startBtn">▶ <span class="i18n" data-fr="DÉMARRER" data-en="START">DÉMARRER</span></button>
+  </div>
+</div>
+
+<!-- Mini-jeux (accueil) : la liste complète, ouverte par un seul bouton -->
+<div id="miniGamesModal" style="position:fixed;inset:0;z-index:1400;background:var(--bg);display:none;flex-direction:column;align-items:center;overflow-y:auto;padding:20px 14px 40px;">
+  <div class="menu-card" style="max-width:600px;">
+    <div class="cg-header">
+      <div class="menu-title" style="font-size:18px;">🎮 <span class="i18n" data-fr="Mini-jeux" data-en="Mini-games">Mini-jeux</span></div>
+      <button class="cg-close" id="miniGamesClose">✕ <span class="i18n" data-fr="Fermer" data-en="Close">Fermer</span></button>
+    </div>
+    <div class="q-train" id="quickTrain">
+        <button type="button" data-open="cards">🃏 Assembler un prospect<i>~2 min</i></button>
+        <button type="button" data-quiz="lithofacies">🪨 Quiz lithofaciès<i data-best="lithofacies">8 questions</i></button>
+        <button type="button" data-quiz="maturation">🌡️ Quiz maturation<i data-best="maturation">8 questions</i></button>
+        <button type="button" data-quiz="rockeval">🧪 Quiz Rock-Eval<i data-best="rockeval">8 questions</i></button>
+        <button type="button" data-quiz="seismic">📡 Quiz sismique<i data-best="seismic">8 questions</i></button>
+        <button type="button" data-open="logs">📈 Lire un log<i data-best="logs">8 questions</i></button>
+        <button type="button" data-quiz="forage">⛏ Dimensionner son forage<i data-best="forage">8 questions</i></button>
+        <button type="button" data-quiz="fluides">💧 Eau, gaz et pression<i data-best="fluides">8 questions</i></button>
+        <button type="button" data-quiz="analyses">📐 Atelier d'analyses<i data-best="analyses">8 questions</i></button>
+        <button type="button" data-open="sei">📡 Interpréter une coupe sismique<i data-best="sei">6 questions</i></button>
+        <button type="button" data-open="rig">🏗 Console de forage<i data-best="rig">~6 min</i></button>
+      </div>
   </div>
 </div>
 
@@ -8452,8 +8469,12 @@ const QUICK_BASINS = [['random',TR('🎲 Aléatoire (libre)','🎲 Random (free)
   sel.addEventListener('change', ()=>{ document.querySelector(`#basinPicker button[data-val="${sel.value}"]`)?.click(); quickRefresh(); });
   document.querySelectorAll('#quickModes .q-mode').forEach(b=>b.addEventListener('click', ()=>{ document.querySelector(`.mode-card[data-mode="${b.dataset.mode}"]`)?.click(); quickRefresh(); }));
   document.getElementById('menuCustomBtn').addEventListener('click', ()=>setMenuSimple(false));
+  { const mm = document.getElementById('miniGamesModal'), openM = ()=>{ mm.style.display = 'flex'; quickRefresh(); }, closeM = ()=>{ mm.style.display = 'none'; };
+    document.getElementById('quickMiniBtn')?.addEventListener('click', openM); document.getElementById('miniGamesClose')?.addEventListener('click', closeM);
+    document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeM(); }); window.__closeMiniGames = closeM; }
   document.getElementById('menuSimpleBtn').addEventListener('click', ()=>setMenuSimple(true));
   document.querySelectorAll('#quickTrain button').forEach(b=>b.addEventListener('click', ()=>{
+    window.__closeMiniGames && window.__closeMiniGames();
     if(b.dataset.open==='cards') document.getElementById('cardGameOpenBtn')?.click();
     else if(b.dataset.open==='logs') document.getElementById('logGameOpenBtn')?.click();
     else if(b.dataset.open==='sei') document.getElementById('seiOpenBtn')?.click();

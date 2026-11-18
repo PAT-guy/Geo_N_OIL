@@ -53,7 +53,7 @@ const { chromium, devices } = require('playwright'); const path = require('path'
   const ctx=await br.newContext({...devices['iPhone 13'],viewport:{width:390,height:780}}); const ph=await ctx.newPage(); ph.on('pageerror',e=>errs.push(e.message));
   await ph.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1');localStorage.removeItem('geoexplorer_quiz_best_rigdrain')}catch(e){}});
   await ph.goto('file://'+path.resolve(__dirname,'../../index.html')); await ph.waitForTimeout(300);
-  await ph.locator('#quickTrain button[data-open="rig"]').tap(); await ph.waitForTimeout(400);
+  await ph.locator('#quickMiniBtn').tap(); await ph.locator('#quickTrain button[data-open="rig"]').tap(); await ph.waitForTimeout(400);
   await ph.evaluate(()=>{ const R=window.__rig; R.playBot(R.S,'good'); R.render(); });
   ok(await ph.evaluate(()=>!!document.getElementById('rgDrain') && /Continuer : forer le drain horizontal/.test(document.getElementById('rgDrain').innerText)), 'téléphone : après le puits vertical réussi, le bilan propose le drain horizontal');
   await ph.locator('#rgDrain').tap(); await ph.waitForTimeout(200);

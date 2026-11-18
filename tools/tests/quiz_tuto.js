@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1')}catch(e){}});
 await pg.goto('file://'+require('path').resolve(__dirname,'../../index.html')); await pg.waitForTimeout(300);
 // quiz sismique depuis l'accueil
-await pg.click('#quickTrain button[data-quiz="seismic"]'); await pg.waitForTimeout(200);
+await pg.click('#quickMiniBtn'); await pg.click('#quickTrain button[data-quiz="seismic"]'); await pg.waitForTimeout(200);
 const r = await pg.evaluate(()=>{ const m=document.getElementById('quizModal'); return { ouvert:getComputedStyle(m).display!=='none', titre:document.getElementById('qzTitle').textContent, question:document.getElementById('qzQuestion').textContent.slice(0,90), choix:document.querySelectorAll('#qzChoices button').length }; });
 console.log(JSON.stringify(r));
 // 8 questions : on répond toujours juste en lisant la bonne réponse dans la banque
