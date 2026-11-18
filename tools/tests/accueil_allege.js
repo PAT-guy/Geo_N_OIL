@@ -14,7 +14,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(mb.border>=2 && mb.border>mb.borderCu && mb.bg!==mb.bgCu && mb.h>=56,'Mini-jeux : bouton mis en avant (bordure plus épaisse et fond d\'accent, plus haut que les autres)');
   ok(h.custom.vis && h.custom.h>=40 && h.custom.border && !h.custom.underline,'« Personnaliser la partie » : bouton propre '+JSON.stringify(h.custom));
   ok(h.daily.vis && h.daily.h>=40 && h.daily.border && !h.daily.underline,'« Défi du jour » : bouton propre '+JSON.stringify(h.daily));
-  ok(h.modes.includes('tp') && h.modes.includes('sandbox') && h.modes.length===6,'Mode TP et Bac à sable proposés '+h.modes);
+  ok(h.modes.includes("tp") && h.modes.includes("sandbox") && h.modes.length===7,'Mode TP et Bac à sable proposés '+h.modes);
   // la liste s'ouvre, un jeu s'ouvre et ferme la liste
   await pg.click('#quickMiniBtn'); await pg.waitForTimeout(200);
   ok(await pg.evaluate(()=>getComputedStyle(document.getElementById('miniGamesModal')).display!=='none' && document.querySelectorAll('#miniGamesModal #quickTrain button').length===11),'Mini-jeux : la liste des 11 jeux s\'ouvre');

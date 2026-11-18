@@ -10,13 +10,13 @@
   // Noms de roches et de formations : en anglais, on retient le nom français d'origine pour que le classement (regex sur les mots-clés) donne exactement le même résultat dans les deux langues.
   const FRMAP = Object.create(null);
   window.TRN = function(fr, en){ if(document.documentElement.lang==='en'){ FRMAP[en] = fr; return en; } return fr; };
-  window.matLbl = function(c){ if(document.documentElement.lang!=='en') return c; return c==='Fenêtre à huile' ? 'Oil window' : c==='Surmature (gaz)' ? 'Overmature (gas)' : c; };
+  window.matLbl = function(c){ if(typeof G!=='undefined' && G && G.resource && G.resource!=='oil') return document.documentElement.lang==='en' ? 'Continuous basement charge' : 'Charge continue du socle'; if(document.documentElement.lang!=='en') return c; return c==='Fenêtre à huile' ? 'Oil window' : c==='Surmature (gaz)' ? 'Overmature (gas)' : c; };
   window.FRN = function(s){ return (s!=null && document.documentElement.lang==='en' && FRMAP[s]!==undefined) ? FRMAP[s] : s; };
   window.DEC = L==='en' ? '.' : ','; })();
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.23</title>
+<title>GeoExplorer V5.24</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -728,6 +728,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
         <button type="button" class="q-mode" data-mode="junior"><b>🟡 Junior</b><span class="i18n" data-fr="Budget confortable. Pour découvrir le jeu." data-en="Comfortable budget. To discover the game.">Budget confortable. Pour découvrir le jeu.</span><i>15 M$ · 25 ans</i></button>
         <button type="button" class="q-mode" data-mode="expert"><b>🔴 Senior</b><span class="i18n" data-fr="Budget serré, marché volatile. Chaque forage compte." data-en="Tight budget, volatile market. Every well counts.">Budget serré, marché volatile. Chaque forage compte.</span><i>8 M$ · 20 ans</i></button>
         <button type="button" class="q-mode" data-mode="expedition"><b>🌍 Grande exploration</b><span class="i18n" data-fr="Carte 30×30, plusieurs provinces géologiques, budget étendu." data-en="30×30 map, several geological provinces, larger budget.">Carte 30×30, plusieurs provinces géologiques, budget étendu.</span><i>45 M$ · 35 ans</i></button>
+        <button type="button" class="q-mode" data-mode="h2he"><b>⚗️ Hydrogène et hélium</b><span class="i18n" data-fr="Ressources de la transition : hydrogène naturel (serpentinisation du socle) ou hélium (uranium du craton piégé sous le sel). Budget 10 M$, objectif 30 M$, 20 ans." data-en="Transition resources: natural hydrogen (basement serpentinization) or helium (craton uranium trapped under salt). $10M budget, $30M goal, 20 years.">Ressources de la transition : hydrogène naturel (serpentinisation du socle) ou hélium (uranium du craton piégé sous le sel). Budget 10 M$, objectif 30 M$, 20 ans.</span></button>
         <button type="button" class="q-mode sm" data-mode="tp"><b>🎓 Mode TP</b><span class="i18n" data-fr="Objectif géologique, pas financier : identifiez les 2 meilleures cibles et justifiez-les." data-en="Geological goal, not financial: identify the 2 best targets and justify them.">Objectif géologique, pas financier : identifiez les 2 meilleures cibles et justifiez-les.</span></button>
         <button type="button" class="q-mode sm" data-mode="sandbox"><b>⚙ Bac à sable</b><span class="i18n" data-fr="Budget illimité, géologie révélée d'emblée. Pour explorer les mécaniques." data-en="Unlimited budget, geology revealed from the start. To explore the mechanics.">Budget illimité, géologie révélée d'emblée. Pour explorer les mécaniques.</span></button>
       </div>
@@ -765,6 +766,11 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
         <div class="mode-desc">Budget illimité, géologie révélée d'emblée. Pour explorer les mécaniques.</div>
         <div class="mode-stats">Budget <span>∞</span> · Objectif <span>aucun</span></div>
       </div>
+      <div class="mode-card" data-mode="h2he">
+        <div class="mode-name">⚗️ Hydrogène et hélium</div>
+        <div class="mode-desc">Cherchez des ressources de la transition énergétique. Hydrogène naturel : la serpentinisation de roches ultramafiques et la radiolyse du socle le produisent en continu, mais la molécule fuit à travers la plupart des couvertures. Hélium : la désintégration de l'uranium et du thorium d'un craton ancien l'accumule sous le sel. Deux géologies, tirées par la graine. La pureté du gaz décide du prix.</div>
+        <div class="mode-stats">Budget <span>10 M$</span> · Objectif <span>30 M$</span> · <span>20 ans</span></div>
+      </div>
       <div class="mode-card" data-mode="expedition">
         <div class="mode-name">🌍 Grande Exploration</div>
         <div class="mode-desc">Grande carte (30×30 suggéré) avec plusieurs provinces lithostratigraphiques distinctes à explorer. Budget étendu pour couvrir un territoire plus vaste sans être à l'étroit financièrement.</div>
@@ -799,6 +805,8 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
           <div class="tg">
             <button data-val="north_sea" title="Sud de la mer du Nord : Rotliegend sous le sel du Zechstein, gaz, offshore profond : matériel et budget conséquents nécessaires">Mer du Nord</button>
             <button data-val="gulf_coast" title="Sel Louann, failles de croissance, subsidence continue (exhumation ×1) : le plus profond et le plus complexe">Gulf Coast</button>
+            <button data-val="hydrogen" title="Socle ultramafique qui fabrique de l'hydrogène en continu, couverture de dolérite : la molécule fuit, seule une couverture excellente la garde">Hydrogène</button>
+            <button data-val="helium" title="Craton uranifère sous le sel : l'hélium est rare dans le gaz, sa teneur décide du prix">Hélium</button>
             <button data-val="permian" title="Roche-mère du Wolfcamp sous le sel de l'Ochoan, forage horizontal et frac, eau et gaz associé : le défi de l'eau (production avancée activée par défaut)">Permien</button>
           </div>
         </div>
@@ -1349,6 +1357,8 @@ const MODES = {
   tp:       { budget:20e6, winGoal:0,     maxYears:0,  bankruptcyEnabled:false, tpMode:true },
   sandbox:  { budget:1e9,  winGoal:0,     maxYears:0,  bankruptcyEnabled:false, revealAll:true },
   expedition:{ budget:45e6, winGoal:120e6, maxYears:35, bankruptcyEnabled:true, suggestedGridSize:30 },
+  // Hydrogène et hélium (V5.24) : ressources non pétrolières, deux géologies (socle ultramafique pour l'hydrogène, craton uranifère sous évaporites pour l'hélium), choisie par la graine
+  h2he:     { budget:10e6, winGoal:30e6,  maxYears:20, bankruptcyEnabled:true, suggestedGridSize:12, resourceMode:true, basinChoices:['hydrogen','helium'] },
 };
 
 // Briefs géologiques par bassin (mode TP / affichage menu)
@@ -1359,6 +1369,8 @@ const BASIN_BRIEFS = {
   passive:   TR('📋 Marge passive : séquences progradantes, coin sédimentaire, possibilité de sel (évaporites). Réservoirs turbiditiques ou carbonatés de plateforme.','📋 Passive margin: prograding sequences, sedimentary wedge, possible salt (evaporites). Turbidite or shelf carbonate reservoirs.'),
   foreland:  TR('📋 Bassin d\'avant-pays : plissement compressif, anticlinaux en chevrons, chevauchements. Structures souvent bien définies mais profondeur variable.','📋 Foreland basin: compressional folding, chevron anticlines, thrusts. Structures are often well defined but depth varies.'),
   aquitaine: TR('📋 Bassin d\'Aquitaine : profondeurs modérées (1300-2600m), failles et plis liés à l\'orogenèse pyrénéenne, sel triasique localisé. Onshore dominant avec une frange offshore (type Parentis). Bon cas intermédiaire entre Paris et Mer du Nord.','📋 Aquitaine Basin: moderate depths (1300-2600 m), faults and folds linked to the Pyrenean orogeny, localized Triassic salt. Mostly onshore with an offshore fringe (Parentis type). A good intermediate case between Paris and the North Sea.'),
+  hydrogen:  TR('📋 Hydrogène naturel : socle ultramafique ou riche en fer qui fabrique de l\'hydrogène en continu (serpentinisation, radiolyse), couvert par des sills de dolérite ou des argilites, comme à Bourakébougou (Mali). L\'hydrogène fuit à travers la plupart des couvertures : seule une couverture excellente le garde. Le gaz est plus ou moins pur (azote, méthane) et se vend au kilo. Le champ se recharge, donc la production baisse peu.','📋 Natural hydrogen: ultramafic or iron-rich basement that makes hydrogen continuously (serpentinization, radiolysis), covered by dolerite sills or claystones, as at Bourakébougou (Mali). Hydrogen leaks through most seals: only an excellent seal keeps it. The gas is more or less pure (nitrogen, methane) and sold by the kilogram. The field recharges, so production declines little.'),
+  helium:    TR('📋 Hélium : craton archéen riche en uranium et en thorium, dont la désintégration produit de l\'hélium radiogénique qui monte et se piège sous le sel ou l\'anhydrite (Rukwa, Hugoton). Il arrive en faible proportion, mêlé à l\'azote et au méthane : la teneur décide du prix. Un gaz à 0,3 % ne se vend pas, un gaz à 8 % vaut une fortune. Le champ se vide comme un champ de gaz.','📋 Helium: Archaean craton rich in uranium and thorium, whose decay produces radiogenic helium that rises and is trapped under salt or anhydrite (Rukwa, Hugoton). It arrives in small proportions, mixed with nitrogen and methane: the concentration decides the price. A 0.3 % gas is not sold, an 8 % gas is worth a fortune. The field depletes like a gas field.'),
   permian:   TR('📋 Bassin permien (Texas) : grès turbiditiques conventionnels du Delaware sous le sel de l\'Ochoan, et surtout roche-mère du Wolfcamp épaisse, riche et mûre, exploitable par forage horizontal et fracturation. À terre. Le défi est l\'eau : eau de frac, BSW des puits fracturés, capacité de traitement et d\'évacuation. La production avancée est activée par défaut.','📋 Permian Basin (Texas): conventional Delaware turbidite sandstones beneath the Ochoan salt, and above all a thick, rich, mature Wolfcamp source rock that can be exploited by horizontal drilling and fracturing. Onshore. The challenge is water: frac water, BSW of fracked wells, processing and disposal capacity. Advanced production is on by default.'),
   gulf_coast:TR('📋 Gulf Coast : bassin cénozoïque très subsident (2200-5000m), tectonique salifère intense (sel Louann), failles de croissance, quasi aucune exhumation (bassin toujours en subsidence, pas soulevé). Offshore dominant. Cas pédagogique pour la différence subsidence continue vs exhumation.','📋 Gulf Coast: highly subsiding Cenozoic basin (2200-5000 m), intense salt tectonics (Louann salt), growth faults, almost no exhumation (basin still subsiding, not uplifted). Mostly offshore. Teaching case for the difference between continuous subsidence and exhumation.'),
 };
@@ -1501,6 +1513,79 @@ const BASIN_COLUMNS = {
       ],
       basement: [
         {id:'prm_socle', name:TRN('Socle précambrien','Precambrian basement'), lith:TRN('Granite et gneiss','Granite and gneiss'), col:'#332218', light:'#503828'},
+      ],
+    },
+  },
+
+  // Hydrogène naturel (V5.24) : socle ultramafique et riche en fer sous une couverture de dolérite ou d'argilite, comme les puits de Bourakébougou (Mali) et les rifts anciens.
+  // La « roche-mère » est le socle qui fabrique l'hydrogène (serpentinisation, radiolyse) ; la charge est continue, la couverture doit être excellente (molécule très petite).
+  hydrogen: {
+    sequence: ['overburden','neutral_top','seal','reservoir','neutral_mid','source','basement'],
+    deepResProb: 0,
+    thick: { overburden:[80,350], neutral_top:[80,400], seal:[30,120], reservoir:[20,100], neutral_mid:[50,200], source:[80,300] },
+    pools: {
+      overburden: [
+        {id:'h2_lateri', name:TRN('Latérites et sables du Quaternaire','Quaternary laterites and sands'), lith:TRN('Cuirasse ferrugineuse et sables fins','Ferruginous crust and fine sands'), col:'#8a5a3a', light:'#aa7a5a'},
+        {id:'h2_alluv', name:TRN('Alluvions récentes','Recent alluvium'), lith:TRN('Sables et argiles non consolidés','Unconsolidated sands and clays'), col:'#7a6a50', light:'#a08a60'},
+      ],
+      neutral_top: [
+        {id:'h2_gresrouge', name:TRN('Grès rouges continentaux','Continental red sandstones'), lith:TRN('Grès fins rouges, litage oblique','Fine red sandstones, cross-bedding'), col:'#a05a3a', light:'#c07a5a'},
+        {id:'h2_silt', name:TRN('Siltites du Néoprotérozoïque','Neoproterozoic siltstones'), lith:TRN('Siltite compacte, faible porosité','Tight siltstone, low porosity'), col:'#887050', light:'#a89060'},
+      ],
+      seal: [
+        {id:'h2_doler', name:TRN('Sills de dolérite','Dolerite sills'), lith:TRN('Dolérite massive et imperméable : la couverture des puits maliens','Massive impermeable dolerite: the seal of the Malian wells'), col:'#2a3a3a', light:'#4a5a5a'},
+        {id:'h2_argil', name:TRN('Argilites du Protérozoïque','Proterozoic claystones'), lith:TRN('Argilite compacte à très faible perméabilité','Tight claystone with very low permeability'), col:'#3a4a5a', light:'#5a6a7a'},
+      ],
+      reservoir: [
+        {id:'h2_gres', name:TRN('Grès du Néoprotérozoïque','Neoproterozoic sandstones'), lith:TRN('Grès quartzeux silicifié, porosité moyenne','Silicified quartz sandstone, moderate porosity'), col:'#C4863A', light:'#e0a04a'},
+        {id:'h2_dolo', name:TRN('Dolomies du Protérozoïque','Proterozoic dolomites'), lith:TRN('Dolomie fracturée, porosité de fracture','Fractured dolomite, fracture porosity'), col:'#B8B090', light:'#d4cca8'},
+      ],
+      neutral_mid: [
+        {id:'h2_schiste', name:TRN('Schistes verts','Greenschists'), lith:TRN('Roche métamorphique de faible grade, non réservoir','Low-grade metamorphic rock, non-reservoir'), col:'#5a6a50', light:'#7a8a70'},
+      ],
+      source: [
+        {id:'h2_serp', name:TRN('Péridotites serpentinisées','Serpentinized peridotites'), lith:TRN('Roche ultramafique : l\'eau oxyde le fer et libère de l\'hydrogène (serpentinisation)','Ultramafic rock: water oxidizes the iron and releases hydrogen (serpentinization)'), col:'#2a4a3a', light:'#4a6a5a'},
+        {id:'h2_fe', name:TRN('Socle riche en fer ferreux','Ferrous-iron-rich basement'), lith:TRN('Gneiss et amphibolites à fer ferreux : l\'eau est décomposée par radiolyse','Gneiss and amphibolites with ferrous iron: water is split by radiolysis'), col:'#3a3a2e', light:'#5a5a4e'},
+      ],
+      basement: [
+        {id:'h2_socle', name:TRN('Socle cristallin','Crystalline basement'), lith:TRN('Granite et gneiss','Granite and gneiss'), col:'#332218', light:'#503828'},
+      ],
+    },
+  },
+  // Hélium (V5.24) : craton archéen riche en uranium et en thorium ; la désintégration produit de l'hélium radiogénique qui monte et se piège sous des évaporites
+  // (Rukwa en Tanzanie, Hugoton au Kansas, Hassi Messaoud). L'hélium arrive en faible proportion, mêlé à l'azote et au méthane.
+  helium: {
+    sequence: ['overburden','neutral_top','evaporite','seal','reservoir','neutral_mid','source','basement'],
+    deepResProb: 0,
+    thick: { overburden:[60,300], neutral_top:[80,350], evaporite:[60,300], seal:[30,100], reservoir:[25,120], neutral_mid:[60,220], source:[100,400] },
+    pools: {
+      overburden: [
+        {id:'he_sables', name:TRN('Sables du Quaternaire','Quaternary sands'), lith:TRN('Sables éoliens et alluvions','Aeolian sands and alluvium'), col:'#a89060', light:'#c8b080'},
+      ],
+      neutral_top: [
+        {id:'he_karoo', name:TRN('Grès et argiles du Karoo','Karoo sandstones and clays'), lith:TRN('Alternance continentale gréso-argileuse','Continental sandstone-clay alternation'), col:'#a07a4a', light:'#c09a6a'},
+        {id:'he_calc', name:TRN('Calcaires du Permien supérieur','Upper Permian limestones'), lith:TRN('Calcaire micritique, non réservoir','Micritic limestone, non-reservoir'), col:'#909060', light:'#b0b080'},
+      ],
+      evaporite: [
+        {id:'he_halite', name:TRN('Halite du Permien','Permian halite'), lith:TRN('Sel gemme massif, scelle parfaitement l\'hélium','Massive rock salt, seals helium perfectly'), col:'#E8E0F0', light:'#f6f0fa'},
+        {id:'he_anhy', name:TRN('Anhydrite','Anhydrite'), lith:TRN('Sulfate de calcium massif','Massive calcium sulphate'), col:'#D8B8D8', light:'#ead0ea'},
+      ],
+      seal: [
+        {id:'he_argil', name:TRN('Argilites évaporitiques','Evaporitic claystones'), lith:TRN('Argilite compacte et dolomie argileuse','Tight claystone and clayey dolomite'), col:'#3a4a5a', light:'#5a6a7a'},
+      ],
+      reservoir: [
+        {id:'he_gres', name:TRN('Grès du Permien','Permian sandstones'), lith:TRN('Grès fluviatile propre, bonne porosité','Clean fluvial sandstone, good porosity'), col:'#C4863A', light:'#e0a04a'},
+        {id:'he_dolo', name:TRN('Dolomies du Carbonifère','Carboniferous dolomites'), lith:TRN('Dolomie cristalline à porosité vacuolaire','Crystalline dolomite with vuggy porosity'), col:'#B8B090', light:'#d4cca8'},
+      ],
+      neutral_mid: [
+        {id:'he_silt', name:TRN('Siltites et argiles du Paléozoïque','Palaeozoic siltstones and clays'), lith:TRN('Siltite compacte, non réservoir','Tight siltstone, non-reservoir'), col:'#887050', light:'#a89060'},
+      ],
+      source: [
+        {id:'he_granite', name:TRN('Granite archéen uranifère','Uranium-bearing Archaean granite'), lith:TRN('Granite riche en uranium et en thorium : leur désintégration produit l\'hélium radiogénique','Granite rich in uranium and thorium: their decay produces radiogenic helium'), col:'#8a4a4a', light:'#aa6a6a'},
+        {id:'he_gneiss', name:TRN('Gneiss du craton','Craton gneiss'), lith:TRN('Gneiss archéen à zircons et monazite (thorium)','Archaean gneiss with zircon and monazite (thorium)'), col:'#6a4a3a', light:'#8a6a5a'},
+      ],
+      basement: [
+        {id:'he_craton', name:TRN('Craton archéen','Archaean craton'), lith:TRN('Gneiss et granite très anciens','Very ancient gneiss and granite'), col:'#332218', light:'#503828'},
       ],
     },
   },
@@ -1965,6 +2050,7 @@ let blocks = [];
 let GS = 12; // grid size courant
 
 function generateGeology(gridSize, basinType, offshore, seed){
+  ROSE_SEAL_POW = (RESOURCES[RESOURCE_BASINS[basinType]] || {}).sealPow || 1;
   GS = gridSize;
   const rng = makeRng(seed || (Math.random()*1e9)|0);
   // Nombre de provinces lithostratigraphiques : croît avec la taille de la
@@ -2000,6 +2086,8 @@ function generateGeology(gridSize, basinType, offshore, seed){
     aquitaine: {saltP:.30,saltMax:2,fMin:1,fMax:3,aMin:2,aMax:4,dBase:1900,dRange:900, gMin:27,gRange:8, oRatio:.20,exhum:1.7},
     gulf_coast:{saltP:.85,saltMax:3,fMin:2,fMax:5,aMin:1,aMax:2,dBase:3400,dRange:1800,gMin:26,gRange:9, oRatio:.80,exhum:1.0},
     permian:   {saltP:.30,saltMax:2,fMin:1,fMax:3,aMin:2,aMax:4,dBase:1900,dRange:1400,gMin:28,gRange:8, oRatio:0,  exhum:1.3},
+    hydrogen:  {saltP:.05,saltMax:1,fMin:1,fMax:3,aMin:2,aMax:4,dBase:700, dRange:1300,gMin:25,gRange:8, oRatio:0,  exhum:1.2},
+    helium:    {saltP:.55,saltMax:3,fMin:0,fMax:2,aMin:2,aMax:4,dBase:1200,dRange:1500,gMin:22,gRange:6, oRatio:0,  exhum:1.1},
   };
   const bp = { ...(BP[basinType] || BP.random), ...(buildStratigraphy.lastVariant?.bp || {}) };
 
@@ -2180,6 +2268,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       // Surmature : la roche-mère ne donne plus d'huile mais continue de générer du gaz sec jusqu'à 200 °C et au-delà. Le coefficient valait
       // 0,10 (V4.72 et avant), ce qui rendait les bassins à gaz (Gulf Coast, Mer du Nord, Aquitaine) injustement pauvres : il décroît maintenant de 0,80 à 150 °C vers 0,30.
       else                     { maturity=clamp(0.8 - (paleoTemp-150)/180, 0.3, 0.8); maturityClass='Surmature (gaz)'; }
+      if(RESOURCE_BASINS[basinType]){ maturity = 0.85; maturityClass = 'Surmature (gaz)'; }   // hydrogène et hélium : charge continue du socle, jamais « immature »
       const isGas = maturityClass==='Surmature (gaz)';
 
       // Facteurs du système pétrolier
@@ -2254,7 +2343,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
 
       raw.push({
         id, x, y, horizons, topOfReservoir, tempAtRes, tempAtSrc, pressureRes,
-        maturity, maturityClass, isGas,
+        maturity, maturityClass, isGas, res: RESOURCE_BASINS[basinType] || null,
         gradient, exhumation, paleoTemp, srcTopDepth, // exposés pour les quiz générés (Rock-Eval, Maturation) : aucun effet sur la géologie
         trapFactor, resFactor, sealFactor, genStrength, trueQuality, upperGen, faultJuxt,
         resThicknessLocal, inSalt, faultThrow, isOffshore, provinceIdx, srcAbsent,
@@ -2281,7 +2370,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
     if(have < need){
       const cands = raw.filter(b => !b.srcAbsent && b.genStrength < KITCHEN_MIN_STRENGTH && b.maturity>0)
                        .sort((u,w)=> (w.genStrength/w.maturity) - (u.genStrength/u.maturity) || u.id - w.id);
-      const heat = b => { const pot = Math.max(.3, b.genStrength / b.maturity); b.paleoTemp = Math.max(b.paleoTemp, 85); b.maturity = .75; b.maturityClass = 'Fenêtre à huile'; b.isGas = false; b.genStrength = Math.max(.2, pot*.75); };
+      const heat = b => { const pot = Math.max(.3, b.genStrength / b.maturity); b.paleoTemp = Math.max(b.paleoTemp, 85); b.maturity = .75; b.maturityClass = RESOURCE_BASINS[basinType] ? 'Surmature (gaz)' : 'Fenêtre à huile'; b.isGas = !!RESOURCE_BASINS[basinType]; b.genStrength = Math.max(.2, pot*.75); };
       for(const c of cands){ if(have >= need) break; heat(c); have++; raw.forEach(o=>{ if(o!==c && !o.srcAbsent && o.provinceIdx===c.provinceIdx && o.genStrength < KITCHEN_MIN_STRENGTH && Math.hypot(o.x-c.x,o.y-c.y) <= 1.5){ heat(o); have++; } }); }
     } }
   // Province productive : le meilleur piège (piège, réservoir et couverture corrects, proche d'une cuisine) doit avoir une cuisine mature à moins d'une case et demie.
@@ -2296,7 +2385,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
     const sc0 = new Map(cand0.map(o=>[o.id, sysQ0(o)*Math.exp(-dmin0(o)/rng0)]));
     const tgt = cand0.sort((u,w)=> sc0.get(w.id) - sc0.get(u.id) || u.id - w.id)[0];
     if(tgt && dmin0(tgt) > 1.5){
-      const heat0 = o => { const pot = Math.max(.3, o.maturity>0 ? o.genStrength/o.maturity : .4); o.paleoTemp = Math.max(o.paleoTemp, 85); o.maturity = .75; o.maturityClass = 'Fenêtre à huile'; o.isGas = false; o.genStrength = Math.max(.25, pot*.75); };
+      const heat0 = o => { const pot = Math.max(.3, o.maturity>0 ? o.genStrength/o.maturity : .4); o.paleoTemp = Math.max(o.paleoTemp, 85); o.maturity = .75; o.maturityClass = RESOURCE_BASINS[basinType] ? 'Surmature (gaz)' : 'Fenêtre à huile'; o.isGas = !!RESOURCE_BASINS[basinType]; o.genStrength = Math.max(.25, pot*.75); };
       raw.forEach(o=>{ if(!o.srcAbsent && o.provinceIdx===tgt.provinceIdx && Math.hypot(o.x-tgt.x,o.y-tgt.y) <= 1.1 && o.genStrength < KMIN) heat0(o); });
     } }
   const kitchens = raw.filter(b => b.genStrength >= KITCHEN_MIN_STRENGTH);
@@ -2412,7 +2501,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
     return {
       id:b.id, x:b.x, y:b.y,
       el: null,
-      trueProbability, trueQuality:b.trueQuality, isGas:b.isGas,
+      trueProbability, trueQuality:b.trueQuality, isGas:b.isGas, res:b.res,
       horizons:b.horizons,
       topOfReservoir:b.topOfReservoir, tempAtRes:b.tempAtRes, tempAtSrc:b.tempAtSrc, pressureRes:b.pressureRes,
       maturity:b.maturity, maturityClass:b.maturityClass,
@@ -2441,10 +2530,11 @@ function generateGeology(gridSize, basinType, offshore, seed){
 // Version de l'échelle de Rose : 1 (V4.89 à V5.4) donnait au meilleur bloc d'une carte environ 43 % ; 2 (V5.5) relève les facteurs pour qu'une carte ait une province vraiment productive
 // (meilleur bloc d'environ 79 %, 6 % des blocs à 50 % ou plus). Échelle 3 (V5.19, demande « un peu plus de blocs à probabilité haute ») : milieu de la sigmoïde 0,27 et facteur de piège 1,75, soit environ 20 % de probabilité moyenne en plus, 50 % de blocs à 60 % ou plus en plus et le double de blocs à 80 %. Les sauvegardes gardent la version de leur création (G.roseV).
 let ROSE_V = 3;
+let ROSE_SEAL_POW = 1;   // hydrogène : la molécule fuit, la couverture compte davantage (facteur de couverture élevé à une puissance)
 // Échelle 2 : chaque facteur passe par une sigmoïde (pente 10, milieu à 0,30) : un facteur bon (0,6) vaut 0,95, un facteur faible (0,1) vaut 0,12, donc un piège sans charge reste vide
 const ROSE_PAR = { 1:{ a:0.25, b:0.7, tk:1.15, cx:1 }, 2:{ sig:true, k:10, q0:0.30, tk:1.6, cx:1 }, 3:{ sig:true, k:10, q0:0.27, tk:1.75, cx:1 } };
 const roseEff = q => { const p = ROSE_PAR[ROSE_V] || ROSE_PAR[1], x = Math.max(0, Math.min(1, q)); return p.sig ? 1/(1 + Math.exp(-p.k*(x - p.q0))) : p.a + p.b*Math.sqrt(x); };
-const roseP = (t, r, se, c) => { const p = ROSE_PAR[ROSE_V] || ROSE_PAR[1]; return Math.max(0.01, Math.min(0.95, Math.min(0.95, p.tk*t) * roseEff(r) * roseEff(se) * roseEff(Math.pow(Math.max(0, c), p.cx)))); };
+const roseP = (t, r, se, c) => { const p = ROSE_PAR[ROSE_V] || ROSE_PAR[1]; return Math.max(0.01, Math.min(0.95, Math.min(0.95, p.tk*t) * roseEff(r) * roseEff(ROSE_SEAL_POW!==1 ? Math.pow(se, ROSE_SEAL_POW) : se) * roseEff(Math.pow(Math.max(0, c), p.cx)))); };
 const TRAP_CLOSURE_FRAC = 0.3; // hauteur de fermeture d'un anticlinal / relief de sa crête
 const PCAL = { pmin:0.03, pmax:0.85, exp:2.8, abs:1.0, floorShare:0.01 };
 // Distribution de référence des probabilités brutes (401 quantiles, 800 cartes de tous les bassins et tailles) : sert à situer un bloc par
@@ -2690,6 +2780,7 @@ const STUDIES = {
     offMult: 1.6,
     requiresDrilled: true, // nécessite un forage réel (cuttings ou carotte), pas un niveau d'étude
     do(b, rng){
+      if(b.res) return resBasementAnalysis(b, rng);   // hydrogène et hélium : analyse du socle et du gaz (V5.24)
       // genStrength (0.02-0.9) reflète la richesse organique LOCALE, avant
       // toute migration : c'est justement ce qu'une analyse Rock-Eval mesure
       // directement sur l'échantillon, contrairement à srcFactor qui inclut
@@ -2886,7 +2977,7 @@ const GEO = (()=>{
   return { cov, krige, field, condSim, gauss };
 })();
 const GS_MODEL = { m:'gauss', a:3.3 };
-const GS_Q = { permian:[30,10], paris:[40,14], rift:[29,10.5], aquitaine:[28,9.5], passive:[30,10.3], north_sea:[22,7.7], gulf_coast:[15.6,5.4], foreland:[32,12] };   // moyenne et écart-type de la qualité réservoir, mesurés par bassin
+const GS_Q = { hydrogen:[28,10], helium:[30,10], permian:[30,10], paris:[40,14], rift:[29,10.5], aquitaine:[28,9.5], passive:[30,10.3], north_sea:[22,7.7], gulf_coast:[15.6,5.4], foreland:[32,12] };   // moyenne et écart-type de la qualité réservoir, mesurés par bassin
 const gsQStat = () => GS_Q[G.basinType] || [29,10];
 let GS_UNC_ON = false, GS_UNC_CACHE = { sig:'', v:null };
 // Bruit de mesure (fraction de la variance du champ) selon ce que le joueur a mesuré sur le bloc ; null : rien de mesuré sur ce bloc
@@ -2947,7 +3038,7 @@ function gsCampaign(nSim=400){
       for(let j=0;j<i;j++){ if(near[i][j]>0){ if(out[j]===1) f *= 1 + 0.6*near[i][j]; else if(out[j]===2) f *= 1 - 0.2*near[i][j]; } }
       const geo = rng() < clamp(b.estimate.prob*clamp(f,0.5,2.2), 0, 0.95), tech = rng() < p.rel, ok = geo && tech, cost=G.mode==='sandbox'?0:p.pl.cost;
       out[i] = ok ? 1 : (!geo ? 2 : 0);   // 1 : puits productif, 2 : sec utile (la géologie a été testée), 0 : échec technique (ne prouve rien)
-      if(ok){ const prod=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b); g += projectWell(prod, pr, b.isOffshore, b.estimate.isGas, cost, 120, undefined, wcs[i], fcs[i]).cum - cost; } else g -= cost; });
+      if(ok){ const prod=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b)*resProdMult(); g += projectWell(prod, pr, b.isOffshore, b.estimate.isGas, cost, 120, undefined, wcs[i], fcs[i]).cum - cost; } else g -= cost; });
     tot.push(g); }
   tot.sort((a,b)=>a-b); const at=f=>tot[Math.min(tot.length-1, Math.floor(f*tot.length))];
   return { n:plans.length, p90:at(0.10), p50:at(0.5), p10:at(0.90), ruin:tot.filter(v=>v<0).length/tot.length };
@@ -3041,7 +3132,52 @@ const prodSite = b => ((b && b.isOffshore) ? OFFSHORE_PROD_MULT : ONSHORE_PROD_M
 // Di = 1,1 %/mois nominal (1,5 % avant la V4.35) et b = 0,5 donnent environ -12 % la 1re année, 56 % du débit
 // initial après 5 ans et 36 % après 10 ans : une queue longue, comme sur un gisement conventionnel.
 const DECL = { Di: 0.011, b: 0.5 };
-const declineFactor = (age, dc) => { const d = dc || DECL; return Math.pow(1 + d.b*d.Di*Math.max(0, age), -1/d.b); };
+// =====================================================================
+// RESSOURCES HORS PÉTROLE (V5.24) : hydrogène naturel et hélium. Un puits produit un gaz brut (en Mcf, comme les puits à gaz du jeu) ; ce qui se vend est la fraction utile : la PURETÉ du gaz
+// (hydrogène 35 à 97 %, hélium 0,3 à 9 % mêlé à l'azote et au méthane) décide du revenu. Le cours reste l'indice de marché du jeu (G.price, 80 = référence) ; il est affiché en $/kg d'hydrogène
+// (2 $/kg à l'indice 80, ordre de grandeur des prévisions) ou en $/Mcf d'hélium (350 $/Mcf à l'indice 80, ordre de grandeur du marché). Hydrogène : charge continue (le champ se recharge, un plancher
+// de 30 % du débit initial), molécule qui fuit (couverture élevée à la puissance 1,6). Hélium : champ qui s'épuise comme un gaz, couverture évaporitique. Production multipliée par 8 : un puits de gaz brut
+// vaut moins qu'un puits de pétrole par unité, la règle remet les deux économies à une échelle comparable. Règles de jeu simplifiées, non sourcées ; les ordres de grandeur sont ceux de la pratique.
+// =====================================================================
+const RESOURCES = {
+  h2: { name:TR('hydrogène','hydrogen'), refPrice:1.7, perUnit:7, priceUnit:'$/kg', priceDec:2, purityPrior:0.7, varOp:4, prodMult:8, sealPow:1.6, decl:{ Di:0.007, b:0.5, floor:0.30 } },
+  he: { name:TR('hélium','helium'), refPrice:400, perUnit:1, priceUnit:'$/Mcf', priceDec:0, purityPrior:0.025, varOp:3.5, prodMult:8, sealPow:1.0, decl:{ Di:0.013, b:0.5 } },
+};
+const RESOURCE_BASINS = { hydrogen:'h2', helium:'he' };
+const resKind = () => (typeof G!=='undefined' && G && G.resource) || 'oil';
+const isRes = () => resKind()!=='oil';
+const resProdMult = () => isRes() ? RESOURCES[resKind()].prodMult : 1;
+function blockPurity(b){
+  const k = b.res || resKind(), u = SR('purity', b.id)();
+  if(k==='h2') return clamp(0.35 + 0.62*Math.pow(clamp(0.65*u + 0.35*(b.sealFactor ?? 0.5), 0, 1), 0.8), 0.35, 0.97);   // un meilleur sceau mélange moins le gaz
+  return clamp(0.003 + 0.085*Math.pow(clamp(0.6*u + 0.4*Math.min(1, (b.genStrength ?? 0.4)/0.9), 0, 1), 2.2), 0.003, 0.09);   // un socle plus riche en U et Th donne un gaz plus riche en hélium
+}
+function resUnitPx(price, purity){ const R = RESOURCES[resKind()]; return R.refPrice*(price/80)*R.perUnit*(purity ?? R.purityPrior); }   // $ par Mcf de gaz brut
+function resPriceDisplay(){ const R = RESOURCES[resKind()]; return { v:R.refPrice*G.price/80, unit:R.priceUnit, dec:R.priceDec }; }
+function resBasementAnalysis(b, rng){
+  const gs = b.genStrength ?? 0.1, k = b.res || resKind(), j = () => (rng()-.5);
+  if(k==='h2'){ const fe = clamp(3 + 11*gs + 1.2*j(), 1, 16), serp = clamp(8 + 85*gs + 6*j(), 2, 98);
+    return { res:true, kind:'h2', a:+fe.toFixed(1), b:Math.round(serp), potential: gs>0.6 ? 'Excellent' : gs>0.35 ? 'Bon' : gs>0.15 ? 'Moyen' : 'Pauvre', purity:Math.round(blockPurity(b)*100), genPotential: gs>0.6 ? 'Excellent' : gs>0.35 ? 'Bon' : 'Moyen', toc:'0', hi:0, tmax:0 }; }
+  const u = clamp(1 + 7*gs + 0.8*j(), 0.3, 9), th = clamp(4 + 24*gs + 2*j(), 1, 32);
+  return { res:true, kind:'he', a:+u.toFixed(1), b:+th.toFixed(1), potential: gs>0.6 ? 'Excellent' : gs>0.35 ? 'Bon' : gs>0.15 ? 'Moyen' : 'Pauvre', purity:+(blockPurity(b)*100).toFixed(1), genPotential: gs>0.6 ? 'Excellent' : gs>0.35 ? 'Bon' : 'Moyen', toc:'0', hi:0, tmax:0 };
+}
+function resRockevalHtml(r){
+  const col = r.potential==='Excellent'||r.potential==='Bon' ? 'var(--green)' : r.potential==='Moyen' ? 'var(--amber)' : 'var(--red)';
+  let h = `<div class="ps-section">${TR('Analyse du gaz du socle','Basement gas analysis')}</div>`;
+  if(r.kind==='h2'){
+    h += infoRow(TR('Fer ferreux du socle (FeO)','Basement ferrous iron (FeO)'), `${String(r.a).replace('.',DEC)} %`) + infoRow(TR('Serpentinisation','Serpentinization'), `${r.b} %`) + infoRow(TR('Hydrogène dans le gaz (pureté)','Hydrogen in the gas (purity)'), `${r.purity} %`);
+    h += `<div style="color:${col};font-size:11px;margin-top:4px;">${TR('Potentiel de charge : ','Charge potential: ')}${r.potential}</div><div style="color:var(--muted);font-size:11px;margin-top:4px;">${TR('Plus le socle est riche en fer ferreux et serpentinisé, plus il fabrique d\'hydrogène, en continu. La pureté dit la part d\'hydrogène dans le gaz (le reste : azote, méthane). La molécule fuit : une couverture médiocre la perd.','The richer and more serpentinized the basement in ferrous iron, the more hydrogen it makes, continuously. Purity is the share of hydrogen in the gas (the rest: nitrogen, methane). The molecule leaks: a poor seal loses it.')}</div>`;
+  } else {
+    h += infoRow(TR('Uranium du socle','Basement uranium'), `${String(r.a).replace('.',DEC)} ppm`) + infoRow(TR('Thorium du socle','Basement thorium'), `${String(r.b).replace('.',DEC)} ppm`) + infoRow(TR('Hélium dans le gaz (teneur)','Helium in the gas (concentration)'), `${String(r.purity).replace('.',DEC)} %`);
+    h += `<div style="color:${col};font-size:11px;margin-top:4px;">${TR('Potentiel de charge : ','Charge potential: ')}${r.potential}</div><div style="color:var(--muted);font-size:11px;margin-top:4px;">${TR('L\'hélium radiogénique vient de la désintégration de l\'uranium et du thorium. Il arrive en faible proportion dans l\'azote et le méthane : sous 0,3 % le gaz ne se vend pas, au-dessus de 5 % c\'est un gisement exceptionnel.','Radiogenic helium comes from the decay of uranium and thorium. It arrives in small proportion in nitrogen and methane: below 0.3 % the gas is not sold, above 5 % it is an exceptional field.')}</div>`;
+  }
+  return h;
+}
+{ const re = STUDIES.rockeval, n0 = re.name, d0 = re.desc, r0 = re.reveals;   // l'étude de géochimie devient l'analyse du gaz du socle quand la ressource n'est pas le pétrole (selon la partie en cours)
+  Object.defineProperty(re, 'name', { get: () => isRes() ? TR('Analyse du gaz du socle','Basement gas analysis') : n0, configurable:true });
+  Object.defineProperty(re, 'desc', { get: () => isRes() ? TR('Analyse du gaz et du socle sur un échantillon de forage : teneur en fer ferreux et serpentinisation (hydrogène), uranium et thorium (hélium), pureté du gaz. Elle dit si le socle charge le piège et si le gaz vaut la peine d\'être vendu.','Gas and basement analysis on a drilling sample: ferrous iron and serpentinization (hydrogen), uranium and thorium (helium), gas purity. It says whether the basement charges the trap and whether the gas is worth selling.') : d0, configurable:true });
+  Object.defineProperty(re, 'reveals', { get: () => isRes() ? TR('Charge du socle et pureté du gaz','Basement charge and gas purity') : r0, configurable:true }); }
+const declineFactor = (age, dc) => { const d = dc || DECL, f = Math.pow(1 + d.b*d.Di*Math.max(0, age), -1/d.b); return d.floor ? Math.max(d.floor, f) : f; };   // plancher : un champ d'hydrogène se recharge
 // Débit courant d'un puits = somme de ses venues (puits initial, puis side-tracks), chacune
 // avec sa propre courbe de déclin. `comps` est créé à la volée pour les anciennes sauvegardes.
 function wellRate(w){
@@ -3051,7 +3187,7 @@ function wellRate(w){
 // Projection d'un puits neuf : cumul net sur `months` mois (arrêt si le net devient négatif) et
 // délai de remboursement du coût de forage. Mêmes coûts d'exploitation que wellEconomics().
 function projectWell(q0, price, offshore, gas, cost, months, dc, wc, fl){
-  const fixed = offshore?OFFSHORE_OPEX:8000, varOp = (offshore?14:4)+6, pr = gas?price*.18:price;
+  const RK = (gas && isRes()) ? RESOURCES[resKind()] : null, fixed = offshore?OFFSHORE_OPEX:8000, varOp = RK ? RK.varOp : (offshore?14:4)+6, pr = gas ? (RK ? resUnitPx(price) : price*.18) : price;
   let cum = 0, payback = null;
   for(let m=0; m<(months||120); m++){
     const q = q0*declineFactor(m, dc), net = q*(pr*(fl ? fl.pf : 1) + (fl ? fl.gasPerBbl : 0) - varOp) - fixed - (wc ? q*bswToWor(wc.fn(m), wc.gas)*wc.unit : 0);
@@ -3357,7 +3493,7 @@ function drillBlock(blockId, method, equip, est, prog){
   if(method==='strati' && b.strati){ const m = TR('Ce bloc a déjà son sondage.','This block already has its survey hole.'); addLog(m,'bad'); toast(m); return; }
   if(G.labPick==null && LABOPT.pick && method!=='strati' && G.mode!=='sandbox'){ const m = TR('Désignez d\'abord votre horizon cible sur la coupe (clic sur une couche de la sismique, boutons H1, H2… ou « viser » du tableau).','First designate your target horizon on the section (click a layer on the seismic, the H1, H2… buttons or "aim" in the table).'); addLog(m, 'bad'); toast(m); return; }
   if(b.studyLevel<1){addLog(TR('Réalisez au moins une étude (gravimétrie ou sismique) avant de forer.','Do at least one study (gravity or seismic) before drilling.'),'bad');return;}
-  if(method==='frac' && (G.simple || b.isOffshore)){ const m = TR('La fracturation n\'est pas proposée ici.','Fracturing is not offered here.'); addLog(m,'bad'); toast(m); return; }
+  if(method==='frac' && (G.simple || b.isOffshore || isRes())){ const m = TR('La fracturation n\'est pas proposée ici.','Fracturing is not offered here.'); addLog(m,'bad'); toast(m); return; }
   const depth = method==='frac' ? fracDepthEstimate(b) : drillDepthEstimate(b);
   const lat = method==='frac' ? fracLat() : 0;
   const eq = EQUIPMENT[equip], me = METHODS[method];
@@ -3437,12 +3573,13 @@ function resolveDrillingCore(d){
   if(geoOk && techOk){
     const res = b.horizons.find(l=>l.role==='reservoir');
     const fz = isFrac ? Math.exp(0.3*GEO.gauss(rd) - 0.045) : 1;   // aléa de complétion, d'espérance 1
-    const initProd = isFrac ? fracProdOf(sh.q, sh.thick, d.lat||2000, b) * fz : (b.trueQuality/100) * (res?.thicknessLocal||20) * PROD_BASE * me.prodMult * prodSite(b);
+    const initProd = isFrac ? fracProdOf(sh.q, sh.thick, d.lat||2000, b) * fz : (b.trueQuality/100) * (res?.thicknessLocal||20) * PROD_BASE * me.prodMult * prodSite(b) * (b.res ? RESOURCES[b.res].prodMult : 1);
     if(isFrac) b.fracInfo = { ...sh, lat:d.lat||2000, ip:initProd };
     const well = {blockId:d.blockId, method:d.method, equip:d.equip, cost:d.cost,
                   studyLevelAtDrill:b.studyLevel, limitingFactor, factors, month:G.month,
-                  production:initProd, comps:[isFrac ? {q0:initProd, t0:0, dc:SHALE_DECL} : {q0:initProd, t0:0}], wp: G.advOn ? waterParams(b, isFrac) : null, fp: G.advOn ? fluidParams(b, isFrac) : null, rd: null, cum:0, monthsActive:0, status:'producing',
+                  production:initProd, comps:[isFrac ? {q0:initProd, t0:0, dc:SHALE_DECL} : b.res ? {q0:initProd, t0:0, dc:RESOURCES[b.res].decl} : {q0:initProd, t0:0}], wp: G.advOn ? waterParams(b, isFrac) : null, fp: G.advOn ? fluidParams(b, isFrac) : null, rd: null, cum:0, monthsActive:0, status:'producing',
                   isGas:b.isGas, offshore:b.isOffshore, eorActive:false, eorMonthsLeft:0};
+    if(b.res){ well.res = b.res; well.purity = blockPurity(b); }
     if(G.advOn){ well.rd = driveParams(b, well.fp, isFrac); if(!isFrac && well.rd.mech!=='gasdep') well.comps[0].dc = { Di: DECL.Di*DRIVE[well.rd.mech].di, b: DECL.b }; }
     if(d.reentry){ const prev = b.dryHoleInfo; well.cost += (prev && prev.cost) || 0; well.reentry = true; b.reentryFrom = prev; b.reentryDone = true; b.dryHole = false; b.wrongTarget = false; b.dryHoleInfo = null; b.el?.classList.remove('dry-hole'); }
     G.wells.push(well);
@@ -4020,9 +4157,9 @@ function logFluidCardHtml(b){
 
 function wellEconomicsRaw(w){
   const prodEffective = w.production * (w.eorActive ? 1.35 : 1.0) * maintBoost(w) * co2Boost(w) * gasInjBoost(w);
-  const priceWell = w.isGas ? G.price*.18 : (G.financeMode && G.hedgeContract?.monthsLeft>0 ? G.hedgeContract.lockedPrice : G.price);
+  const priceWell = w.isGas ? (w.res ? resUnitPx(G.price, w.purity) : G.price*.18) : (G.financeMode && G.hedgeContract?.monthsLeft>0 ? G.hedgeContract.lockedPrice : G.price);
   const fixedOp = (w.offshore ? OFFSHORE_OPEX : 8000) * (1 + DEV.fixedExtra*(w.devN||0));
-  const varOp   = (w.offshore?14:4) + 6;
+  const varOp   = w.res ? RESOURCES[w.res].varOp : (w.offshore?14:4) + 6;
   const pf = fluidPf(w.fp), st = gasState();
   const oilRev = prodEffective * priceWell * pf;
   let gasRev = 0, assocMcf = 0, fluidCost = 0;
@@ -5359,7 +5496,7 @@ function blockKnowledge(b){
       {n:TR('Piège','Trap'),      st:'conf', t:TR(`Facteur réel : ${f(b.trapFactor)}.`,`Actual factor: ${f(b.trapFactor)}.`)},
       {n:TR('Réservoir','Reservoir'),  st:'conf', t:TR(`Facteur réel : ${f(b.resFactor)}.`,`Actual factor: ${f(b.resFactor)}.`)},
       {n:'Couverture', st:'conf', t:TR(`Facteur réel : ${f(b.sealFactor)}.`,`Actual factor: ${f(b.sealFactor)}.`)},
-      {n:TR('Roche-mère','Source rock'), st:'conf', t:TR(`Charge : ${f(b.srcFactor)}${b.maturityClass ? ', '+matLbl(b.maturityClass).toLowerCase() : ''}.`,`Charge: ${f(b.srcFactor)}${b.maturityClass ? ', '+matLbl(b.maturityClass).toLowerCase() : ''}.`) + (b.srcAbsent ? TR(' Pas de roche-mère profonde dans cette province.',' No deep source rock in this province.') : '') + (b.viaFault ? TR(' Chargé par la roche-mère superficielle, au contact de la faille voisine (juxtaposition avec le réservoir).',' Charged by the shallow source rock, at the contact of the neighbouring fault (juxtaposition with the reservoir).') : b.chargeFrom ? (b.chargeFrom.self ? TR(' Le bloc est sa propre cuisine.',' The block is its own kitchen.') : TR(` Alimenté par la cuisine du bloc (${b.chargeFrom.x},${b.chargeFrom.y}), à ${String(b.chargeFrom.dist).replace('.',DEC)} blocs.`,` Fed by the kitchen of block (${b.chargeFrom.x},${b.chargeFrom.y}), ${String(b.chargeFrom.dist).replace('.',DEC)} blocks away.`)) : TR(' Aucune cuisine à portée : charge de fond seulement.',' No kitchen within reach: background charge only.'))},
+      {n:isRes() ? TR('Socle (charge)','Basement (charge)') : TR('Roche-mère','Source rock'), st:'conf', t:TR(`Charge : ${f(b.srcFactor)}${b.maturityClass ? ', '+matLbl(b.maturityClass).toLowerCase() : ''}.`,`Charge: ${f(b.srcFactor)}${b.maturityClass ? ', '+matLbl(b.maturityClass).toLowerCase() : ''}.`) + (b.srcAbsent ? TR(' Pas de roche-mère profonde dans cette province.',' No deep source rock in this province.') : '') + (b.viaFault ? TR(' Chargé par la roche-mère superficielle, au contact de la faille voisine (juxtaposition avec le réservoir).',' Charged by the shallow source rock, at the contact of the neighbouring fault (juxtaposition with the reservoir).') : b.chargeFrom ? (b.chargeFrom.self ? TR(' Le bloc est sa propre cuisine.',' The block is its own kitchen.') : TR(` Alimenté par la cuisine du bloc (${b.chargeFrom.x},${b.chargeFrom.y}), à ${String(b.chargeFrom.dist).replace('.',DEC)} blocs.`,` Fed by the kitchen of block (${b.chargeFrom.x},${b.chargeFrom.y}), ${String(b.chargeFrom.dist).replace('.',DEC)} blocks away.`)) : TR(' Aucune cuisine à portée : charge de fond seulement.',' No kitchen within reach: background charge only.'))},
     ];
   }
   const out = [];
@@ -5375,7 +5512,7 @@ function blockKnowledge(b){
     out.push({n:TR('Réservoir','Reservoir'), st:'ind', t: (G.labPick==null && pd!==null) ? TR(`Horizon vers ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.`,`Horizon at about ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.`) : G.labPick==null ? TR('À identifier vous-même sur la coupe : aucun horizon n\'est désigné comme réservoir.','To be identified by yourself on the section: no horizon is designated as the reservoir.') : (pd!==null ? TR(`Votre cible H${G.labPick+1} vers ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.`,`Your target H${G.labPick+1} at about ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.`) : TR(`Votre cible H${G.labPick+1} : profondeur à préciser par la sismique 2D sur ce bloc.`,`Your target H${G.labPick+1}: depth to be refined by 2D seismic on this block.`))});
   } else out.push({n:TR('Réservoir','Reservoir'), st:'inc', t:TR('Précisé par la sismique 2D.','Refined by 2D seismic.')});
   out.push({n:'Couverture', st:'inc', t:TR('Connue seulement après un forage.','Known only after drilling.')});
-  out.push({n:TR('Roche-mère','Source rock'), st:'inc', t:TR('Rock-Eval, après un forage.','Rock-Eval, after drilling.')});
+  out.push({n:isRes() ? TR('Socle (charge)','Basement (charge)') : TR('Roche-mère','Source rock'), st:'inc', t:TR('Rock-Eval, après un forage.','Rock-Eval, after drilling.')});
   return out;
 }
 
@@ -5396,7 +5533,7 @@ function blockStudiesHtml(b){
       act:`performStudy(${b.id},'seismic3d')`, label:price(cost('seismic3d')), c:cost('seismic3d')},
     {k:'core',      n:TR('Analyse de carotte','Core analysis'), done:has('core'), locked:!drilled ? TR('Après un forage','After drilling') : null,
       act:`performStudy(${b.id},'core')`, label:price(cost('core')), c:cost('core')},
-    {k:'rockeval',  n:TR('Géochimie Rock-Eval','Rock-Eval geochemistry'), done:has('rockeval'), locked:!drilled ? TR('Après un forage','After drilling') : null,
+    {k:'rockeval',  n:isRes() ? TR('Analyse du gaz du socle','Basement gas analysis') : TR('Géochimie Rock-Eval','Rock-Eval geochemistry'), done:has('rockeval'), locked:!drilled ? TR('Après un forage','After drilling') : null,
       act:`performStudy(${b.id},'rockeval')`, label:price(cost('rockeval')), c:cost('rockeval')},
   ];
   // Découverte : seulement l'essentiel (gravimétrie, coupe, sismiques) ; carotte et Rock-Eval viennent avec les autres niveaux
@@ -5458,7 +5595,7 @@ function renderGeoPanel(b){
   }
 
   // Système pétrolier : ce que vous savez
-  html += `<div class="ps-section">${TR(`Système pétrolier · ce que vous savez`,`Petroleum system · what you know`)}</div><div class="kgrid">` +
+  html += `<div class="ps-section">${isRes() ? TR(`Système ${resKind()==='h2'?'hydrogène':'hélium'} · ce que vous savez`,`${resKind()==='h2'?'Hydrogen':'Helium'} system · what you know`) : TR(`Système pétrolier · ce que vous savez`,`Petroleum system · what you know`)}</div><div class="kgrid">` +
     blockKnowledge(b).map(k=>`<div class="kcard"><div class="k-top"><span class="k-name">${k.n}</span><span class="kst ${k.st}">${{conf:TR('Confirmé','Confirmed'),ind:TR('Indice','Index'),inc:'Inconnu'}[k.st]}</span></div><div class="k-txt">${k.t}</div></div>`).join('') + `</div>`;
 
   // Études sur ce bloc + avertissement avant de forer sans en savoir assez
@@ -5497,6 +5634,7 @@ function renderGeoPanel(b){
   // Géochimie Rock-Eval
   if(e?.rockeval){
     const r=e.rockeval;
+    if(r.res){ html+=resRockevalHtml(r); } else {
     html+=`<div class="ps-section">${TR(`Géochimie Rock-Eval`,`Rock-Eval geochemistry`)}</div>`;
     html+=infoRow('TOC',`${r.toc} %`);
     html+=infoRow(TR('Indice d\'hydrogène (HI)','Hydrogen index (HI)'),`${r.hi} mg HC/g TOC`);
@@ -5505,6 +5643,7 @@ function renderGeoPanel(b){
     const lecture = r.tmax<435 ? TR('Tmax sous 435 °C : roche immature, elle n\'a pas encore généré ici, quel que soit son potentiel.','Tmax below 435 °C: immature rock, it has not generated here yet, whatever its potential.') : r.tmax<=455 ? TR('Tmax entre 435 et 455 °C : fenêtre à huile, la roche génère.','Tmax between 435 and 455 °C: oil window, the rock is generating.') : TR('Tmax au-dessus de 455 °C : surmature, elle ne donne plus que du gaz.','Tmax above 455 °C: overmature, it now yields only gas.');
     html+=`<div style="color:var(--muted);font-size:11px;margin-top:4px;">${lecture}</div>`;
     if(parseFloat(r.toc) >= 30) html+=`<div style="color:var(--amber);font-size:11px;margin-top:4px;">${TR('TOC supérieur à 30 % : c\'est un charbon (kérogène de type III, HI bas), pas un shale. Il génère surtout du gaz et ne se fracture pas comme un shale.','TOC above 30 %: this is a coal (type III kerogen, low HI), not a shale. It mostly generates gas and does not frac like a shale.')}</div>`;
+    }
   }
 
   // Diagraphies (courbes) puis log stratigraphique complet
@@ -6038,9 +6177,9 @@ function updateDrillSummary(blockId){
   // puits : avant, on utilisait la vraie épaisseur et le vrai fluide. On prend
   // l'épaisseur nominale de la colonne de référence.
   const nomRes=STRAT.find(l=>l.role==='reservoir');
-  const estProd=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b);
+  const estProd=(q/100)*(nomRes?.thickness||40)*PROD_BASE*me.prodMult*prodSite(b)*resProdMult();
   const wcv = waterCfg(b, false), flv = fluidCfg(b, false), proj=projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, G.mode==='sandbox'?0:cost, 120, undefined, wcv, flv);
-  const netMonth=estProd*(b.estimate.isGas?G.price*.18:G.price)-(b.isOffshore?OFFSHORE_OPEX:8000)-estProd*((b.isOffshore?14:4)+6);
+  const netMonth=estProd*(b.estimate.isGas?(isRes()?resUnitPx(G.price):G.price*.18):G.price)-(b.isOffshore?OFFSHORE_OPEX:8000)-estProd*(isRes()&&b.estimate.isGas?RESOURCES[resKind()].varOp:(b.isOffshore?14:4)+6);
   const breakeven=proj.payback;
   const beClass=breakeven===null?'ds-bad':breakeven<18?'ds-good':breakeven<36?'ds-warn':'ds-bad';
   const beText=breakeven===null?TR('Non rentabilisé en 10 ans au cours actuel, même si le puits produit','Not paid back in 10 years at the current price, even if the well produces'):TR(`Rentabilisé en ~${breakeven} mois si le puits produit (déclin inclus)`,`Paid back in ~${breakeven} months if the well produces (decline included)`);
@@ -6392,7 +6531,7 @@ const LAB_PRESETS = {
   expert:     { label:'Expert', d:TR('Toutes les règles, sans bouton « vérité ».','All rules, no “truth” button.'), o:{ analyses:true, mute:true, pick:true, cal:true, strati:true, dhi:true, real:true, thick:true, cheat:false } },
 };
 // Préréglage proposé par niveau : les règles se durcissent avec le niveau (modifiables avant la partie)
-const LAB_MODE_PRESET = { decouverte:'decouverte', junior:'decouverte', expert:'inter', expedition:'complet', tp:'decouverte', sandbox:'decouverte' };
+const LAB_MODE_PRESET = { decouverte:'decouverte', junior:'decouverte', expert:'inter', expedition:'complet', tp:'decouverte', sandbox:'decouverte', h2he:'decouverte' };
 // Production avancée (V5.1) : eau et BSW, qualité du brut et du gaz, traitement et transport, pression de réservoir. Activée par défaut en Senior et en Grande exploration.
 const LAB_MODE_ADV = { expert:true, expedition:true };
 let LABOPT = { ...LAB_DEFAULT_OPT, ...LAB_PRESETS.decouverte.o };
@@ -7582,7 +7721,7 @@ function updateHud(){
   const cf=document.getElementById('hudCF');
   cf.textContent=(G.lastCF>=0?'+':'')+formatM(G.lastCF||0);
   cf.style.color=(G.lastCF||0)>=0?'var(--green)':'var(--red)';
-  document.getElementById('hudPrice').textContent=G.price.toFixed(1).replace('.',DEC);
+  { const pd = isRes() ? resPriceDisplay() : { v:G.price, unit:'$/bbl', dec:1 }; document.getElementById('hudPrice').textContent = pd.v.toFixed(pd.dec).replace('.',DEC); const hu = document.querySelector('#hudPrice + .hud-unit'); if(hu) hu.textContent = pd.unit; const pa = document.getElementById('btnPriceAlert'); if(pa) pa.style.display = isRes() ? 'none' : ''; }
   document.getElementById('hudWells').textContent=G.wells.filter(w=>w.status==='producing' && !blocks[w.blockId]?.revealPending).length;
   if(m.winGoal>0){
     document.getElementById('hudGoalWrap').style.display='';
@@ -7643,7 +7782,7 @@ function guideEV(b){
   if(!eqs.length || b.estimate?.prob===undefined) return null;
   const nomRes = STRAT.find(l=>l.role==='reservoir');
   const q = b.estimate.quality ?? 50;
-  const estProd = (q/100)*(nomRes?.thickness||40)*PROD_BASE*METHODS.vertical.prodMult*prodSite(b);
+  const estProd = (q/100)*(nomRes?.thickness||40)*PROD_BASE*METHODS.vertical.prodMult*prodSite(b)*resProdMult();
   const cum = projectWell(estProd, G.price, b.isOffshore, b.estimate.isGas, 0, 120).cum;
   let best = null;
   eqs.forEach(([k,e])=>{
@@ -8057,8 +8196,8 @@ function formatM(v){
   if(v>=1e3) return s+(v/1e3).toFixed(0)+'\u00a0k$';
   return s+v.toFixed(0)+'\u00a0$';
 }
-const BASIN_NAMES = {random:TR('Bassin aléatoire','Random basin'), paris:TR('Bassin parisien','Paris Basin'), rift:TR('Bassin de rift','Rift basin'), passive:TR('Marge passive','Passive margin'), foreland:'Avant-pays', aquitaine:TR('Bassin aquitain','Aquitaine Basin'), north_sea:TR('Mer du Nord','North Sea'), gulf_coast:'Gulf Coast', permian:TR('Bassin permien','Permian Basin')};
-const MODE_NAMES = {decouverte:TR('Découverte','Discovery'), junior:TR('Géologue junior','Junior geologist'), expert:TR('Géologue senior','Senior geologist'), tp:TR('Mode TP','Practice mode'), sandbox:TR('Bac à sable','Sandbox'), expedition:TR('Grande exploration','Grand exploration')};
+const BASIN_NAMES = {random:TR('Bassin aléatoire','Random basin'), paris:TR('Bassin parisien','Paris Basin'), rift:TR('Bassin de rift','Rift basin'), passive:TR('Marge passive','Passive margin'), foreland:'Avant-pays', aquitaine:TR('Bassin aquitain','Aquitaine Basin'), north_sea:TR('Mer du Nord','North Sea'), gulf_coast:'Gulf Coast', hydrogen:TR('Hydrogène naturel','Natural hydrogen'), helium:TR('Hélium','Helium'), permian:TR('Bassin permien','Permian Basin')};
+const MODE_NAMES = {decouverte:TR('Découverte','Discovery'), junior:TR('Géologue junior','Junior geologist'), expert:TR('Géologue senior','Senior geologist'), tp:TR('Mode TP','Practice mode'), sandbox:TR('Bac à sable','Sandbox'), expedition:TR('Grande exploration','Grand exploration'), h2he:TR('Hydrogène et hélium','Hydrogen and helium')};
 
 // =====================================================================
 // GESTION DES CLICS CARTE & OUTILS
@@ -8534,7 +8673,7 @@ document.querySelectorAll('.menu-tab').forEach(tab=>{
 });
 
 // ── Accueil simple / personnalisé ──
-const QUICK_BASINS = [['random',TR('🎲 Aléatoire (libre)','🎲 Random (free)')],['paris',TR('Parisien · débutant','Paris Basin · beginner')],['rift',TR('Rift · intermédiaire','Rift · intermediate')],['passive',TR('Marge passive · intermédiaire','Passive margin · intermediate')],['foreland',TR('Avant-pays · intermédiaire','Foreland · intermediate')],['aquitaine',TR('Aquitaine · intermédiaire','Aquitaine · intermediate')],['north_sea',TR('Mer du Nord · avancé','North Sea · advanced')],['gulf_coast',TR('Gulf Coast · avancé','Gulf Coast · advanced')],['permian',TR('Permien · shale et eau','Permian · shale and water')]];
+const QUICK_BASINS = [['random',TR('🎲 Aléatoire (libre)','🎲 Random (free)')],['paris',TR('Parisien · débutant','Paris Basin · beginner')],['rift',TR('Rift · intermédiaire','Rift · intermediate')],['passive',TR('Marge passive · intermédiaire','Passive margin · intermediate')],['foreland',TR('Avant-pays · intermédiaire','Foreland · intermediate')],['aquitaine',TR('Aquitaine · intermédiaire','Aquitaine · intermediate')],['north_sea',TR('Mer du Nord · avancé','North Sea · advanced')],['gulf_coast',TR('Gulf Coast · avancé','Gulf Coast · advanced')],['permian',TR('Permien · shale et eau','Permian · shale and water')],['hydrogen',TR('Hydrogène · socle ultramafique','Hydrogen · ultramafic basement')],['helium',TR('Hélium · craton sous le sel','Helium · craton under salt')]];
 (function initQuickHome(){
   const sel = document.getElementById('quickBasin'); if(!sel) return;
   // bandeau de premier lancement : visible tant qu'aucune partie n'a été lancée et que le joueur ne l'a pas écarté
@@ -8684,7 +8823,7 @@ document.querySelectorAll('.mode-card[data-mode]').forEach(c=>c.addEventListener
   // Le mode Finance (emprunts, accidents, couverture) est actif par défaut, mais il n'a pas de sens
   // en TP (objectif géologique) ni en bac à sable : on le coupe en y entrant et on le rétablit en en sortant.
   // Le choix manuel du joueur n'est touché que lors de ces passages.
-  const noFin = m => m==='tp' || m==='sandbox' || m==='decouverte';
+  const noFin = m => m==='tp' || m==='sandbox' || m==='decouverte' || m==='h2he';
   if(noFin(c.dataset.mode) !== noFin(prevMode)){
     menuConfig.financeMode = !noFin(c.dataset.mode);
     document.querySelectorAll('#financePicker button').forEach(b=>b.classList.toggle('sel', (b.dataset.val==='1')===menuConfig.financeMode));
@@ -8694,7 +8833,10 @@ document.querySelectorAll('.mode-card[data-mode]').forEach(c=>c.addEventListener
   // de la changer ensuite dans l'onglet Monde.
   const suggested = MODES[c.dataset.mode]?.suggestedGridSize;
   // Découverte : bassin parisien à terre ; en la quittant, on rend la taille standard
-  if(MODES[c.dataset.mode]?.forceBasin){
+  if(MODES[c.dataset.mode]?.basinChoices){
+    document.querySelector('#basinPicker button[data-val="random"]')?.click();
+    document.querySelector('#offshorePicker button[data-val="0"]')?.click();
+  } else if(MODES[c.dataset.mode]?.forceBasin){
     document.querySelector(`#basinPicker button[data-val="${MODES[c.dataset.mode].forceBasin}"]`)?.click();
     document.querySelector('#offshorePicker button[data-val="0"]')?.click();
   } else if(prevMode==='decouverte'){
@@ -8974,6 +9116,7 @@ function loadGame(){
   advMigrate(G);
   if(G.labOpt) LABOPT = labNormOpt(G.labOpt); else LABOPT = labNormOpt({ ...LAB_PRESETS.decouverte.o }); // sauvegarde d'avant V4.33 : règles d'origine
   blocks = payload.blocks.map(b => ({ ...b, el: null })); // .el sera réattaché par buildGrid()
+  ROSE_SEAL_POW = (RESOURCES[G.resource] || {}).sealPow || 1;
   ROSE_V = G.roseV || 1; PCAL_MODE = G.pmode==='rose' ? 'rose' : 'rank'; PCAL_W = G.pcalW ?? 0; PCAL_E = G.pcalW===undefined ? 3 : PCAL.exp; // anciennes sauvegardes : étalonnage par rang seul et exposant 3, comme à leur création
   _pRawFor = null;
   // Bug V4.1 : JSON.stringify/parse transforme l'objet puits partagé entre
@@ -9041,11 +9184,13 @@ function _doStartGame(){
   clearInterval(gameLoopId); gameLoopId=null;
   try { localStorage.setItem('geoexplorer_played','1'); } catch(e){}
   const m = MODES[menuConfig.mode];
+  if(m.basinChoices && !m.basinChoices.includes(menuConfig.basinType)){ const sd = menuConfig.seed ? seedToInt(String(menuConfig.seed)) : Math.floor(Math.random()*1e6); menuConfig.basinType = m.basinChoices[sd % m.basinChoices.length]; }   // hydrogène ou hélium selon la graine
   Object.assign(G,{
     mode:           menuConfig.mode,
     gridSize:       menuConfig.gridSize,
     offshore:       menuConfig.offshore,
     basinType:      menuConfig.basinType,
+    resource:       RESOURCE_BASINS[menuConfig.basinType] || 'oil',
     financeMode:    menuConfig.financeMode,
     simple:         !!m.simple,
     advOn:          !m.simple && !!LABOPT.advfluids,
@@ -10028,9 +10173,9 @@ function _doStartGame(){
   const QZ_BT = ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast'];
   const qzF1 = v => (Math.round(v*10)/10).toString().replace('.',DEC), qzF2 = v => (Math.round(v*100)/100).toString().replace('.',DEC);
   function qzIsolated(fn){
-    const keep = { blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
+    const keep = { sp: ROSE_SEAL_POW, blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
     try { return fn(); }
-    finally { blocks = keep.blocks; STRAT = keep.STRAT; STRAT_PROVINCES = keep.STRAT_PROVINCES; GS = keep.GS; buildStratigraphy.lastVariant = keep.lv; wlZoom = keep.wlz; }
+    finally { ROSE_SEAL_POW = keep.sp; blocks = keep.blocks; STRAT = keep.STRAT; STRAT_PROVINCES = keep.STRAT_PROVINCES; GS = keep.GS; buildStratigraphy.lastVariant = keep.lv; wlZoom = keep.wlz; }
   }
   // Blocs porteurs d'une roche-mère, avec leurs valeurs Rock-Eval, pour une géologie fraîche
   function qzSourceBlocks(){
@@ -10044,7 +10189,7 @@ function _doStartGame(){
     const out = [], usedKey = new Set();
     return qzIsolated(()=>{
       for(const tg of targets){
-        for(let tries=0; tries<60; tries++){
+        for(let tries=0; tries<400; tries++){
           const pick = qzSourceBlocks().find(o=>{
             if(o.b.maturityClass!==tg) return false;
             const top=Math.round(o.b.srcTopDepth), g=Math.round(o.b.gradient*10)/10, e=Math.round(o.b.exhumation*100)/100;
@@ -10088,7 +10233,7 @@ function _doStartGame(){
     return qzIsolated(()=>{
       for(const kind of kinds){
         if(out.length>=6) break;
-        for(let tries=0; tries<80; tries++){
+        for(let tries=0; tries<400; tries++){
           generateGeology(12, QZ_BT[Math.floor(Math.random()*QZ_BT.length)], true, (Math.random()*1e9)|0);
           const bs = qzShuffled(blocks.filter(b=>!b.inSalt && b.horizons.length>=6)); const b = bs[0]; if(!b) continue;
           const L = qzSeisLayers(b); if(L.length<5) continue; const P = qzPairs(L);
@@ -10897,7 +11042,7 @@ function _doStartGame(){
     // 3e question : calcul sur le réservoir. Porosité-densité (puits aquifère : le fluide est connu), saturation en eau par Archie ou contact
     // hydrocarbures-eau (puits à hydrocarbures). Un puits aquifère n'a ni saturation en hydrocarbures ni contact.
     const calc = fluid==='eau' ? 'poro' : (opt.calc==='sw' || opt.calc==='contact' ? opt.calc : (Math.random()<0.5 ? 'sw' : 'contact'));
-    const keep = { blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
+    const keep = { sp: ROSE_SEAL_POW, blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
     try {
       for(let tries=0; tries<400; tries++){
         const bt = ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast'][Math.floor(Math.random()*8)];
@@ -11151,8 +11296,8 @@ function _doStartGame(){
   let rounds = [], ri = 0, qi = 0, score = 0, asked = 0, cur = null, answered = false;
 
   function isolated(fn){
-    const keep = { blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
-    try { return fn(); } finally { blocks = keep.blocks; STRAT = keep.STRAT; STRAT_PROVINCES = keep.STRAT_PROVINCES; GS = keep.GS; buildStratigraphy.lastVariant = keep.lv; wlZoom = keep.wlz; }
+    const keep = { sp: ROSE_SEAL_POW, blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
+    try { return fn(); } finally { ROSE_SEAL_POW = keep.sp; blocks = keep.blocks; STRAT = keep.STRAT; STRAT_PROVINCES = keep.STRAT_PROVINCES; GS = keep.GS; buildStratigraphy.lastVariant = keep.lv; wlZoom = keep.wlz; }
   }
   // Une coupe : 8 colonnes consécutives d'une rangée, avec une faille nette et un réflecteur cible lisible
   function makeRound(){
@@ -11731,9 +11876,9 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
   const BT = ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast'];
   const rnd = (a,b)=>a+Math.random()*(b-a);
   function rigIsolated(fn){
-    const keep = { blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
+    const keep = { sp: ROSE_SEAL_POW, blocks, STRAT, STRAT_PROVINCES, GS, lv: buildStratigraphy.lastVariant, wlz: wlZoom };
     try { return fn(); }
-    finally { blocks = keep.blocks; STRAT = keep.STRAT; STRAT_PROVINCES = keep.STRAT_PROVINCES; GS = keep.GS; buildStratigraphy.lastVariant = keep.lv; wlZoom = keep.wlz; }
+    finally { ROSE_SEAL_POW = keep.sp; blocks = keep.blocks; STRAT = keep.STRAT; STRAT_PROVINCES = keep.STRAT_PROVINCES; GS = keep.GS; buildStratigraphy.lastVariant = keep.lv; wlZoom = keep.wlz; }
   }
   // ---------- scénario : formations du moteur + profil de pression ----------
   function rigScenario(){
@@ -12227,7 +12372,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
 // Mode anglais : dictionnaire des textes fixes de la page (nœuds de texte exacts et attributs title, aria-label, placeholder, alt), appliqué à la volée par un observateur du DOM. Sans effet en français.
 (function(){
   if(document.documentElement.lang !== 'en') return;
-  const HTML_EN = {"Permien":"Permian","Roche-mère du Wolfcamp sous le sel de l'Ochoan, forage horizontal et frac, eau et gaz associé : le défi de l'eau (production avancée activée par défaut)":"Wolfcamp source rock beneath the Ochoan salt, horizontal drilling and frac, water and associated gas: the water challenge (advanced production on by default)","Études":"Studies","Puits":"Wells","Génération de la carte...":"Generating the map...","Avancé":"Advanced","Essayer la Découverte":"Try Discovery","Plus tard":"Later","🌱 Découverte":"🌱 Discovery","12 M$ · 10 ans · 8×8":"12 M$ · 10 years · 8×8","15 M$ · 25 ans":"15 M$ · 25 years","8 M$ · 20 ans":"8 M$ · 20 years","🌍 Grande exploration":"🌍 Grand exploration","45 M$ · 35 ans":"45 M$ · 35 years","Bassin géologique":"Geological basin","🃏 Assembler un prospect":"🃏 Build a prospect","🪨 Quiz lithofaciès":"🪨 Lithofacies quiz","🌡️ Quiz maturation":"🌡️ Maturation quiz","🧪 Quiz Rock-Eval":"🧪 Rock-Eval quiz","📡 Quiz sismique":"📡 Seismic quiz","📈 Lire un log":"📈 Read a log","⛏ Dimensionner son forage":"⛏ Size your well","💧 Eau, gaz et pression":"💧 Water, gas and pressure","📐 Atelier d'analyses":"📐 Analysis workshop","Faites vous-même les calculs du métier : volumes en place, réserves d'une courbe de déclin, prix d'équilibre, perméabilité d'un essai de puits, probabilité par facteur. Chaque mauvais choix est une erreur classique, nommée dans la correction.":"Do the trade's calculations yourself: in-place volumes, reserves from a decline curve, break-even price, permeability from a well test, probability by factor. Each wrong choice is a classic mistake, named in the feedback.","Lisez la pression, le GOR et l'eau d'un puits pour trouver son mécanisme de drainage, puis décidez : camion ou puits d'injection, torche ou unité de gaz, maintien de pression. Les chiffres sont ceux du jeu et les réponses sont calculées.":"Read a well's pressure, GOR and water to find its drive mechanism, then decide: trucking or disposal well, flare or gas unit, pressure maintenance. The numbers are the game's own and the answers are computed.","📡 Interpréter une coupe sismique":"📡 Interpret a seismic section","🏗 Console de forage":"🏗 Drilling console","Carte de 8×8 dans le Bassin parisien, sans finance, sans marché agité, sans informateur ni coût d'abandon. Le guide reste ouvert et chaque forage s'accompagne d'une leçon. Pour comprendre pourquoi on étudie avant de forer.":"8×8 map in the Paris Basin, with no finance, no jittery market, no informant and no abandonment cost. The guide stays open and each well comes with a lesson. To understand why you study before drilling.","· Objectif":"· Objective","· Durée":"· Duration","10 ans":"10 years","Budget confortable, études abordables. Idéal pour découvrir le moteur géologique.":"Comfortable budget, affordable studies. Ideal for discovering the geological engine.","25 ans":"25 years","Budget serré, géologie complexe, marché volatile. Chaque forage compte.":"Tight budget, complex geology, volatile market. Every well counts.","20 ans":"20 years","🎓 Mode TP":"🎓 Practice mode","Objectif géologique, pas financier. Identifiez les 2 meilleures cibles et justifiez vos choix. Révélation de la vraie géologie après chaque forage.":"Geological objective, not financial. Identify the 2 best targets and justify your choices. True geology revealed after each well.","Géologique":"Geological","⚙ Bac à sable":"⚙ Sandbox","Budget illimité, géologie révélée d'emblée. Pour explorer les mécaniques.":"Unlimited budget, geology revealed from the start. To explore the mechanics.","aucun":"none","🌍 Grande Exploration":"🌍 Grand Exploration","Grande carte (30×30 suggéré) avec plusieurs provinces lithostratigraphiques distinctes à explorer. Budget étendu pour couvrir un territoire plus vaste sans être à l'étroit financièrement.":"Large map (30×30 suggested) with several distinct lithostratigraphic provinces to explore. Extended budget to cover a larger territory without financial constraints.","35 ans":"35 years","Mode Finance":"Finance mode","Emprunts, stockage, hedging, EOR, accidents":"Loans, storage, hedging, EOR, accidents","Géologie pure":"Pure geology","Parcours suggéré : débutant → avancé":"Suggested path: beginner → advanced","🎲 Aléatoire (libre)":"🎲 Random (free)","Niveau 1 : débutant":"Level 1: beginner","Anticlinaux peu profonds, exhumation ×2.8, dominante onshore : forages peu profonds et peu coûteux":"Shallow anticlines, exhumation ×2.8, mostly onshore: shallow and inexpensive wells","Parisien":"Paris","Niveau 2 : intermédiaire":"Level 2: intermediate","Marge passive":"Passive margin","Avant-pays":"Foreland","Profondeurs modérées, orogenèse pyrénéenne, cas intermédiaire réel":"Moderate depths, Pyrenean orogeny, a real intermediate case","Niveau 3 : avancé":"Level 3: advanced","Sud de la mer du Nord : Rotliegend sous le sel du Zechstein, gaz, offshore profond : matériel et budget conséquents nécessaires":"Southern North Sea: Rotliegend beneath the Zechstein salt, gas, deep offshore: substantial equipment and budget needed","Mer du Nord":"North Sea","Sel Louann, failles de croissance, subsidence continue (exhumation ×1) : le plus profond et le plus complexe":"Louann salt, growth faults, continuous subsidence (exhumation ×1): the deepest and most complex","Taille de la carte":"Map size","Inclus":"Included","Non":"No","Seed géologique":"Geological seed","Même seed = même carte pour tout un groupe":"Same seed = same map for a whole group","Générer un seed aléatoire":"Generate a random seed","Incertitude des études":"Study uncertainty","Précision des estimations géologiques":"Precision of geological estimates","Faible":"Low","Réaliste":"Realistic","Élevée":"High","☾ Sombre":"☾ Dark","Oui":"Yes","↺ Réinitialiser aux valeurs par défaut":"↺ Reset to default values","Ajuste plusieurs curseurs d'un coup":"Adjusts several sliders at once","Petits jeux indépendants d'une partie complète, pour s'entraîner sur un concept précis sans lancer toute une simulation.":"Small games independent of a full game, to practise a specific concept without launching a whole simulation.","Un log de puits complet (GR, résistivité, densité-neutron, sonique) et des repères A et B : identifiez la lithologie à la profondeur A, puis le fluide du réservoir en B (gaz, huile ou eau).":"A complete well log (GR, resistivity, density-neutron, sonic) and markers A and B: identify the lithology at depth A, then the reservoir fluid at B (gas, oil or water).","Durée":"Duration","Une coupe sismique générée à partir d'une vraie géologie du jeu : suivez le toit du réservoir depuis un puits de calage jusqu'à une autre colonne, puis situez la faille. Les réflecteurs bleus marquent une hausse d'impédance, les rouges une baisse.":"A seismic section generated from a real game geology: follow the reservoir top from a tie well to another column, then locate the fault. Blue reflectors mark an impedance increase, red ones a decrease.","Pointé":"Picked","🃏 Assemble ton prospect":"🃏 Build your prospect","Choisissez une carte par facteur du système pétrolier (piège, réservoir, couverture, charge) et jouez les synergies entre elles avant de forer.":"Choose one card per petroleum system factor (trap, reservoir, seal, charge) and play the synergies between them before drilling.","🪨 Quiz Lithofaciès":"🪨 Lithofacies Quiz","Une description pétrographique s'affiche, identifiez la roche parmi 4 propositions. Rapide, pour s'entraîner à la reconnaissance.":"A petrographic description is shown, identify the rock among 4 options. Quick, to practise recognition.","🌡️ Quiz Maturation":"🌡️ Maturation Quiz","Un contexte de profondeur, gradient et exhumation est donné, devinez si la roche-mère est immature, dans la fenêtre à huile, ou à gaz.":"A depth, gradient and exhumation context is given, guess whether the source rock is immature, in the oil window, or in the gas window.","TOC, indice d'hydrogène, Tmax : entraînez-vous à interpréter ces trois mesures pour juger du potentiel générateur d'une roche-mère.":"TOC, hydrogen index, Tmax: practise interpreting these three measurements to judge a source rock's generative potential.","Pilotez un forage de la surface au réservoir : poids sur l'outil, rotation, pompe, densité de boue. Un kick, une perte de circulation, un coincement ou un outil usé peuvent survenir : diagnostiquez et réglez. Simplifié et pédagogique, pas une procédure opérationnelle.":"Steer a well from the surface to the reservoir: weight on bit, rotation, pump, mud density. A kick, a loss of circulation, a sticking or a worn tool may occur: diagnose and fix. Simplified and educational, not an operational procedure.","Choisissez le matériel de forage qui maximise le gain net espéré, ou repérez le puits qui sollicite le plus son matériel. Les coûts, limites et fiabilités sont ceux du jeu, calculés sur des blocs générés.":"Choose the drilling equipment that maximises the expected net gain, or spot the well that stresses its equipment the most. Costs, limits and reliabilities are the game's own, computed on generated blocks.","📡 Quiz Sismique":"📡 Seismic Quiz","Impédance, polarité, multiples, taches brillantes, calage puits-sismique : entraînez-vous à lire une sismique et à ne pas vous faire piéger.":"Impedance, polarity, multiples, bright spots, well-seismic tie: practise reading seismic and not falling into traps.","Défi du jour":"Challenge of the day","✓ Continuer":"✓ Continue","Vue agrandie":"Enlarged view","Zoom arrière":"Zoom out","Zoom avant":"Zoom in","✕ Fermer":"✕ Close","▶ Reprendre la partie":"▶ Resume game","🎓 Tutoriel":"🎓 Tutorial","← Précédent":"← Previous","Passer le tutoriel":"Skip the tutorial","🎯 Mes cibles (Mode TP)":"🎯 My targets (Practice mode)","Identifiez les 2 blocs qui vous semblent les meilleurs prospects sur cette carte et justifiez chaque choix en quelques mots (piège, réservoir, couverture, charge : qu'est-ce qui vous convainc sur ce bloc précis ?). Sélectionnez un bloc sur la carte, puis revenez ici pour l'ajouter.":"Identify the 2 blocks that look like the best prospects on this map and justify each choice in a few words (trap, reservoir, seal, charge: what convinces you about this particular block?). Select a block on the map, then come back here to add it.","➕ Ajouter le bloc actuellement sélectionné":"➕ Add the currently selected block","✓ Soumettre mes 2 cibles":"✓ Submit my 2 targets","⚙ Paramètres de confort":"⚙ Comfort settings","📖 Glossaire":"📖 Glossary","📚 Bibliothèque des lithologies":"📚 Lithology library","antisèche : logs, réservoirs":"cheat sheet: logs, reservoirs","🎓 Revoir le tutoriel":"🎓 Review the tutorial","🏠 Retour à l'accueil":"🏠 Back to home","Seuls les réglages d'affichage sont modifiables en cours de partie. La taille de carte, le bassin ou le niveau d'incertitude sont fixés à la génération de la carte et ne peuvent pas être changés sans recommencer une partie.":"Only display settings can be changed during a game. Map size, basin and uncertainty level are fixed when the map is generated and cannot be changed without starting a new game.","← Retour":"← Back","FIN DE PARTIE":"GAME OVER","🛢 Gisements exploités":"🛢 Fields in production","🗺️ Voir les gisements sur la carte":"🗺️ Show the fields on the map","▶ REJOUER":"▶ REPLAY","Progression vers l'objectif":"Progress toward the goal","Cash flow/mois":"Cash flow/month","Brut":"Crude","Cours du brut : 60 derniers mois (traits pointillés : vos alertes de prix)":"Crude price: last 60 months (dotted lines: your price alerts)","Informateur : avis de prévision et alertes d'événements du marché (payant, pas toujours juste)":"Informant: forecast notices and market event alerts (paid, not always right)","Informateur de marché":"Market informant","Alertes de prix : être prévenu quand le brut franchit un seuil":"Price alerts: be notified when crude crosses a threshold","Alertes de prix":"Price alerts","Forage":"Drilling","Vous pouvez lancer une étude sur un autre bloc pendant ce temps":"You can launch a study on another block in the meantime","Mes cibles (0/2)":"My targets (0/2)","Vitesse du temps":"Time speed","Changer la vitesse du temps":"Change time speed","Outil de carte":"Map tool","Sélection":"Select","Coupe A→B":"Section A→B","Planifier un forage":"Plan a well","Mode : Sélection":"Mode: Select","Afficher ou masquer tous les traits de coupe sur la carte (la coupe affichée en trait plein, les autres en pointillé)":"Show or hide all section lines on the map (the displayed section as a solid line, the others dotted)","Traits de coupe":"Section lines","Vue d'ensemble : toute la carte à l'écran":"Overview: the whole map on screen","Vue d'ensemble":"Overview","Légende de la carte":"Map legend","Légende":"Legend","Relief structural · gravimétrie":"Structural relief · gravity","bas":"low","haut":"high","Terre en ocre, mer en bleu. Un haut structural piège plus souvent les hydrocarbures.":"Land in ochre, sea in blue. A structural high traps hydrocarbons more often.","Probabilité estimée · sismique 3D":"Estimated probability · 3D seismic","Le chiffre dans la case est l'estimation, en %. Il n'apparaît qu'après une sismique 3D.":"The number in the cell is the estimate, in %. It only appears after a 3D seismic survey.","Non exploré":"Unexplored","Bloc sélectionné":"Selected block","Extrémités de la coupe":"Section ends","Puits sec":"Dry hole","Puits productif":"Producing well","Terre":"Land","Mer":"Sea","Hachuré = non exploré":"Hatched = unexplored","Glisser pour redimensionner":"Drag to resize","← swipez pour changer d'onglet →":"← swipe to change tab →","Cliquez un bloc sur la carte pour voir ce que vous savez de lui.":"Click a block on the map to see what you know about it.","Activez le mode":"Turn on the mode","📐 Coupe A→B":"📐 Section A→B","puis cliquez deux blocs pour tracer le profil.":"then click two blocks to draw the profile.","Une fois A et B définis, vous pouvez lancer la":"Once A and B are set, you can launch the","sismique 2D":"2D seismic","sur ce profil : elle révèle la profondeur des horizons sur tous les blocs intersectés simultanément.":"on this profile: it reveals the depth of the horizons on all intersected blocks at once.","📡 Lancer sismique 2D sur ce profil":"📡 Run 2D seismic on this profile","👁 Voir la vérité (triche)":"👁 Show the truth (cheat)","Sélectionnez un bloc pour voir les études disponibles.":"Select a block to see the available studies.","Aucun gisement pour l'instant.":"No field yet.","Mode finance non activé.":"Finance mode not enabled.","Choisissez une carte dans chacune des 4 catégories du système pétrolier pour composer votre prospect. Certaines combinaisons se renforcent, d'autres se contredisent. Une fois les 4 cartes choisies, lancez le forage virtuel.":"Choose a card in each of the 4 petroleum system categories to compose your prospect. Some combinations reinforce each other, others contradict. Once the 4 cards are chosen, launch the virtual well.","⛏ Forer ce prospect":"⛏ Drill this prospect","🔄 Nouvelle main":"🔄 New hand","Manches jouées : 0 · Réussites : 0":"Rounds played: 0 · Wins: 0","Lire un log":"Read a log","Suite →":"Next →","Légende et aide":"Legend and help","Chaque log vient d'un puits tiré au hasard (bassin et seed différents). Les courbes : GR en vert, résistivité en rouge (trait plein : profonde, pointillé : peu profonde), densité en rouge et neutron en bleu pointillé (le jaune signale un croisement), sonique en violet. La colonne de gauche donne les couches, sans leur nom.":"Each log comes from a randomly drawn well (different basin and seed). The curves: GR in green, resistivity in red (solid line: deep, dotted: shallow), density in red and neutron in dotted blue (yellow marks a crossover), sonic in purple. The left column shows the layers, without their names.","Repères de lecture du jeu.":"Game reading benchmarks.","Dans une roche poreuse, une résistivité profonde sous 10 Ω·m indique de l'eau salée, au-dessus des hydrocarbures. Le jaune (neutron nettement sous la porosité-densité) distingue le gaz de l'huile.":"In a porous rock, a deep resistivity below 10 Ω·m indicates salt water, above it hydrocarbons. Yellow (neutron clearly below density porosity) tells gas from oil.","Formules des questions de calcul.":"Formulas for the calculation questions.","Volume d'argile : Vsh = (GR − GR roche propre) / (GR argile − GR roche propre). Porosité-densité : φ = (ρ matrice − ρb) / (ρ matrice − ρ fluide). Saturation en eau (Archie, a = 1, m = n = 2) : Sw = √(Rw / (φ² × Rt)). Contact : la résistivité chute nettement sous le contact hydrocarbures-eau.":"Clay volume: Vsh = (GR − clean rock GR) / (clay GR − clean rock GR). Density porosity: φ = (ρ matrix − ρb) / (ρ matrix − ρ fluid). Water saturation (Archie, a = 1, m = n = 2): Sw = √(Rw / (φ² × Rt)). Contact: resistivity drops sharply below the hydrocarbon-water contact.","Ces repères sont calibrés sur les puits du jeu et chaque question est choisie pour qu'ils tranchent : sur de vrais logs, les cas ambigus existent (roche argileuse, eau douce, gaz peu saturé) et les mêmes courbes se discutent.":"These benchmarks are calibrated on the game's wells and each question is chosen so that they settle it: on real logs, ambiguous cases exist (clayey rock, fresh water, poorly saturated gas) and the same curves are debated.","Interpréter une coupe sismique":"Interpret a seismic section","Chaque coupe est tirée d'une vraie géologie du jeu (bassin et seed différents). Bleu : l'impédance augmente sous le réflecteur, rouge : elle diminue. Plus le trait est épais, plus le contraste est fort. Une faille décale d'un coup tous les réflecteurs entre deux colonnes ; un pli les incline progressivement. La distance n'est pas à l'échelle : seule la profondeur est chiffrée.":"Each section is drawn from a real game geology (different basin and seed). Blue: impedance increases below the reflector, red: it decreases. The thicker the line, the stronger the contrast. A fault shifts all reflectors between two columns at once; a fold tilts them gradually. Distance is not to scale: only depth is quantified.","Bibliothèque des lithologies":"Lithology library","Chercher une lithologie":"Search a lithology","Chercher une roche ou une formation (grès, Brent, sel, charbon…)":"Search a rock or formation (sandstone, Brent, salt, coal…)","Règles rapides pour lire un log":"Quick rules to read a log","GR bas":"Low GR","(moins de 50 API) : roche propre, grès, calcaire, dolomie, sel, anhydrite.":"(under 50 API): clean rock, sandstone, limestone, dolomite, salt, anhydrite.","GR haut":"High GR","(plus de 100) : argile, ou roche-mère si la courbe sort de l'échelle.":"(over 100): clay, or source rock if the curve goes off scale.","Densité":"Density",": 2,03 g/cc = sel gemme, 2,98 = anhydrite, 1,4 = charbon, 2,87 = dolomie pure, 2,71 = calcaire pur, 2,65 = grès pur. Une porosité la fait baisser.":": 2.03 g/cc = rock salt, 2.98 = anhydrite, 1.4 = coal, 2.87 = pure dolomite, 2.71 = pure limestone, 2.65 = pure sandstone. Porosity lowers it.","Sonique lent":"Slow sonic","(plus de 100 µs/ft) : roche très poreuse, sédiments meubles, charbon, argile peu compactée.":"(over 100 µs/ft): very porous rock, loose sediments, coal, poorly compacted clay.","Sonique rapide":"Fast sonic","(moins de 50) : dolomie, calcaire compact, anhydrite, socle.":"(under 50): dolomite, tight limestone, anhydrite, basement.","Résistivité":"Resistivity","énorme (plus de 1 000 Ω·m) sur GR bas et sans porosité : sel ou anhydrite. Basse (moins de 5) dans une roche poreuse : eau salée. Haute dans une roche poreuse : hydrocarbures.":"huge (over 1,000 Ω·m) on low GR and with no porosity: salt or anhydrite. Low (under 5) in a porous rock: salt water. High in a porous rock: hydrocarbons.","Croisement densité-neutron":"Density-neutron crossover","(jaune) dans une roche poreuse : gaz.":"(yellow) in a porous rock: gas.","Console de forage":"Drilling console","Quaternaire":"Quaternary","Craie":"Chalk","Gypse":"Gypsum","Siltite":"Siltstone","Fenêtre à huile":"Oil window","Gaz":"Gas","Pauvre":"Poor","Bon":"Good","Moyen":"Medium","Couverture":"Seal","FIN":"END","Pression":"Pressure","Ciment":"Cement","Synclinal":"Syncline","Anticlinal":"Anticline","Complet":"Full","Biseau":"Pinch-out","Neutre":"Neutral","Socle":"Basement","Fév":"Feb","Avr":"Apr","Mai":"May","Aoû":"Aug","Déc":"Dec","Forer":"Drill","Calcaire":"Limestone","Dolomie":"Dolomite","Marne":"Marl","Charbon":"Coal","Faille":"Fault","Informateur":"Informant","Carotte":"Core","Argilite":"Claystone","Houille":"Hard coal","Nul":"None","Sismique":"Seismic","Au-dessus":"Above","Couche":"Layer","Basalte":"Basalt","Calcul":"Calculation","Huile":"Oil","Sonique":"Sonic","Tout":"All","Profondeur":"Depth","Avancement":"Rate of penetration","Heures":"Hours","Pertes":"Losses","Inclinaison":"Inclination","Surmature (gaz)":"Overmature (gas)","Fenêtre à gaz":"Gas window","Grès":"Sandstone","Argile":"Clay","Sel":"Salt","Roche-mère":"Source rock","Piège":"Trap","Réservoir":"Reservoir","Sec":"Dry","Fermer":"Close","Retour":"Back","Suivant →":"Next →","Précédent":"Previous","Terminer":"Finish","Question suivante →":"Next question →","Score : 0/0":"Score: 0/0","Step 1 :":"Step 1:",": à lire d'abord. Plus grand que l'outil, le trou est éboulé (argile délitée) et densité, neutron et sonique sont faussés ; plus petit, c'est un gâteau de boue sur une roche perméable.":": read it first. Larger than the bit, the hole is washed out (sloughing clay) and density, neutron and sonic are distorted; smaller, it is a mudcake on a permeable rock.","Pièges de la sismique":"Seismic traps",": une tache brillante n'est pas une preuve de gaz (charbon, calcaire serré), le multiple a une amplitude R² et une polarité négative, un corps rapide au-dessus fait un faux haut structural (pull-up).":": a bright spot is not proof of gas (coal, tight limestone), the multiple has amplitude R² and negative polarity, a fast body above creates a false structural high (pull-up).","⏭ Tout voir d'un coup":"⏭ Show all at once"};
+  const HTML_EN = {"⚗️ Hydrogène et hélium":"⚗️ Hydrogen and helium","Cherchez des ressources de la transition énergétique. Hydrogène naturel : la serpentinisation de roches ultramafiques et la radiolyse du socle le produisent en continu, mais la molécule fuit à travers la plupart des couvertures. Hélium : la désintégration de l'uranium et du thorium d'un craton ancien l'accumule sous le sel. Deux géologies, tirées par la graine. La pureté du gaz décide du prix.":"Look for energy-transition resources. Natural hydrogen: serpentinization of ultramafic rocks and radiolysis of the basement produce it continuously, but the molecule leaks through most seals. Helium: the decay of uranium and thorium in an ancient craton accumulates it under salt. Two geologies, drawn by the seed. Gas purity decides the price.","Hydrogène":"Hydrogen","Hélium":"Helium","Socle ultramafique qui fabrique de l'hydrogène en continu, couverture de dolérite : la molécule fuit, seule une couverture excellente la garde":"Ultramafic basement that makes hydrogen continuously, dolerite seal: the molecule leaks, only an excellent seal keeps it","Craton uranifère sous le sel : l'hélium est rare dans le gaz, sa teneur décide du prix":"Uranium-bearing craton under salt: helium is rare in the gas, its concentration decides the price","Permien":"Permian","Roche-mère du Wolfcamp sous le sel de l'Ochoan, forage horizontal et frac, eau et gaz associé : le défi de l'eau (production avancée activée par défaut)":"Wolfcamp source rock beneath the Ochoan salt, horizontal drilling and frac, water and associated gas: the water challenge (advanced production on by default)","Études":"Studies","Puits":"Wells","Génération de la carte...":"Generating the map...","Avancé":"Advanced","Essayer la Découverte":"Try Discovery","Plus tard":"Later","🌱 Découverte":"🌱 Discovery","12 M$ · 10 ans · 8×8":"12 M$ · 10 years · 8×8","15 M$ · 25 ans":"15 M$ · 25 years","8 M$ · 20 ans":"8 M$ · 20 years","🌍 Grande exploration":"🌍 Grand exploration","45 M$ · 35 ans":"45 M$ · 35 years","Bassin géologique":"Geological basin","🃏 Assembler un prospect":"🃏 Build a prospect","🪨 Quiz lithofaciès":"🪨 Lithofacies quiz","🌡️ Quiz maturation":"🌡️ Maturation quiz","🧪 Quiz Rock-Eval":"🧪 Rock-Eval quiz","📡 Quiz sismique":"📡 Seismic quiz","📈 Lire un log":"📈 Read a log","⛏ Dimensionner son forage":"⛏ Size your well","💧 Eau, gaz et pression":"💧 Water, gas and pressure","📐 Atelier d'analyses":"📐 Analysis workshop","Faites vous-même les calculs du métier : volumes en place, réserves d'une courbe de déclin, prix d'équilibre, perméabilité d'un essai de puits, probabilité par facteur. Chaque mauvais choix est une erreur classique, nommée dans la correction.":"Do the trade's calculations yourself: in-place volumes, reserves from a decline curve, break-even price, permeability from a well test, probability by factor. Each wrong choice is a classic mistake, named in the feedback.","Lisez la pression, le GOR et l'eau d'un puits pour trouver son mécanisme de drainage, puis décidez : camion ou puits d'injection, torche ou unité de gaz, maintien de pression. Les chiffres sont ceux du jeu et les réponses sont calculées.":"Read a well's pressure, GOR and water to find its drive mechanism, then decide: trucking or disposal well, flare or gas unit, pressure maintenance. The numbers are the game's own and the answers are computed.","📡 Interpréter une coupe sismique":"📡 Interpret a seismic section","🏗 Console de forage":"🏗 Drilling console","Carte de 8×8 dans le Bassin parisien, sans finance, sans marché agité, sans informateur ni coût d'abandon. Le guide reste ouvert et chaque forage s'accompagne d'une leçon. Pour comprendre pourquoi on étudie avant de forer.":"8×8 map in the Paris Basin, with no finance, no jittery market, no informant and no abandonment cost. The guide stays open and each well comes with a lesson. To understand why you study before drilling.","· Objectif":"· Objective","· Durée":"· Duration","10 ans":"10 years","Budget confortable, études abordables. Idéal pour découvrir le moteur géologique.":"Comfortable budget, affordable studies. Ideal for discovering the geological engine.","25 ans":"25 years","Budget serré, géologie complexe, marché volatile. Chaque forage compte.":"Tight budget, complex geology, volatile market. Every well counts.","20 ans":"20 years","🎓 Mode TP":"🎓 Practice mode","Objectif géologique, pas financier. Identifiez les 2 meilleures cibles et justifiez vos choix. Révélation de la vraie géologie après chaque forage.":"Geological objective, not financial. Identify the 2 best targets and justify your choices. True geology revealed after each well.","Géologique":"Geological","⚙ Bac à sable":"⚙ Sandbox","Budget illimité, géologie révélée d'emblée. Pour explorer les mécaniques.":"Unlimited budget, geology revealed from the start. To explore the mechanics.","aucun":"none","🌍 Grande Exploration":"🌍 Grand Exploration","Grande carte (30×30 suggéré) avec plusieurs provinces lithostratigraphiques distinctes à explorer. Budget étendu pour couvrir un territoire plus vaste sans être à l'étroit financièrement.":"Large map (30×30 suggested) with several distinct lithostratigraphic provinces to explore. Extended budget to cover a larger territory without financial constraints.","35 ans":"35 years","Mode Finance":"Finance mode","Emprunts, stockage, hedging, EOR, accidents":"Loans, storage, hedging, EOR, accidents","Géologie pure":"Pure geology","Parcours suggéré : débutant → avancé":"Suggested path: beginner → advanced","🎲 Aléatoire (libre)":"🎲 Random (free)","Niveau 1 : débutant":"Level 1: beginner","Anticlinaux peu profonds, exhumation ×2.8, dominante onshore : forages peu profonds et peu coûteux":"Shallow anticlines, exhumation ×2.8, mostly onshore: shallow and inexpensive wells","Parisien":"Paris","Niveau 2 : intermédiaire":"Level 2: intermediate","Marge passive":"Passive margin","Avant-pays":"Foreland","Profondeurs modérées, orogenèse pyrénéenne, cas intermédiaire réel":"Moderate depths, Pyrenean orogeny, a real intermediate case","Niveau 3 : avancé":"Level 3: advanced","Sud de la mer du Nord : Rotliegend sous le sel du Zechstein, gaz, offshore profond : matériel et budget conséquents nécessaires":"Southern North Sea: Rotliegend beneath the Zechstein salt, gas, deep offshore: substantial equipment and budget needed","Mer du Nord":"North Sea","Sel Louann, failles de croissance, subsidence continue (exhumation ×1) : le plus profond et le plus complexe":"Louann salt, growth faults, continuous subsidence (exhumation ×1): the deepest and most complex","Taille de la carte":"Map size","Inclus":"Included","Non":"No","Seed géologique":"Geological seed","Même seed = même carte pour tout un groupe":"Same seed = same map for a whole group","Générer un seed aléatoire":"Generate a random seed","Incertitude des études":"Study uncertainty","Précision des estimations géologiques":"Precision of geological estimates","Faible":"Low","Réaliste":"Realistic","Élevée":"High","☾ Sombre":"☾ Dark","Oui":"Yes","↺ Réinitialiser aux valeurs par défaut":"↺ Reset to default values","Ajuste plusieurs curseurs d'un coup":"Adjusts several sliders at once","Petits jeux indépendants d'une partie complète, pour s'entraîner sur un concept précis sans lancer toute une simulation.":"Small games independent of a full game, to practise a specific concept without launching a whole simulation.","Un log de puits complet (GR, résistivité, densité-neutron, sonique) et des repères A et B : identifiez la lithologie à la profondeur A, puis le fluide du réservoir en B (gaz, huile ou eau).":"A complete well log (GR, resistivity, density-neutron, sonic) and markers A and B: identify the lithology at depth A, then the reservoir fluid at B (gas, oil or water).","Durée":"Duration","Une coupe sismique générée à partir d'une vraie géologie du jeu : suivez le toit du réservoir depuis un puits de calage jusqu'à une autre colonne, puis situez la faille. Les réflecteurs bleus marquent une hausse d'impédance, les rouges une baisse.":"A seismic section generated from a real game geology: follow the reservoir top from a tie well to another column, then locate the fault. Blue reflectors mark an impedance increase, red ones a decrease.","Pointé":"Picked","🃏 Assemble ton prospect":"🃏 Build your prospect","Choisissez une carte par facteur du système pétrolier (piège, réservoir, couverture, charge) et jouez les synergies entre elles avant de forer.":"Choose one card per petroleum system factor (trap, reservoir, seal, charge) and play the synergies between them before drilling.","🪨 Quiz Lithofaciès":"🪨 Lithofacies Quiz","Une description pétrographique s'affiche, identifiez la roche parmi 4 propositions. Rapide, pour s'entraîner à la reconnaissance.":"A petrographic description is shown, identify the rock among 4 options. Quick, to practise recognition.","🌡️ Quiz Maturation":"🌡️ Maturation Quiz","Un contexte de profondeur, gradient et exhumation est donné, devinez si la roche-mère est immature, dans la fenêtre à huile, ou à gaz.":"A depth, gradient and exhumation context is given, guess whether the source rock is immature, in the oil window, or in the gas window.","TOC, indice d'hydrogène, Tmax : entraînez-vous à interpréter ces trois mesures pour juger du potentiel générateur d'une roche-mère.":"TOC, hydrogen index, Tmax: practise interpreting these three measurements to judge a source rock's generative potential.","Pilotez un forage de la surface au réservoir : poids sur l'outil, rotation, pompe, densité de boue. Un kick, une perte de circulation, un coincement ou un outil usé peuvent survenir : diagnostiquez et réglez. Simplifié et pédagogique, pas une procédure opérationnelle.":"Steer a well from the surface to the reservoir: weight on bit, rotation, pump, mud density. A kick, a loss of circulation, a sticking or a worn tool may occur: diagnose and fix. Simplified and educational, not an operational procedure.","Choisissez le matériel de forage qui maximise le gain net espéré, ou repérez le puits qui sollicite le plus son matériel. Les coûts, limites et fiabilités sont ceux du jeu, calculés sur des blocs générés.":"Choose the drilling equipment that maximises the expected net gain, or spot the well that stresses its equipment the most. Costs, limits and reliabilities are the game's own, computed on generated blocks.","📡 Quiz Sismique":"📡 Seismic Quiz","Impédance, polarité, multiples, taches brillantes, calage puits-sismique : entraînez-vous à lire une sismique et à ne pas vous faire piéger.":"Impedance, polarity, multiples, bright spots, well-seismic tie: practise reading seismic and not falling into traps.","Défi du jour":"Challenge of the day","✓ Continuer":"✓ Continue","Vue agrandie":"Enlarged view","Zoom arrière":"Zoom out","Zoom avant":"Zoom in","✕ Fermer":"✕ Close","▶ Reprendre la partie":"▶ Resume game","🎓 Tutoriel":"🎓 Tutorial","← Précédent":"← Previous","Passer le tutoriel":"Skip the tutorial","🎯 Mes cibles (Mode TP)":"🎯 My targets (Practice mode)","Identifiez les 2 blocs qui vous semblent les meilleurs prospects sur cette carte et justifiez chaque choix en quelques mots (piège, réservoir, couverture, charge : qu'est-ce qui vous convainc sur ce bloc précis ?). Sélectionnez un bloc sur la carte, puis revenez ici pour l'ajouter.":"Identify the 2 blocks that look like the best prospects on this map and justify each choice in a few words (trap, reservoir, seal, charge: what convinces you about this particular block?). Select a block on the map, then come back here to add it.","➕ Ajouter le bloc actuellement sélectionné":"➕ Add the currently selected block","✓ Soumettre mes 2 cibles":"✓ Submit my 2 targets","⚙ Paramètres de confort":"⚙ Comfort settings","📖 Glossaire":"📖 Glossary","📚 Bibliothèque des lithologies":"📚 Lithology library","antisèche : logs, réservoirs":"cheat sheet: logs, reservoirs","🎓 Revoir le tutoriel":"🎓 Review the tutorial","🏠 Retour à l'accueil":"🏠 Back to home","Seuls les réglages d'affichage sont modifiables en cours de partie. La taille de carte, le bassin ou le niveau d'incertitude sont fixés à la génération de la carte et ne peuvent pas être changés sans recommencer une partie.":"Only display settings can be changed during a game. Map size, basin and uncertainty level are fixed when the map is generated and cannot be changed without starting a new game.","← Retour":"← Back","FIN DE PARTIE":"GAME OVER","🛢 Gisements exploités":"🛢 Fields in production","🗺️ Voir les gisements sur la carte":"🗺️ Show the fields on the map","▶ REJOUER":"▶ REPLAY","Progression vers l'objectif":"Progress toward the goal","Cash flow/mois":"Cash flow/month","Brut":"Crude","Cours du brut : 60 derniers mois (traits pointillés : vos alertes de prix)":"Crude price: last 60 months (dotted lines: your price alerts)","Informateur : avis de prévision et alertes d'événements du marché (payant, pas toujours juste)":"Informant: forecast notices and market event alerts (paid, not always right)","Informateur de marché":"Market informant","Alertes de prix : être prévenu quand le brut franchit un seuil":"Price alerts: be notified when crude crosses a threshold","Alertes de prix":"Price alerts","Forage":"Drilling","Vous pouvez lancer une étude sur un autre bloc pendant ce temps":"You can launch a study on another block in the meantime","Mes cibles (0/2)":"My targets (0/2)","Vitesse du temps":"Time speed","Changer la vitesse du temps":"Change time speed","Outil de carte":"Map tool","Sélection":"Select","Coupe A→B":"Section A→B","Planifier un forage":"Plan a well","Mode : Sélection":"Mode: Select","Afficher ou masquer tous les traits de coupe sur la carte (la coupe affichée en trait plein, les autres en pointillé)":"Show or hide all section lines on the map (the displayed section as a solid line, the others dotted)","Traits de coupe":"Section lines","Vue d'ensemble : toute la carte à l'écran":"Overview: the whole map on screen","Vue d'ensemble":"Overview","Légende de la carte":"Map legend","Légende":"Legend","Relief structural · gravimétrie":"Structural relief · gravity","bas":"low","haut":"high","Terre en ocre, mer en bleu. Un haut structural piège plus souvent les hydrocarbures.":"Land in ochre, sea in blue. A structural high traps hydrocarbons more often.","Probabilité estimée · sismique 3D":"Estimated probability · 3D seismic","Le chiffre dans la case est l'estimation, en %. Il n'apparaît qu'après une sismique 3D.":"The number in the cell is the estimate, in %. It only appears after a 3D seismic survey.","Non exploré":"Unexplored","Bloc sélectionné":"Selected block","Extrémités de la coupe":"Section ends","Puits sec":"Dry hole","Puits productif":"Producing well","Terre":"Land","Mer":"Sea","Hachuré = non exploré":"Hatched = unexplored","Glisser pour redimensionner":"Drag to resize","← swipez pour changer d'onglet →":"← swipe to change tab →","Cliquez un bloc sur la carte pour voir ce que vous savez de lui.":"Click a block on the map to see what you know about it.","Activez le mode":"Turn on the mode","📐 Coupe A→B":"📐 Section A→B","puis cliquez deux blocs pour tracer le profil.":"then click two blocks to draw the profile.","Une fois A et B définis, vous pouvez lancer la":"Once A and B are set, you can launch the","sismique 2D":"2D seismic","sur ce profil : elle révèle la profondeur des horizons sur tous les blocs intersectés simultanément.":"on this profile: it reveals the depth of the horizons on all intersected blocks at once.","📡 Lancer sismique 2D sur ce profil":"📡 Run 2D seismic on this profile","👁 Voir la vérité (triche)":"👁 Show the truth (cheat)","Sélectionnez un bloc pour voir les études disponibles.":"Select a block to see the available studies.","Aucun gisement pour l'instant.":"No field yet.","Mode finance non activé.":"Finance mode not enabled.","Choisissez une carte dans chacune des 4 catégories du système pétrolier pour composer votre prospect. Certaines combinaisons se renforcent, d'autres se contredisent. Une fois les 4 cartes choisies, lancez le forage virtuel.":"Choose a card in each of the 4 petroleum system categories to compose your prospect. Some combinations reinforce each other, others contradict. Once the 4 cards are chosen, launch the virtual well.","⛏ Forer ce prospect":"⛏ Drill this prospect","🔄 Nouvelle main":"🔄 New hand","Manches jouées : 0 · Réussites : 0":"Rounds played: 0 · Wins: 0","Lire un log":"Read a log","Suite →":"Next →","Légende et aide":"Legend and help","Chaque log vient d'un puits tiré au hasard (bassin et seed différents). Les courbes : GR en vert, résistivité en rouge (trait plein : profonde, pointillé : peu profonde), densité en rouge et neutron en bleu pointillé (le jaune signale un croisement), sonique en violet. La colonne de gauche donne les couches, sans leur nom.":"Each log comes from a randomly drawn well (different basin and seed). The curves: GR in green, resistivity in red (solid line: deep, dotted: shallow), density in red and neutron in dotted blue (yellow marks a crossover), sonic in purple. The left column shows the layers, without their names.","Repères de lecture du jeu.":"Game reading benchmarks.","Dans une roche poreuse, une résistivité profonde sous 10 Ω·m indique de l'eau salée, au-dessus des hydrocarbures. Le jaune (neutron nettement sous la porosité-densité) distingue le gaz de l'huile.":"In a porous rock, a deep resistivity below 10 Ω·m indicates salt water, above it hydrocarbons. Yellow (neutron clearly below density porosity) tells gas from oil.","Formules des questions de calcul.":"Formulas for the calculation questions.","Volume d'argile : Vsh = (GR − GR roche propre) / (GR argile − GR roche propre). Porosité-densité : φ = (ρ matrice − ρb) / (ρ matrice − ρ fluide). Saturation en eau (Archie, a = 1, m = n = 2) : Sw = √(Rw / (φ² × Rt)). Contact : la résistivité chute nettement sous le contact hydrocarbures-eau.":"Clay volume: Vsh = (GR − clean rock GR) / (clay GR − clean rock GR). Density porosity: φ = (ρ matrix − ρb) / (ρ matrix − ρ fluid). Water saturation (Archie, a = 1, m = n = 2): Sw = √(Rw / (φ² × Rt)). Contact: resistivity drops sharply below the hydrocarbon-water contact.","Ces repères sont calibrés sur les puits du jeu et chaque question est choisie pour qu'ils tranchent : sur de vrais logs, les cas ambigus existent (roche argileuse, eau douce, gaz peu saturé) et les mêmes courbes se discutent.":"These benchmarks are calibrated on the game's wells and each question is chosen so that they settle it: on real logs, ambiguous cases exist (clayey rock, fresh water, poorly saturated gas) and the same curves are debated.","Interpréter une coupe sismique":"Interpret a seismic section","Chaque coupe est tirée d'une vraie géologie du jeu (bassin et seed différents). Bleu : l'impédance augmente sous le réflecteur, rouge : elle diminue. Plus le trait est épais, plus le contraste est fort. Une faille décale d'un coup tous les réflecteurs entre deux colonnes ; un pli les incline progressivement. La distance n'est pas à l'échelle : seule la profondeur est chiffrée.":"Each section is drawn from a real game geology (different basin and seed). Blue: impedance increases below the reflector, red: it decreases. The thicker the line, the stronger the contrast. A fault shifts all reflectors between two columns at once; a fold tilts them gradually. Distance is not to scale: only depth is quantified.","Bibliothèque des lithologies":"Lithology library","Chercher une lithologie":"Search a lithology","Chercher une roche ou une formation (grès, Brent, sel, charbon…)":"Search a rock or formation (sandstone, Brent, salt, coal…)","Règles rapides pour lire un log":"Quick rules to read a log","GR bas":"Low GR","(moins de 50 API) : roche propre, grès, calcaire, dolomie, sel, anhydrite.":"(under 50 API): clean rock, sandstone, limestone, dolomite, salt, anhydrite.","GR haut":"High GR","(plus de 100) : argile, ou roche-mère si la courbe sort de l'échelle.":"(over 100): clay, or source rock if the curve goes off scale.","Densité":"Density",": 2,03 g/cc = sel gemme, 2,98 = anhydrite, 1,4 = charbon, 2,87 = dolomie pure, 2,71 = calcaire pur, 2,65 = grès pur. Une porosité la fait baisser.":": 2.03 g/cc = rock salt, 2.98 = anhydrite, 1.4 = coal, 2.87 = pure dolomite, 2.71 = pure limestone, 2.65 = pure sandstone. Porosity lowers it.","Sonique lent":"Slow sonic","(plus de 100 µs/ft) : roche très poreuse, sédiments meubles, charbon, argile peu compactée.":"(over 100 µs/ft): very porous rock, loose sediments, coal, poorly compacted clay.","Sonique rapide":"Fast sonic","(moins de 50) : dolomie, calcaire compact, anhydrite, socle.":"(under 50): dolomite, tight limestone, anhydrite, basement.","Résistivité":"Resistivity","énorme (plus de 1 000 Ω·m) sur GR bas et sans porosité : sel ou anhydrite. Basse (moins de 5) dans une roche poreuse : eau salée. Haute dans une roche poreuse : hydrocarbures.":"huge (over 1,000 Ω·m) on low GR and with no porosity: salt or anhydrite. Low (under 5) in a porous rock: salt water. High in a porous rock: hydrocarbons.","Croisement densité-neutron":"Density-neutron crossover","(jaune) dans une roche poreuse : gaz.":"(yellow) in a porous rock: gas.","Console de forage":"Drilling console","Quaternaire":"Quaternary","Craie":"Chalk","Gypse":"Gypsum","Siltite":"Siltstone","Fenêtre à huile":"Oil window","Gaz":"Gas","Pauvre":"Poor","Bon":"Good","Moyen":"Medium","Couverture":"Seal","FIN":"END","Pression":"Pressure","Ciment":"Cement","Synclinal":"Syncline","Anticlinal":"Anticline","Complet":"Full","Biseau":"Pinch-out","Neutre":"Neutral","Socle":"Basement","Fév":"Feb","Avr":"Apr","Mai":"May","Aoû":"Aug","Déc":"Dec","Forer":"Drill","Calcaire":"Limestone","Dolomie":"Dolomite","Marne":"Marl","Charbon":"Coal","Faille":"Fault","Informateur":"Informant","Carotte":"Core","Argilite":"Claystone","Houille":"Hard coal","Nul":"None","Sismique":"Seismic","Au-dessus":"Above","Couche":"Layer","Basalte":"Basalt","Calcul":"Calculation","Huile":"Oil","Sonique":"Sonic","Tout":"All","Profondeur":"Depth","Avancement":"Rate of penetration","Heures":"Hours","Pertes":"Losses","Inclinaison":"Inclination","Surmature (gaz)":"Overmature (gas)","Fenêtre à gaz":"Gas window","Grès":"Sandstone","Argile":"Clay","Sel":"Salt","Roche-mère":"Source rock","Piège":"Trap","Réservoir":"Reservoir","Sec":"Dry","Fermer":"Close","Retour":"Back","Suivant →":"Next →","Précédent":"Previous","Terminer":"Finish","Question suivante →":"Next question →","Score : 0/0":"Score: 0/0","Step 1 :":"Step 1:",": à lire d'abord. Plus grand que l'outil, le trou est éboulé (argile délitée) et densité, neutron et sonique sont faussés ; plus petit, c'est un gâteau de boue sur une roche perméable.":": read it first. Larger than the bit, the hole is washed out (sloughing clay) and density, neutron and sonic are distorted; smaller, it is a mudcake on a permeable rock.","Pièges de la sismique":"Seismic traps",": une tache brillante n'est pas une preuve de gaz (charbon, calcaire serré), le multiple a une amplitude R² et une polarité négative, un corps rapide au-dessus fait un faux haut structural (pull-up).":": a bright spot is not proof of gas (coal, tight limestone), the multiple has amplitude R² and negative polarity, a fast body above creates a false structural high (pull-up).","⏭ Tout voir d'un coup":"⏭ Show all at once"};
   const norm = s => s.replace(/\s+/g,' ').trim();
   const tr = n => { const v = n.nodeValue; if(!v) return; const t = v.trim(); if(!t) return; const e = HTML_EN[norm(t)]; if(e !== undefined && e !== t) n.nodeValue = v.replace(t, () => e); };
   const ATTR = ['title','aria-label','placeholder','alt'];
