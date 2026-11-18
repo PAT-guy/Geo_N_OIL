@@ -33,6 +33,12 @@ const { chromium } = require('playwright'); const path = require('path');
     const m1=land.find(b=>sz.own[b.id]); out.ownNull=gsKrig(m1,'z')===null;
     // coupe : le modèle 3D de lithologie couvre un bloc sans donnée, toit de chaque couche krigé et confiance < sismique
     const nm=blocks.filter(b=>!getBlockLayerData(b)); const pb=[{b:nm[0],t:0},{b:nm[1],t:1}]; const LM=gsLayerModel(pb); out.lm=LM[0]&&LM[0].length; out.lmOrd=LM[0].every((l,i)=>i===0||Math.abs(l.top-(LM[0][i-1].top+LM[0][i-1].thickness))<1e-6); out.lmConf=Math.max(...LM[0].map(l=>l.confidence)); out.lmK=LM[0].every(l=>l.krigeage);
+    // légende de la couche
+    click(); await new Promise(r=>setTimeout(r,100)); const lg=document.getElementById('krgLegend'); out.lgQ = getComputedStyle(lg).display!=='none' && getComputedStyle(lg.querySelector('.krg-lq')).display!=='none' && getComputedStyle(lg.querySelector('.krg-lz')).display==='none' && /hachures/.test(lg.textContent);
+    click(); await new Promise(r=>setTimeout(r,100)); out.lgZ = getComputedStyle(lg.querySelector('.krg-lz')).display!=='none' && getComputedStyle(lg.querySelector('.krg-lq')).display==='none';
+    click(); await new Promise(r=>setTimeout(r,100)); out.lgOff = getComputedStyle(lg).display==='none';
+    // divergence avec la gravimétrie : avertissement seulement au-delà de 2 écarts-types
+    const gt = land.find(b=>!sz.own[b.id] && b.estimate?.structPos!==undefined && gsKrig(b,'z') && gsKrig(b,'z').n>=2); const gk=gsKrig(gt,'z'), gz=depthFromGravity(gt); const sdev=Math.abs(gz-gk.m)/gk.sd; selectedBlock=gt.id; renderGeoPanel(gt); out.warnOk = /ne s'accordent pas/.test(document.getElementById('geoContent').textContent) === (sdev>2);
     // mode Découverte : rien de tout cela
     G.simple=true; out.simpleDepth = drillDepthEstimate(t)!==out.k; G.simple=false;
     return out; });
@@ -47,5 +53,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(Math.abs(r.dz-r.k)<1e-6 && r.simpleDepth,'le coût de forage estimé utilise la profondeur krigée (hors Découverte)');
   ok(r.ownNull,'un bloc mesuré garde sa mesure : il n\'est pas « interpolé »');
   ok(r.lm>=5 && r.lmOrd && r.lmK && r.lmConf<=0.5,'coupe : modèle 3D de lithologie krigé, couches contiguës, confiance plafonnée à 0,5 (sismique : 0,7)');
+  ok(r.lgQ && r.lgZ && r.lgOff,'légende : une ligne lisible (couleur = valeur, hachures = incertitude) selon la couche, masquée quand la couche est éteinte');
+  ok(r.warnOk,'divergence avec la gravimétrie signalée seulement au-delà de 2 écarts-types');
   ok(errs.length===0,'aucune erreur JS '+errs.join('|'));
   await br.close(); console.log(ko?'ECHECS: '+ko:'TOUT OK'); process.exit(ko?1:0); })();
