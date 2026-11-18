@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.22</title>
+<title>GeoExplorer V5.23</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2199,7 +2199,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       // de 0,3 à 9,5 %. Avant, il était tiré une fois par couche (1,5 à 9,5 %) sans lien avec la charge : une roche-mère affichée
       // « pauvre » pouvait remplir un piège. N'intervient dans aucun calcul de probabilité : seuls l'affichage du TOC,
       // le log de la couche (GR, densité, sonique) et son impédance sismique changent.
-      if(sourceIdx>=0 && horizons[sourceIdx] && horizons[sourceIdx].role==='source') horizons[sourceIdx].toc = srcAbsent ? '0.2' : (0.2 + 8.5*Math.pow(clamp(srcFaciesVal,0,1), 2.2)).toFixed(1);
+      if(sourceIdx>=0 && horizons[sourceIdx] && horizons[sourceIdx].role==='source') horizons[sourceIdx].toc = srcAbsent ? '0.2' : /charbon|houille/i.test(FRN(horizons[sourceIdx].name)||'') ? (45 + 40*clamp(srcFaciesVal,0,1)).toFixed(1) : (0.2 + 8.5*Math.pow(clamp(srcFaciesVal,0,1), 2.2)).toFixed(1);   // charbon : TOC 45 à 85 % (V5.23), un schiste riche plafonne à 9,5 %
       const sealFaciesVal = sealFacies(x,y);
 
       // Forme du piège : un piège structural n'existe qu'à l'intérieur de la fermeture, c'est-à-dire sous le point de débordement (spill point) de l'anticlinal.
@@ -2700,7 +2700,8 @@ const STUDIES = {
       const srcL = b.horizons.findLast(h=>h.role==='source');
       const tocLayer = srcL && srcL.toc!=null ? parseFloat(srcL.toc) : null;
       const richness = clamp((gs/Math.max(0.05, b.maturity||0.05) - 0.1)/0.85, 0, 1);
-      const toc = tocLayer!=null ? clamp(tocLayer*(0.85 + 0.3*richness)*(1 + (rng()-.5)*0.08), 0.05, 12)
+      const isCoalSrc = !!srcL && /charbon|houille/i.test(FRN(srcL.name)||'');
+      const toc = tocLayer!=null ? clamp(tocLayer*(isCoalSrc ? 1 : 0.85 + 0.3*richness)*(1 + (rng()-.5)*0.08), 0.05, isCoalSrc ? 90 : 12)
                                  : clamp(gs*4 + (rng()-.5)*0.4, 0.05, 6);
       const maturityTmax = {
         'Immature': 415 + rng()*15,
@@ -3105,7 +3106,7 @@ function shaleTrue(b){
   const h = b.horizons ? b.horizons.findLast(z=>z.role==='source') : null;
   if(b.isOffshore){ out.why='offshore'; return out; }
   if(!h || b.srcAbsent){ out.why='absent'; return out; }
-  if(/charbon|houille/i.test(FRN(h.name))){ out.why='coal'; return out; }
+  if(/charbon|houille/i.test(FRN(h.name))){ out.why='coal'; out.toc = parseFloat(h.toc)||0; out.thick = h.thicknessLocal ?? h.thickness ?? 0; out.brittle = shaleBrittle(b); return out; }   // valeurs réelles affichées, pas de production
   out.toc = parseFloat(h.toc)||0; out.thick = h.thicknessLocal ?? h.thickness ?? 0; out.brittle = shaleBrittle(b);
   out.matF = b.maturityClass==='Surmature (gaz)' ? 0.55 : b.maturityClass==='Fenêtre à huile' ? 0.4+0.6*(b.maturity||0.5) : 0;
   out.q = fracQ(out.toc, out.matF, out.brittle);
@@ -3116,8 +3117,8 @@ function shaleTrue(b){
 function shaleEstimate(b){
   const rk = b.studies.find(s=>s.type==='rockeval'), nom = STRAT.findLast(l=>l.role==='source'), thick = Math.min(60, nom?.thickness||40);
   if(!rk) return { known:false, q:45, thick, ok:null, toc:null };
-  const toc = parseFloat(rk.result.toc), tmax = rk.result.tmax, matF = tmax<430 ? 0 : tmax>=460 ? 0.55 : 0.4+0.6*clamp(1-Math.abs(tmax-445)/30, 0.15, 1);
-  return { known:true, q:fracQ(toc, matF, 0.55), thick, ok: tmax>=430 && toc>=1.5, toc, tmax };
+  const toc = parseFloat(rk.result.toc), tmax = rk.result.tmax, matF = tmax<430 ? 0 : tmax>=460 ? 0.55 : 0.4+0.6*clamp(1-Math.abs(tmax-445)/30, 0.15, 1), coal = toc >= 30;
+  return { known:true, q: coal ? 0 : fracQ(toc, matF, 0.55), thick, ok: tmax>=430 && toc>=1.5 && !coal, toc, tmax, coal };
 }
 // Profondeur estimée de la roche-mère : estimation du toit du réservoir + écart nominal de la colonne type (pas la vraie profondeur)
 function fracDepthEstimate(b){
@@ -3125,7 +3126,7 @@ function fracDepthEstimate(b){
   let gap = 0; if(ri>=0 && si>ri) for(let i=ri;i<si;i++) gap += STRAT[i].thickness||0;
   return drillDepthEstimate(b) + Math.max(150, gap);
 }
-const FRAC_WHY = () => ({ absent:TR('pas de roche-mère dans la colonne','no source rock in the column'), coal:TR('la roche-mère est un charbon','the source rock is a coal'), immature:TR('roche-mère immature : le kérogène n\'a pas généré','immature source rock: the kerogen has not generated'),
+const FRAC_WHY = () => ({ absent:TR('pas de roche-mère dans la colonne','no source rock in the column'), coal:TR('la roche-mère est un charbon : un TOC aussi élevé n\'est pas celui d\'un shale, la houille est trop ductile et trop peu perméable à la fracture pour une frac de type shale','the source rock is a coal: a TOC this high is not a shale, hard coal is too ductile and has too little fracture permeability for a shale-style frac'), immature:TR('roche-mère immature : le kérogène n\'a pas généré','immature source rock: the kerogen has not generated'),
   toc:TR('roche-mère trop pauvre (TOC sous 1,5 %)','source rock too lean (TOC below 1.5 %)'), thin:TR('roche-mère trop mince (moins de 15 m)','source rock too thin (under 15 m)'), offshore:TR('frac non proposée en mer','frac not offered offshore') });
 function fracRevealHtml(b, success){
   const f = b.fracInfo; if(!f) return '';
@@ -4863,7 +4864,7 @@ function buildRecapExtras(reason){
     if(H.length < 3){ cb.style.display = 'none'; }
     else {
       cb.style.display = '';
-      const W = 640, HH = 190, L = 44, R = 10, T = 12, B = 26, n = H.length, m0 = H[0].month, m1 = H[n-1].month || 1;
+      const W = 640, HH = 214, L = 44, R = 44, T = 16, B = 44, n = H.length, m0 = H[0].month, m1 = H[n-1].month || 1;
       const bud = H.map(h=>h.budget), lo = Math.min(0, ...bud), hi = Math.max(goal||0, ...bud) * 1.05 || 1;
       const X = mo => L + (mo-m0)/Math.max(1,(m1-m0))*(W-L-R), Y = v => T + (1-(v-lo)/(hi-lo))*(HH-T-B);
       const line = bud.map((v,i)=>`${i?'L':'M'}${X(H[i].month).toFixed(1)},${Y(v).toFixed(1)}`).join('');
@@ -4877,7 +4878,10 @@ function buildRecapExtras(reason){
           ${goal ? `<line x1="${L}" y1="${Y(goal).toFixed(1)}" x2="${W-R}" y2="${Y(goal).toFixed(1)}" stroke="var(--green)" stroke-dasharray="4,3"/><text x="${L+4}" y="${(Y(goal)-3).toFixed(1)}" font-size="10" fill="var(--green)">${TR('objectif','goal')} ${formatM(goal)}</text>` : ''}
           <path d="${pline}" fill="none" stroke="var(--muted)" stroke-width="1" opacity=".55"/>
           <path d="${line}" fill="none" stroke="var(--amber)" stroke-width="2"/>
-          ${yrs.map(y=>`<text x="${X(y*12).toFixed(1)}" y="${HH-2}" font-size="10" fill="var(--muted)" text-anchor="middle">${y}${TR(' ans',' y')}</text>`).join('')}
+          ${yrs.map(y=>`<line x1="${X(y*12).toFixed(1)}" y1="${HH-B}" x2="${X(y*12).toFixed(1)}" y2="${HH-B+3}" stroke="var(--muted)"/><text x="${X(y*12).toFixed(1)}" y="${HH-B+26}" font-size="10" fill="var(--muted)" text-anchor="middle">${y}</text>`).join('')}
+          <text x="${((L+W-R)/2).toFixed(1)}" y="${HH-4}" font-size="10.5" fill="var(--ink)" text-anchor="middle">${TR('Années de jeu','Years played')}</text>
+          <text x="4" y="9" font-size="10" font-weight="600" fill="var(--amber)">${TR('Budget (M$)','Budget ($M)')}</text><text x="${W-2}" y="9" font-size="10" font-weight="600" fill="var(--muted)" text-anchor="end">${TR('Brut ($/bbl)','Crude ($/bbl)')}</text>
+          <text x="${W-R+3}" y="${(PY(ph)+3).toFixed(1)}" font-size="9" fill="var(--muted)">${Math.round(ph)}</text><text x="${W-R+3}" y="${(PY(pl)+3).toFixed(1)}" font-size="9" fill="var(--muted)">${Math.round(pl)}</text>
           <text x="4" y="${T+8}" font-size="10" fill="var(--muted)">${formatM(hi)}</text><text x="4" y="${Y(0)-3}" font-size="10" fill="var(--muted)">0</text>
           ${dots}
         </svg>
@@ -5500,6 +5504,7 @@ function renderGeoPanel(b){
     html+=`<div style="color:${r.genPotential==='Excellent'||r.genPotential==='Bon'?'var(--green)':r.genPotential==='Moyen'?'var(--amber)':'var(--red)'};font-size:11px;margin-top:4px;">${TR(`Potentiel générateur : `,`Generative potential: `)}${r.genPotential}</div>`;    // Le potentiel dit ce que la roche pourrait donner, le Tmax dit où elle en est : les deux se lisent ensemble
     const lecture = r.tmax<435 ? TR('Tmax sous 435 °C : roche immature, elle n\'a pas encore généré ici, quel que soit son potentiel.','Tmax below 435 °C: immature rock, it has not generated here yet, whatever its potential.') : r.tmax<=455 ? TR('Tmax entre 435 et 455 °C : fenêtre à huile, la roche génère.','Tmax between 435 and 455 °C: oil window, the rock is generating.') : TR('Tmax au-dessus de 455 °C : surmature, elle ne donne plus que du gaz.','Tmax above 455 °C: overmature, it now yields only gas.');
     html+=`<div style="color:var(--muted);font-size:11px;margin-top:4px;">${lecture}</div>`;
+    if(parseFloat(r.toc) >= 30) html+=`<div style="color:var(--amber);font-size:11px;margin-top:4px;">${TR('TOC supérieur à 30 % : c\'est un charbon (kérogène de type III, HI bas), pas un shale. Il génère surtout du gaz et ne se fracture pas comme un shale.','TOC above 30 %: this is a coal (type III kerogen, low HI), not a shale. It mostly generates gas and does not frac like a shale.')}</div>`;
   }
 
   // Diagraphies (courbes) puis log stratigraphique complet
@@ -6013,7 +6018,7 @@ function updateDrillSummary(blockId){
     const se=shaleEstimate(b), ip=fracProdOf(se.q, se.thick, lat, b), gas=!!b.estimate.isGas, u=gas?'Mcf':TR('barils','barrels');
     const proj=projectWell(ip, G.price, false, gas, G.mode==='sandbox'?0:cost, 120, SHALE_DECL, waterCfg(b, true), fluidCfg(b, true)), fw=fracWater(lat);
     const be=proj.payback, beClass=be===null?'ds-bad':be<18?'ds-good':be<36?'ds-warn':'ds-bad';
-    const known = se.known ? (se.ok ? TR(`Rock-Eval : TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, roche-mère exploitable.`,`Rock-Eval: TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, exploitable source rock.`) : TR(`Rock-Eval : TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, roche-mère NON exploitable (immature ou trop pauvre).`,`Rock-Eval: TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, source rock NOT exploitable (immature or too lean).`))
+    const known = se.known ? (se.ok ? TR(`Rock-Eval : TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, roche-mère exploitable.`,`Rock-Eval: TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, exploitable source rock.`) : TR(`Rock-Eval : TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, roche-mère NON exploitable (${se.coal ? 'TOC supérieur à 30 % : c\'est un charbon' : 'immature ou trop pauvre'}).`,`Rock-Eval: TOC ${se.toc.toFixed(1)} %, Tmax ${se.tmax} °C, source rock NOT exploitable (${se.coal ? 'TOC above 30 %: this is a coal' : 'immature or too lean'}).`))
       : TR('Roche-mère non mesurée : faites un sondage avec carotte puis une Rock-Eval avant de payer une frac. La fragilité reste inconnue jusqu\'au forage.','Source rock not measured: run a survey hole with core and a Rock-Eval before paying for a frac. Brittleness stays unknown until drilling.');
     summary.innerHTML=`<div class="tr"><span class="tl">${TR(`Coût estimé (forage + ${fracStages(lat)} étages)`,`Estimated cost (drilling + ${fracStages(lat)} stages)`)}</span><span>${G.mode==='sandbox'?'Gratuit':formatM(cost)}</span></div>
       <div class="tr"><span class="tl">${TR(`Débit initial si exploitable`,`Initial rate if exploitable`)}</span><span>~${Math.round(ip)} ${u}${TR('/mois','/month')}${se.known?'':TR(' (a priori, très incertain)',' (prior, very uncertain)')}</span></div>
@@ -9623,13 +9628,21 @@ function _doStartGame(){
     return { mo, pr, gor, bsw, g0 };
   }
   function qzFluidFig(c){
-    const W=118, H=86, pad=6, panels = [
-      { t:TR('Pression','Pressure'), v:c.pr.map(x=>x*100), lo:0, hi:100, u:' %' },
-      { t:'GOR', v:c.gor, lo:0, hi:Math.max(1500, Math.max(...c.gor)*1.05), u:'' },
-      { t:TR('Eau (BSW)','Water (BSW)'), v:c.bsw.map(x=>x*100), lo:0, hi:100, u:' %' } ];
-    return `<svg viewBox="0 0 ${3*W+20} ${H+42}" style="width:100%;max-width:420px;display:block;margin:8px auto;">` + panels.map((pn,i)=>{
-      const x0 = i*(W+10), pts = pn.v.map((y,k)=>`${(x0+pad+k/60*(W-2*pad)).toFixed(1)},${(H-pad-(y-pn.lo)/(pn.hi-pn.lo)*(H-2*pad)).toFixed(1)}`).join(' ');
-      return `<g><rect x="${x0}" y="0" width="${W}" height="${H}" rx="4" fill="var(--panel,transparent)" stroke="var(--line)"/><polyline points="${pts}" fill="none" stroke="var(--amber)" stroke-width="2"/><text x="${x0+W/2}" y="${H+13}" text-anchor="middle" font-size="11" fill="var(--ink)">${pn.t}</text><text x="${x0+W/2}" y="${H+25}" text-anchor="middle" font-size="9" fill="var(--muted)">${TR('0 à 60 mois','0 to 60 months')}</text><text x="${x0+W/2}" y="${H+37}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--ink)">${Math.round(pn.v[0])}${pn.u} → ${Math.round(pn.v[60])}${pn.u}</text></g>`;
+    const W=128, H=84, pl=30, pr=5, pt=6, pb=6, panels = [
+      { t:TR('Pression','Pressure'), u:'%', v:c.pr.map(x=>x*100), lo:0, hi:100 },
+      { t:'GOR', u:'scf/bbl', v:c.gor, lo:0, hi:Math.max(1500, Math.ceil(Math.max(...c.gor)*1.05/500)*500) },
+      { t:TR('Eau (BSW)','Water (BSW)'), u:'%', v:c.bsw.map(x=>x*100), lo:0, hi:100 } ];
+    const fmt = v => v>=1000 ? (Math.round(v/100)/10)+'k' : String(Math.round(v));
+    return `<svg viewBox="0 0 ${3*W+16} ${H+58}" style="width:100%;max-width:480px;display:block;margin:8px auto;">` + panels.map((pn,i)=>{
+      const x0 = i*(W+8), X = k => x0+pl+k/60*(W-pl-pr), Y = y => H-pb-(y-pn.lo)/(pn.hi-pn.lo)*(H-pt-pb), pts = pn.v.map((y,k)=>`${X(k).toFixed(1)},${Y(y).toFixed(1)}`).join(' ');
+      const yt = [0, 0.5, 1].map(f=>pn.lo + f*(pn.hi-pn.lo));
+      return `<g><rect x="${x0+pl}" y="${pt}" width="${W-pl-pr}" height="${H-pt-pb}" fill="var(--panel,transparent)" stroke="var(--line)"/>`
+        + yt.map(v=>`<line x1="${x0+pl}" y1="${Y(v).toFixed(1)}" x2="${x0+W-pr}" y2="${Y(v).toFixed(1)}" stroke="var(--line)" stroke-width=".4"/><text x="${x0+pl-3}" y="${(Y(v)+3).toFixed(1)}" text-anchor="end" font-size="8" fill="var(--muted)">${fmt(v)}</text>`).join('')
+        + [0,30,60].map(m=>`<line x1="${X(m).toFixed(1)}" y1="${H-pb}" x2="${X(m).toFixed(1)}" y2="${H-pb+3}" stroke="var(--muted)"/><text x="${X(m).toFixed(1)}" y="${H+7}" text-anchor="middle" font-size="8" fill="var(--muted)">${m}</text>`).join('')
+        + `<polyline points="${pts}" fill="none" stroke="var(--amber)" stroke-width="2"/>`
+        + `<text x="${((x0+pl+x0+W-pr)/2).toFixed(1)}" y="${H+18}" text-anchor="middle" font-size="8" fill="var(--muted)">${TR('Temps (mois)','Time (months)')}</text>`
+        + `<text x="${((x0+pl+x0+W-pr)/2).toFixed(1)}" y="${H+31}" text-anchor="middle" font-size="10.5" font-weight="600" fill="var(--ink)">${pn.t} (${pn.u})</text>`
+        + `<text x="${((x0+pl+x0+W-pr)/2).toFixed(1)}" y="${H+43}" text-anchor="middle" font-size="9" fill="var(--text)">${Math.round(pn.v[0])} → ${Math.round(pn.v[60])}</text></g>`;
     }).join('') + `</svg>`;
   }
   function qzGenFluidDrive(mech){
@@ -9765,7 +9778,7 @@ function _doStartGame(){
       const wr = [{ v:k*2.303, tag:TR('logarithme népérien pris pour décimal (facteur 2,303)','natural log taken for base-10 (factor 2.303)') }, { v:162.6*q*B*mu/Math.round(m), tag:TR('épaisseur oubliée','thickness forgotten') }, { v:k/mu, tag:TR('viscosité oubliée','viscosity forgotten') }];
       const o = qzFluidOpts(k, wr, v=>`${Math.round(v)} mD`); if(!o) continue;
       const cls = k < 10 ? TR('serrée','tight') : k < 100 ? TR('moyenne','moderate') : TR('bonne','good');
-      const fig = `<svg viewBox="0 0 260 120" style="width:100%;max-width:300px;display:block;margin:8px auto;"><rect x="30" y="6" width="220" height="86" rx="4" fill="var(--panel,transparent)" stroke="var(--line)"/><line x1="48" y1="14" x2="232" y2="86" stroke="var(--amber)" stroke-width="2.4"/><text x="140" y="108" text-anchor="middle" font-size="10" fill="var(--ink)">${TR('Temps de Horner (échelle log)','Horner time (log scale)')}</text><text x="48" y="104" font-size="9" fill="var(--muted)">1</text><text x="136" y="104" font-size="9" fill="var(--muted)">10</text><text x="226" y="104" font-size="9" fill="var(--muted)">100</text><text x="4" y="14" font-size="9" fill="var(--muted)">${Math.round(p1)}</text><text x="4" y="86" font-size="9" fill="var(--muted)">${Math.round(p1-2*m)}</text></svg>`;
+      const fig = `<svg viewBox="0 0 280 138" style="width:100%;max-width:320px;display:block;margin:8px auto;"><text x="8" y="49" font-size="9" font-weight="600" fill="var(--ink)" text-anchor="middle" transform="rotate(-90 8 49)">${TR('Pression (psi)','Pressure (psi)')}</text><g transform="translate(18,0)"><rect x="30" y="6" width="220" height="86" rx="4" fill="var(--panel,transparent)" stroke="var(--line)"/><line x1="48" y1="14" x2="232" y2="86" stroke="var(--amber)" stroke-width="2.4"/><text x="140" y="124" text-anchor="middle" font-size="10" fill="var(--ink)">${TR('Temps de Horner (échelle log)','Horner time (log scale)')}</text><text x="48" y="106" text-anchor="middle" font-size="9" fill="var(--muted)">1</text><text x="140" y="106" text-anchor="middle" font-size="9" fill="var(--muted)">10</text><text x="232" y="106" text-anchor="middle" font-size="9" fill="var(--muted)">100</text><line x1="48" y1="92" x2="48" y2="95" stroke="var(--muted)"/><line x1="140" y1="92" x2="140" y2="95" stroke="var(--muted)"/><line x1="232" y1="92" x2="232" y2="95" stroke="var(--muted)"/><text x="27" y="17" text-anchor="end" font-size="9" fill="var(--muted)">${Math.round(p1)}</text><text x="27" y="89" text-anchor="end" font-size="9" fill="var(--muted)">${Math.round(p1-2*m)}</text></g></svg>`;
       return { gen:true, kind:'analyse-essai', chip:TR('Essai de puits','Well test'), q:TR(`Remontée de pression après fermeture : la droite de Horner perd ${Math.round(m)} psi par cycle logarithmique. Quelle perméabilité ?`,`Pressure build-up after shut-in: the Horner line loses ${Math.round(m)} psi per log cycle. What permeability?`), fig,
         facts:[[TR('Débit avant fermeture','Rate before shut-in'), `${q} bbl/j`],[TR('Viscosité','Viscosity'), `${qzNum(mu,1)} cP`],[TR('Facteur Bo','Bo factor'), qzNum(B,2)],[TR('Épaisseur utile','Net pay'), `${h} ft`],[TR('Pente de Horner','Horner slope'), `${Math.round(m)} psi/${TR('cycle','cycle')}`]],
         ask:TR('Quelle perméabilité (mD) ?','What permeability (mD)?'), note:TR('k = 162,6 × q × Bo × µ ÷ (m × h), avec q en bbl/j, µ en cP, h en ft et m en psi par cycle.','k = 162.6 × q × Bo × µ ÷ (m × h), with q in bbl/d, µ in cP, h in ft and m in psi per cycle.'),
@@ -10023,7 +10036,7 @@ function _doStartGame(){
   function qzSourceBlocks(){
     generateGeology(12, QZ_BT[Math.floor(Math.random()*QZ_BT.length)], true, (Math.random()*1e9)|0);
     const rng = makeRng((Math.random()*1e9)|0);
-    return qzShuffled(blocks.filter(b=>!b.srcAbsent && b.horizons.some(h=>h.role==='source') && b.srcTopDepth>0)).map(b=>({ b, re: STUDIES.rockeval.do(b, rng) }));
+    return qzShuffled(blocks.filter(b=>!b.srcAbsent && b.horizons.some(h=>h.role==='source') && b.srcTopDepth>0 && !/charbon|houille/i.test(FRN(b.horizons.findLast(h=>h.role==='source').name)||''))).map(b=>({ b, re: STUDIES.rockeval.do(b, rng) }));   // les quiz Rock-Eval portent sur des shales : un charbon (TOC > 45 %) est traité à part
   }
   const QZ_MAT = ['Immature','Fenêtre à huile','Surmature (gaz)'];
   function qzGenMaturation(n){
@@ -11131,7 +11144,7 @@ function _doStartGame(){
 // La géologie du jeu est sauvegardée avant et rétablie après : une partie en cours n'est jamais touchée.
 // =====================================================================
 (function(){
-  const VBW = 360, VBH = 300, XL = 40, XR = 346, NCOL = 8, YT = 26, YB = 276, TOL_Z = 45, SEI_ROUNDS = 3;
+  const VBW = 360, VBH = 316, XL = 40, XR = 346, NCOL = 8, YT = 26, YB = 276, TOL_Z = 45, SEI_ROUNDS = 3;
   const BT = ['random','rift','passive','foreland','paris','north_sea','aquitaine','gulf_coast'];
   const xOf = i => XL + (XR-XL)*i/(NCOL-1);
   const shuf = a => [...a].sort(()=>Math.random()-.5), f0 = v => Math.round(v);
@@ -11180,6 +11193,8 @@ function _doStartGame(){
     const rng = (a)=>{ let s = a>>>0; return ()=>{ s = (s*1664525 + 1013904223)>>>0; return s/4294967296; }; }, rd = rng(R.cols[0].x*131 + R.cols[0].y*17 + Math.round(R.zMax));
     // axe de profondeur
     for(let z = Math.ceil(R.zMin/200)*200; z <= R.zMax; z += 200) g += `<line x1="${XL}" y1="${yOf(R,z).toFixed(1)}" x2="${XR}" y2="${yOf(R,z).toFixed(1)}" stroke="var(--line)" stroke-width=".4"/><text x="${XL-4}" y="${(yOf(R,z)+3).toFixed(1)}" font-size="8" text-anchor="end" fill="var(--muted)">${z}</text>`;
+    // titres des axes : profondeur en ordonnée, colonnes en abscisse
+    g += `<text x="8" y="${((YT+YB)/2).toFixed(1)}" font-size="8.5" fill="var(--muted)" text-anchor="middle" transform="rotate(-90 8 ${((YT+YB)/2).toFixed(1)})">${TR('Profondeur (m)','Depth (m)')}</text><text x="${((XL+XR)/2).toFixed(1)}" y="${VBH-4}" font-size="8.5" fill="var(--muted)" text-anchor="middle">${TR('Colonne (position le long de la coupe, distance non à l\'échelle)','Column (position along the section, distance not to scale)')}</text>`;
     // bruit de fond : petits traits aléatoires
     for(let k=0;k<70;k++){ const x = XL + rd()*(XR-XL), y = YT + rd()*(YB-YT), w = 4 + rd()*10; g += `<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(x+w).toFixed(1)}" y2="${(y+(rd()-.5)*2).toFixed(1)}" stroke="var(--muted)" stroke-width=".5" opacity=".28"/>`; }
     // réflecteurs
@@ -11980,6 +11995,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
     const poly = lp + lf.trim().split(' ').reverse().join(' ');
     let grid=''; for(let g=1.0; g<=2.31; g+=0.2) grid += `<line x1="${X(g)}" y1="${y0}" x2="${X(g)}" y2="${y1}" stroke="var(--line)" stroke-width=".4"/><text x="${X(g)}" y="${H-4}" font-size="8" text-anchor="middle" fill="var(--muted)">${f1(g)}</text>`;
     for(let z=0; z<=dmax; z+=500) grid += `<line x1="${x0}" y1="${Y(z)}" x2="${gx1}" y2="${Y(z)}" stroke="var(--line)" stroke-width=".4"/><text x="${x0-3}" y="${Y(z)+3}" font-size="8" text-anchor="end" fill="var(--muted)">${z}</text>`;
+    grid += `<text x="${x0-3}" y="${y0-4}" font-size="7.5" text-anchor="end" fill="var(--ink)" font-weight="600">${TR('prof. (m)','depth (m)')}</text>`;
     for(const v of [0,50,100,150,200]) grid += `<line x1="${GX(v)}" y1="${y0}" x2="${GX(v)}" y2="${y1}" stroke="var(--line)" stroke-width=".4"/><text x="${GX(v)}" y="${H-4}" font-size="7.5" text-anchor="middle" fill="var(--muted)">${v}</text>`;
     const shoes = S.shoe>0 ? `<rect x="${x0}" y="${Y(S.shoe)-1.5}" width="${x1-x0}" height="3" fill="var(--ink)" opacity=".18"/><text x="${x1-2}" y="${Y(S.shoe)-3}" font-size="7.5" text-anchor="end" fill="var(--ink)">${TR(`sabot `,`shoe `)}${Math.round(S.shoe)} m</text>` : '';
     const zb = Math.max(S.z,2);
