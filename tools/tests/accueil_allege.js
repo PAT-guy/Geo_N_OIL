@@ -1,4 +1,4 @@
-// Accueil allégé (V5.20) : un seul bouton Mini-jeux ouvre la liste, Mode TP et Bac à sable sont proposés, Personnaliser, Accueil simple et Défi du jour sont de vrais boutons.
+// Accueil allégé (V5.20) : un seul bouton Mini-jeux ouvre la liste, Mode TP est proposé (le Bac à sable reste dans l'accueil complet), Personnaliser, Accueil simple et Défi du jour sont de vrais boutons.
 const { chromium } = require('playwright'); const path = require('path');
 (async()=>{ const br=await chromium.launch(); let ko=0; const ok=(c,m)=>{ if(!c){ko++; console.log('ECHEC',m);} else console.log('ok',m); };
   const ctx=await br.newContext({viewport:{width:440,height:900}}); const pg=await ctx.newPage(); const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
@@ -14,7 +14,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(mb.border>=2 && mb.border>mb.borderCu && mb.bg!==mb.bgCu && mb.h>=56,'Mini-jeux : bouton mis en avant (bordure plus épaisse et fond d\'accent, plus haut que les autres)');
   ok(h.custom.vis && h.custom.h>=40 && h.custom.border && !h.custom.underline,'« Personnaliser la partie » : bouton propre '+JSON.stringify(h.custom));
   ok(h.daily.vis && h.daily.h>=40 && h.daily.border && !h.daily.underline,'« Défi du jour » : bouton propre '+JSON.stringify(h.daily));
-  ok(h.modes.includes("tp") && h.modes.includes("sandbox") && h.modes.length===7,'Mode TP et Bac à sable proposés '+h.modes);
+  ok(h.modes.includes("tp") && !h.modes.includes("sandbox") && h.modes.length===6,'Mode TP proposé, Bac à sable retiré de l\'affichage central '+h.modes);
   // la liste s'ouvre, un jeu s'ouvre et ferme la liste
   await pg.click('#quickMiniBtn'); await pg.waitForTimeout(200);
   ok(await pg.evaluate(()=>getComputedStyle(document.getElementById('miniGamesModal')).display!=='none' && document.querySelectorAll('#miniGamesModal #quickTrain button').length===11),'Mini-jeux : la liste des 11 jeux s\'ouvre');
@@ -25,7 +25,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(await pg.evaluate(()=>getComputedStyle(document.getElementById('miniGamesModal')).display==='none'),'Échap ferme la liste');
   // modes : TP et Bac à sable se sélectionnent comme les autres
   await pg.click('#quickModes .q-mode[data-mode="tp"]'); ok(await pg.evaluate(()=>menuConfig.mode==='tp' && document.querySelector('#quickModes .q-mode[data-mode="tp"]').classList.contains('sel')),'Mode TP sélectionnable depuis l\'accueil');
-  await pg.click('#quickModes .q-mode[data-mode="sandbox"]'); ok(await pg.evaluate(()=>menuConfig.mode==='sandbox' && /sable|Sandbox/i.test(document.getElementById('quickSummary').textContent)),'Bac à sable sélectionnable, résumé à jour : '+await pg.evaluate(()=>document.getElementById('quickSummary').textContent));
+  ok(await pg.evaluate(()=>!document.querySelector('#quickModes .q-mode[data-mode="sandbox"]') && !!document.querySelector('.mode-card[data-mode="sandbox"]')),'Bac à sable absent de l\'accueil simple, toujours proposé dans l\'accueil complet (Personnaliser la partie)');
   // accueil complet : « Accueil simple » est un bouton propre
   await pg.click('#menuCustomBtn'); await pg.waitForTimeout(200);
   const back = await pg.evaluate(()=>{ const e=document.getElementById('menuSimpleBtn'), r=e.getBoundingClientRect(), cs=getComputedStyle(e); return { vis:e.getClientRects().length>0, h:Math.round(r.height), border:cs.borderTopWidth!=='0px', underline:/underline/.test(cs.textDecorationLine) }; });
