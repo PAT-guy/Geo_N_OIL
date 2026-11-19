@@ -10657,6 +10657,7 @@ function _doStartGame(){
   function qzFluidOpts(good, wrongs, fmt, gap){
     const all = [{ v:good, tag:null }, ...wrongs], vals = all.map(a=>a.v);
     for(let i=0;i<vals.length;i++) for(let j=i+1;j<vals.length;j++) if(Math.abs(vals[i]-vals[j]) < (gap||0.08)*Math.max(vals[i],vals[j])) return null;
+    if(new Set(vals.map(fmt)).size < vals.length) return null;   // deux valeurs écartées de plus de 8 % peuvent s'arrondir à la même étiquette (4,6 et 5,4 mD donnent « 5 mD » deux fois)
     const sh = qzShuffled(all);
     return { choices: sh.map(a=>fmt(a.v)), correct: sh.findIndex(a=>a.tag===null), tags: sh.map(a=>a.tag) };
   }

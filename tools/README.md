@@ -347,3 +347,5 @@ Correctif. À égalité de distance, les pixels les plus proches de l'axe de la 
 Nouvelle vue « Fluides en place » : eau en bleu, huile en ambre, gaz en rouge, dans les pores, d'après la saturation de la carotte (l'hydrocarbure occupe les plus gros pores d'abord). La fluorescence UV reste telle quelle (le gaz y est noir, c'est physique).
 
 Test : `lame_fluides.js` (connexion à 1, 5, 20 et 0,3 mD, pixels bleus, ambre et rouges, textes, anglais).
+
+Correctif joint (cause racine d'un échec intermittent de `quiz_analyses` au CI) : `qzFluidOpts` vérifiait l'écart entre valeurs (8 %) mais pas l'unicité des étiquettes arrondies ; 4,6 et 5,4 mD donnaient « 5 mD » deux fois. Il rejette maintenant le tirage si deux étiquettes sont identiques.
