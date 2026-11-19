@@ -356,3 +356,12 @@ Demande du joueur : retrouver ses options de sondage et de forage sur l'écran a
 Maintenant « Plus d'options » (et « ⚙ Toutes les options » quand la barre n'en a pas) ouvre un volet « Options du bloc » à droite de la grande coupe : l'écran des études complet (gravimétrie, sismique 3D, carotte, Rock-Eval, sondage, forage avec choix du type et du matériel). Le nœud `#studiesContent` est déplacé dans le volet tant que la vue est ouverte et remis à sa place à la fermeture : son code et ses identifiants ne changent pas. La coupe se réduit à côté du volet (460 px au plus, plein écran sur téléphone) et se redessine après chaque action. Choisir un autre bloc se fait toujours en touchant son point sous la coupe.
 
 Test : `coupe_grande_options.js` (bouton, volet, coupe non recouverte, étude lancée depuis le volet, retour à la place).
+
+## V5.43 : puits sec, ne plus accuser un facteur honorable
+Retour du joueur : un puits sec attribué au « piège structural, pas de fermeture nette » sur ce qui était clairement un anticlinal.
+
+Cause : `resolveDrillingCore` tire le succès géologique au hasard (`rd() < trueProbability`), puis `limitingFactor` désigne le plus bas des quatre facteurs (piège, réservoir, couverture, charge), même s'il vaut 60 ou 70 %. Le texte « pas de fermeture structurale nette » s'affichait donc pour un piège à 62 %. Le facteur nommé n'est pas la cause du tirage, c'est le maillon le plus faible.
+
+Correctif (`limitingFactorHtml`, utilisé par l'écran de révélation et le rapport de forage) : le facteur n'est désigné coupable, avec sa valeur, que s'il est sous 40 % (`WEAK_FACTOR`). Sinon le texte dit qu'aucun facteur n'était franchement mauvais, liste les quatre valeurs et rappelle la probabilité réelle du bloc : le puits sec est alors surtout un tirage défavorable. Aucun calcul de probabilité ni de tirage ne change, donc les cartes et l'équilibrage restent identiques.
+
+Test : `puits_sec_cause.js`.

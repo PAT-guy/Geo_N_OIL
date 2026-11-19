@@ -1,0 +1,21 @@
+// Puits sec (V5.43) : le facteur le plus bas n'est désigné coupable que s'il est réellement faible (moins de 40 %) ; sinon le rapport dit qu'aucun facteur n'était mauvais et que le résultat tient au tirage.
+const { chromium } = require('playwright'); const path = require('path');
+(async()=>{ const br=await chromium.launch(); let ko=0; const ok=(c,m)=>{ if(!c){ko++; console.log('ECHEC',m);} else console.log('ok',m); };
+  const pg=await br.newPage({viewport:{width:1100,height:900}}); const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
+  await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1');localStorage.setItem('geoexplorer_played','1')}catch(e){}});
+  await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(500);
+  const r = await pg.evaluate(async()=>{ document.getElementById('geoSeed').value='4242'; menuConfig.daily=null; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); const b=blocks.find(x=>!x.inSalt); const o={};
+    const strip=h=>h.replace(/<[^>]+>/g,'');
+    const mk=f=>({ techFail:false, studyLevelAtDrill:2, cost:1e6, factors:f });
+    b.trueProbability=0.38; b.dryHole=true;
+    o.good=strip(debriefEntry(b, mk({'piège':0.62,'réservoir':0.80,'couverture':0.75,'charge':0.70}), false));
+    o.bad=strip(debriefEntry(b, mk({'piège':0.10,'réservoir':0.80,'couverture':0.75,'charge':0.70}), false));
+    o.revGood=strip(limitingFactorHtml(b,{'piège':0.62,'réservoir':0.80,'couverture':0.75,'charge':0.70},'piège'));
+    document.documentElement.lang='en'; o.en=strip(limitingFactorHtml(b,{'piège':0.62,'réservoir':0.80,'couverture':0.75,'charge':0.70},'piège')); document.documentElement.lang='fr';
+    return o; });
+  ok(/Aucun facteur n'était franchement mauvais/.test(r.good) && /62 %/.test(r.good) && /38 %/.test(r.good) && !/pas de fermeture structurale nette/.test(r.good),'facteurs honorables : aucun coupable désigné, probabilité réelle citée '+r.good.slice(0,260));
+  ok(/Facteur limitant : Piège structural \(10 %\)/.test(r.bad) && /pas de fermeture structurale nette/.test(r.bad),'facteur réellement faible : désigné avec sa valeur');
+  ok(/Aucun facteur/.test(r.revGood),'écran de révélation : même règle');
+  ok(/No factor was clearly bad/.test(r.en) && /unlucky draw/.test(r.en) && !/Aucun|tirage/.test(r.en),'version anglaise (les noms de facteurs se fixent au chargement de la page)');
+  ok(errs.length===0,'aucune erreur JS '+errs.join('|'));
+  await br.close(); console.log(ko?'ECHECS: '+ko:'TOUT OK'); process.exit(ko?1:0); })();

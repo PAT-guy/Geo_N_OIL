@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.42</title>
+<title>GeoExplorer V5.43</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -5593,6 +5593,14 @@ const FACTOR_EXPLAIN_BAD = {
   'couverture':TR('couverture absente ou trop perméable, incapable de retenir les HC en place','seal absent or too permeable, unable to hold the HC in place'),
   'charge':TR('aucune kitchen mature assez proche ou assez riche pour charger ce piège','no mature kitchen close enough or rich enough to charge this trap'),
 };
+// Un puits sec n'a pas toujours un « coupable » : le facteur le plus bas est nommé, mais s'il reste honorable (au moins 40 %), la cause est surtout le tirage (la probabilité réelle du bloc était inférieure à 1) et pas un défaut de la géologie.
+const WEAK_FACTOR = 0.40;
+function limitingFactorHtml(b, factors, worstName){
+  const fe = Object.entries(factors || {}).sort((a,z)=>a[1]-z[1]); if(!fe.length) return `${TR(`Facteur limitant : `,`Limiting factor: `)}<b>${FACTOR_LABEL[worstName]}</b> : ${FACTOR_EXPLAIN_BAD[worstName]}.`;
+  const [wn, wv] = fe[0], pc = v => Math.round(v*100)+' %', all = fe.map(([n,v])=>`${FACTOR_LABEL[n]} ${pc(v)}`).join(' · ');
+  if(wv < WEAK_FACTOR) return `${TR(`Facteur limitant : `,`Limiting factor: `)}<b>${FACTOR_LABEL[wn]}</b> (${pc(wv)}) : ${FACTOR_EXPLAIN_BAD[wn]}.`;
+  return `${TR(`Aucun facteur n'était franchement mauvais`,`No factor was clearly bad`)} (${all}). ${TR(`Le plus faible était `,`The weakest was `)}<b>${FACTOR_LABEL[wn]}</b>${b && b.trueProbability!=null ? TR(`, et la probabilité réelle du bloc était de ${pc(b.trueProbability)} : ce puits sec est surtout un tirage défavorable, pas une erreur de lecture de la géologie.`,`, and the block's true probability was ${pc(b.trueProbability)}: this dry hole is mostly an unlucky draw, not a misreading of the geology.`) : '.'}`;
+}
 const STUDY_LEVEL_NOTE = [TR('aucune étude','no study'),TR('gravimétrie seule','gravity only'),TR('sismique 2D','2D seismic'),TR('sismique 3D (DHI)','3D seismic (DHI)'),TR('forage réalisé (log complet)','drilling done (full log)')];
 
 // =====================================================================
@@ -5704,7 +5712,7 @@ function playNextDrillReveal(){
         La géologie réelle de ce bloc reste visible dans l'onglet Géologie.`,`Geology was not necessarily at fault here: equipment reliability was the cause. The true geology of this block remains visible in the Geology tab.`);
     } else {
       sub.textContent = TR('Aucun hydrocarbure exploitable','No exploitable hydrocarbons');
-      detail.innerHTML = limitingFactor==='labmiss' ? `${TR(`Cause : `,`Cause: `)}<b>${TR(`mauvais horizon visé`,`wrong horizon targeted`)}</b>${TR(`. Le puits a traversé la colonne sans toucher le réservoir.`,`. The well went through the column without hitting the reservoir.`)}` : `${TR(`Facteur limitant : `,`Limiting factor: `)}<b>${FACTOR_LABEL[limitingFactor]}</b> : ${FACTOR_EXPLAIN_BAD[limitingFactor]}.`;
+      detail.innerHTML = limitingFactor==='labmiss' ? `${TR(`Cause : `,`Cause: `)}<b>${TR(`mauvais horizon visé`,`wrong horizon targeted`)}</b>${TR(`. Le puits a traversé la colonne sans toucher le réservoir.`,`. The well went through the column without hitting the reservoir.`)}` : limitingFactorHtml(b, b.dryHoleInfo && b.dryHoleInfo.factors, limitingFactor);
     }
     if(limitingFactor==='frac' && b.fracInfo){ detail.innerHTML = fracRevealHtml(b, success); if(!success && !techOk===false && b.fracInfo.why) sub.textContent = TR('Roche-mère non exploitable','Source rock not exploitable'); }
     if(!success && b.progLost){ sub.textContent = TR('Incident de forage : puits perdu','Drilling incident: well lost'); detail.innerHTML = TR('Le programme de boue ou de tubage n\'a pas tenu face à la pression réelle du bloc.','The mud or casing programme did not hold against the block\'s real pressure.'); }
@@ -5746,7 +5754,7 @@ function debriefEntry(b, info, success){
   } else {
     verdict = `<b>${TR(`${TR(`Bloc (`,`Block (`)}`,`Block (`)}${b.x},${b.y})</b>, ${formatM(info.cost)}${TR(` : puits sec. `,` : dry hole. `)}`+
       (info.techFail ? `${TR(`Échec technique du matériel (géologie potentiellement correcte). `,`Equipment technical failure (geology potentially correct). `)}${info.techDetail ? (info.techDetail.tooDeep ? `${TR(`Le réservoir était à `,`The reservoir was at `)}${info.techDetail.depth}${TR(` m, au-delà de la limite du `,` m, beyond the limit of the `)}${EQUIPMENT[info.techDetail.equip].label.toLowerCase()} (${EQUIPMENT[info.techDetail.equip].maxDepth} m). ` : `${TR('Le ','The ')}${EQUIPMENT[info.techDetail.equip].label.toLowerCase()}${TR(` avait une fiabilité de `,` had a reliability of `)}${Math.round(info.techDetail.rel*100)}${TR(' % à ',' % at ')}${info.techDetail.depth} m (${Math.round(info.techDetail.depth/EQUIPMENT[info.techDetail.equip].maxDepth*100)}${TR(` % de sa limite) : un matériel plus robuste réduit ce risque. `,` % of its limit): more robust equipment reduces this risk. `)}`) : ''}` :
-      `${TR(`Le facteur limitant était `,`The limiting factor was `)}<b>${FACTOR_LABEL[worstName]}</b> (${(worstVal*100).toFixed(0)}%) : ${FACTOR_EXPLAIN_BAD[worstName]}. `)+
+      `${limitingFactorHtml(b, info.factors, worstName)} `)+
       (underInformed ? TR(`Décision prise avec seulement ${studyNote} : une étude plus poussée (sismique, log) aurait pu révéler ce problème avant de forer.`,`Decision made with only ${studyNote}: a more thorough study (seismic, log) could have revealed this problem before drilling.`)
                      : TR(`Décision prise avec ${studyNote} : l'information disponible ne permettait pas forcément d'anticiper ce problème précis.`,`Decision made with ${studyNote}: the available information could not necessarily have foreseen this specific problem.`));
   }
