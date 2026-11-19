@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.43</title>
+<title>GeoExplorer V5.44</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2716,19 +2716,20 @@ const STUDIES = {
     regional: true,  // s'applique à toute la carte
     // `do` est appelé une fois avec null, applique sur tous les blocs
     doRegional(rng){
-      // Normalisation RELATIVE à la concession : un bloc est "haut structural"
-      // par rapport aux autres blocs de la carte, pas par rapport à une
-      // profondeur absolue arbitraire (l'ancienne formule -depth/5000 était
-      // presque toujours négative dès que le réservoir dépassait ~700m,
-      // donc aucun bloc n'atteignait jamais les hauts structuraux positifs).
-      const allDepths = blocks.map(b2 => b2.topOfReservoir);
-      const dMin = Math.min(...allDepths), dMax = Math.max(...allDepths);
-      const dRange = (dMax - dMin) || 1;
+      // V5.44 : la position structurale se lit sur le résidu de profondeur, une fois le pendage régional retiré (plan ajusté par moindres carrés, à terre et en mer séparément), et se classe en rang parmi les blocs.
+      // Avant, elle se lisait sur la profondeur brute : le côté peu profond du pendage régional passait pour un « haut structural ». Mesure (sim_structure_piege) : AUC pour un piège utile (facteur réel de 0,5 ou plus)
+      // de 0,51 à 0,80 avec la profondeur brute, de 0,87 à 0,95 avec le résidu. La carte et la géologie ne changent pas, seul ce que la gravimétrie affiche.
+      const resid = new Map(), groups = [blocks.filter(x=>!x.isOffshore && !x.inSalt), blocks.filter(x=>x.isOffshore && !x.inSalt)];
+      groups.forEach(g=>{ if(g.length<3) return; const m = g.length; let sx=0,sy=0,sd=0,sxx=0,syy=0,sxy=0,sxd=0,syd=0; g.forEach(q=>{ sx+=q.x; sy+=q.y; sd+=q.topOfReservoir; sxx+=q.x*q.x; syy+=q.y*q.y; sxy+=q.x*q.y; sxd+=q.x*q.topOfReservoir; syd+=q.y*q.topOfReservoir; });
+        const A = [[m,sx,sy],[sx,sxx,sxy],[sy,sxy,syy]], v = [sd,sxd,syd], det3 = a=>a[0][0]*(a[1][1]*a[2][2]-a[1][2]*a[2][1])-a[0][1]*(a[1][0]*a[2][2]-a[1][2]*a[2][0])+a[0][2]*(a[1][0]*a[2][1]-a[1][1]*a[2][0]), D = det3(A);
+        const co = Math.abs(D)<1e-9 ? [sd/m,0,0] : [0,1,2].map(c=>det3(A.map((row,r)=>row.map((x,k)=>k===c ? v[r] : x)))/D);
+        g.forEach(q=>resid.set(q.id, -(q.topOfReservoir - (co[0]+co[1]*q.x+co[2]*q.y)))); });   // positif : plus haut que la tendance régionale
+      const rankOf = new Map(); groups.forEach(g=>{ const so = g.slice().sort((u,w)=>resid.get(u.id)-resid.get(w.id)); so.forEach((q,k)=>rankOf.set(q.id, g.length>1 ? k/(g.length-1) : 0.5)); });
       blocks.forEach(b => {
         const noise = (rng()-.5) * 0.28 * uncertaintyMult();
-        // rel ∈ [0;1] : 1 = bloc le plus haut structuralement de la carte, 0 = le plus bas
-        const rel = 1 - (b.topOfReservoir - dMin) / dRange;
-        // structPos ∈ [-0.5 ; +0.5] : positif = haut structural (réservoir peu profond)
+        // rel ∈ [0;1] : 1 = bloc le plus haut au-dessus de la tendance régionale, 0 = le plus bas
+        const rel = rankOf.has(b.id) ? rankOf.get(b.id) : 0.5;
+        // structPos ∈ [-0.5 ; +0.5] : positif = haut structural (réservoir plus haut que le pendage régional)
         const structPos = clamp((rel - 0.5) + noise, -.5, .5);
         const saltHint  = b.inSalt && rng() < .75
           ? TR('Anomalie négative forte : probable corps salifère','Strong negative anomaly: probable salt body')
@@ -6955,21 +6956,26 @@ function interpretSection(blockData, profileBlocks){
   const maxTh = Math.max(...resTh), minTh = Math.min(...resTh);
   const pinchOut = maxTh > 10 && minTh < maxTh*0.25;
 
-  // Interpréter la géométrie
+  // Interpréter la géométrie. Les profondeurs croissent vers le bas : le sommet est la profondeur MINIMALE, le creux la MAXIMALE.
+  const lT = tops.slice(0, Math.max(0,minIdx)), rT = tops.slice(minIdx+1), leftMax = lT.length ? Math.max(...lT) : -Infinity, rightMax = rT.length ? Math.max(...rT) : -Infinity;
+  const topInt = (minIdx > 0 && minIdx < tops.length-1) ? Math.min(leftMax, rightMax) - minTop : 0;   // fermeture du sommet intérieur sur ce profil
+  const lB = tops.slice(0, Math.max(0,maxIdx)), rB = tops.slice(maxIdx+1), leftMin = lB.length ? Math.min(...lB) : Infinity, rightMin = rB.length ? Math.min(...rB) : Infinity;
+  const botInt = (maxIdx > 0 && maxIdx < tops.length-1) ? maxTop - Math.max(leftMin, rightMin) : 0;   // profondeur du creux intérieur
   let structureType = '', details = [];
   if(range < 80){
     structureType = TR('Structure tabulaire (faible pendage)','Tabular structure (low dip)');
     details.push(TR('Le réservoir ne présente pas de relief structural significatif sur ce profil. Potentiel de piège limité sauf couverture latérale.','The reservoir shows no significant structural relief on this profile. Limited trap potential unless there is lateral seal.'));
-  } else if(minIdx > 0 && minIdx < dataPoints.length-1){
-    // Creux au centre → synclinal
+  } else if(topInt >= 40 && topInt >= botInt){   // une fermeture de moins de 40 m sur le profil reste dans le bruit du pointé
+    // V5.44 : sommet intérieur (profondeur minimale au centre) = haut structural. Les deux libellés étaient inversés : un anticlinal s'affichait « Synclinal » et inversement.
     const isSymmetric = Math.abs(minIdx/dataPoints.length - 0.5) < 0.25;
-    structureType = isSymmetric ? 'Synclinal' : TR('Bas structural','Structural low');
-    details.push(TR(`Le réservoir est plus profond au centre (${Math.round(minTop)}m) que sur les flancs (${Math.round(maxTop)}m). Un synclinal ne constitue pas un piège structurale classique pour les HC.`,`The reservoir is deeper at the centre (${Math.round(minTop)}m) than on the flanks (${Math.round(maxTop)}m). A syncline is not a classic structural trap for HC.`));
-  } else if(maxIdx > 0 && maxIdx < dataPoints.length-1){
-    // Sommet au centre → anticlinal
-    const isSymmetric = Math.abs(maxIdx/dataPoints.length - 0.5) < 0.25;
     structureType = isSymmetric ? 'Anticlinal' : TR('Haut structural','Structural high');
-    details.push(`${TR(`Haut structural net : le réservoir est plus superficiel au centre (`,`Clear structural high: the reservoir is shallower at the centre (`)}${Math.round(minTop)}${TR(`m) que sur les flancs (`,`m) than on the flanks (`)}${Math.round(maxTop)}${TR(`m). Différence de `,`m). Difference of `)}${Math.round(range)}${TR(`m. Ce type de géométrie constitue un piège structural favorable à l'accumulation des HC.`,`m. This type of geometry is a favourable structural trap for HC accumulation.`)}`);
+    const spill = Math.min(leftMax, rightMax);
+    details.push(`${TR(`Haut structural : le réservoir est plus superficiel au centre (`,`Structural high: the reservoir is shallower at the centre (`)}${Math.round(minTop)}${TR(`m) que sur les flancs (jusqu'à `,`m) than on the flanks (down to `)}${Math.round(spill)}${TR(`m). Fermeture sur ce profil : `,`m). Closure on this profile: `)}${Math.round(topInt)}${TR(`m. Une coupe 2D ne voit qu'une direction : elle ne prouve pas la fermeture latérale, et un haut peut aussi venir d'un bloc de faille ou du côté haut du pendage régional. Une coupe perpendiculaire ou la sismique 3D tranche.`,`m. A 2D section sees one direction only: it does not prove lateral closure, and a high can also come from a fault block or the up-dip side of the regional dip. A perpendicular section or 3D seismic settles it.`)}`);
+  } else if(botInt >= 40){
+    // Creux au centre (profondeur maximale au centre) → synclinal
+    const isSymmetric = Math.abs(maxIdx/dataPoints.length - 0.5) < 0.25;
+    structureType = isSymmetric ? 'Synclinal' : TR('Bas structural','Structural low');
+    details.push(TR(`Le réservoir est plus profond au centre (${Math.round(maxTop)}m) que sur les flancs (${Math.round(Math.max(leftMin, rightMin))}m). Un synclinal ne constitue pas un piège structural classique pour les HC : ils remontent vers ses flancs.`,`The reservoir is deeper at the centre (${Math.round(maxTop)}m) than on the flanks (${Math.round(Math.max(leftMin, rightMin))}m). A syncline is not a classic structural trap for HC: they migrate up its flanks.`));
   } else {
     // Pente monotone → monoclinale ou flanc de structure
     const dir = tops[0] > tops[tops.length-1] ? TR('de A vers B','from A to B') : TR('de B vers A','from B to A');

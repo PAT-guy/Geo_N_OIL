@@ -365,3 +365,18 @@ Cause : `resolveDrillingCore` tire le succès géologique au hasard (`rd() < tru
 Correctif (`limitingFactorHtml`, utilisé par l'écran de révélation et le rapport de forage) : le facteur n'est désigné coupable, avec sa valeur, que s'il est sous 40 % (`WEAK_FACTOR`). Sinon le texte dit qu'aucun facteur n'était franchement mauvais, liste les quatre valeurs et rappelle la probabilité réelle du bloc : le puits sec est alors surtout un tirage défavorable. Aucun calcul de probabilité ni de tirage ne change, donc les cartes et l'équilibrage restent identiques.
 
 Test : `puits_sec_cause.js`.
+
+## V5.44 : sismique, gravimétrie et piège réel
+Demande du joueur (« Ok go 1 puis 2 avec vérification sismique, gravimétrie et réel »). Mesure d'abord (`tools/tests/sim_structure_piege.js`, sans verdict : 6 bassins, 8 graines), puis correctifs. Un piège « utile » est un bloc de facteur réel d'au moins 0,5 (base : 4 à 11 % des blocs à terre selon le bassin).
+
+Trois défauts trouvés.
+
+(1) Libellés inversés dans l'interprétation de la sismique 2D (`interpretSection`). Les profondeurs croissent vers le bas, mais le code prenait la profondeur minimale (le sommet) pour un creux : un anticlinal s'affichait « Synclinal : ne constitue pas un piège classique », un creux s'affichait « Haut structural net ... piège structural favorable ». Corrigé : sommet intérieur = haut structural, creux intérieur = synclinal. Une fermeture de moins de 40 m sur le profil (dans le bruit du pointé de 220 m) ne donne plus un anticlinal. Le texte donne la fermeture sur le profil (le plus bas des deux flancs moins le sommet) et précise qu'une 2D ne prouve pas la fermeture latérale et qu'un haut peut venir d'un bloc de faille ou du pendage régional.
+
+(2) Gravimétrie (`doRegional`) : `structPos` classait les blocs sur la profondeur brute, donc le côté peu profond du pendage régional passait pour un haut structural. AUC pour un piège utile : 0,51 à 0,80 selon le bassin (0,51 en Aquitaine et en mer du Nord, soit le hasard). Maintenant : résidu après retrait d'un plan ajusté par moindres carrés (à terre et en mer séparément, sel exclu), classé en rang. AUC 0,79 à 0,87 sur 8 graines (0,85 à 0,92 sur 6). Rappel de « haut structural » 72 à 88 % (33 à 65 % avant). La précision reste modeste (11 à 28 % pour une base de 4 à 11 %) : un haut structural n'est pas une fermeture. Géologie et cartes inchangées ; seule l'estimation de la gravimétrie change, les parties déjà enregistrées gardent leur valeur.
+
+(3) Les crêtes de sismique 2D (sommet intérieur, relief de 80 m, fermeture de 40 m) donnent un piège utile 9 à 30 % du temps (base 4 à 11 %) : un indice, pas une preuve, ce que dit maintenant le texte.
+
+Effet sur l'équilibrage, mesuré avec `sim_equilibrage` (robot qui suit le guide, 30 parties, mêmes graines) : Découverte 63 % puis 83 % (40 parties sur d'autres graines : 75 % puis 85 %), Junior 53 % puis 53 %, Expert 37 % puis 40 %. Le robot choisit les hauts structuraux de la gravimétrie : une gravimétrie plus juste le rend meilleur, surtout en Découverte où elle pèse le plus.
+
+Test : `structure_gravimetrie.js` (libellés, fermeture, seuil de 40 m, AUC par bassin).
