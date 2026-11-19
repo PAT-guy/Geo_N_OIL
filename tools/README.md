@@ -336,3 +336,14 @@ Coût : le calcul d'écoulement (Gauss-Seidel, jusqu'à 600 itérations) dominai
 Limite assumée du modèle. Le gabarit de comparaison portait d'abord sur le ciment ; la mesure montre qu'à porosité finale égale le ciment ne change pas la conductance dans `lmBuild` (la porosité est celle qui reste après cimentation). Il oppose donc grains fins et grains grossiers, où l'écart est net et conforme à la physique (k varie à peu près comme le carré du diamètre des grains). Les trois classes de connexion sont atteignables (φ ≈ 0,10 isolée, ≈ 0,21 partielle, ≈ 0,27 connectée) et la classe affichée est celle que la lame mesure.
 
 Test : `quiz_lames.js` (six gabarits, réponses recalculées, image jointe, temps de génération, bouton et carte, ouverture). `accueil_allege.js` et `quiz_failles.js` comptent 13 jeux.
+
+## V5.41 : lames minces, fluides visibles et connexion réaliste
+Retour du joueur : la part de pores reliés restait à 0 % et on ne voyait ni huile ni gaz dans les pores.
+
+Cause du 0 %. Dans `lmBuild`, le ciment et l'argile occupent d'abord les pixels proches des grains ; les pores sont ce qui reste au centre de la bande. Le tri de ces pixels (distance puis bruit) prenait, au niveau de coupure, un sous-ensemble arbitraire de pixels : la partie poreuse se fragmentait dès qu'il y avait du ciment (mesure : 1 composante à 0 % de ciment, 335 à 2 %). `lmOpen` ajoutait un pincement des gorges qui aggravait ça : toute roche de 1 mD ou moins affichait 0 %.
+
+Correctif. À égalité de distance, les pixels les plus proches de l'axe de la bande restent poreux (`|| mm[v]-mm[u]`) ; `P.rough` règle la rugosité des gorges. `lmOpen` cherche par dichotomie (6 constructions au plus, sans résoudre l'écoulement) un coefficient `u` qui met à l'échelle rugosité, pincement et largeur de gorge, pour que la part de pores reliés suive la perméabilité mesurée (cible : 5 % à 0,05 mD, 15 % à 0,1, 40 % à 1, 70 % à 5, 95 % à 20 mD et plus) ; l'écoulement n'est résolu qu'une fois. La percolation est brutale : si la cible n'est pas atteignable, on garde le réseau le moins relié mais non nul. Une roche de moins de 0,05 mD peut toujours afficher 0 %. Une note rappelle qu'une coupe 2D sous-estime la connexion.
+
+Nouvelle vue « Fluides en place » : eau en bleu, huile en ambre, gaz en rouge, dans les pores, d'après la saturation de la carotte (l'hydrocarbure occupe les plus gros pores d'abord). La fluorescence UV reste telle quelle (le gaz y est noir, c'est physique).
+
+Test : `lame_fluides.js` (connexion à 1, 5, 20 et 0,3 mD, pixels bleus, ambre et rouges, textes, anglais).
