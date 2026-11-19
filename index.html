@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.36</title>
+<title>GeoExplorer V5.37</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -974,6 +974,18 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
 </div>
 
 <!-- Mini-jeux (accueil) : la liste complète, ouverte par un seul bouton -->
+<div id="lmModal" style="position:fixed;inset:0;z-index:1450;background:var(--bg);display:none;flex-direction:column;align-items:center;overflow-y:auto;padding:20px 14px 40px;">
+  <div class="menu-card" style="max-width:560px;">
+    <div class="cg-header">
+      <div class="menu-title" style="font-size:18px;">🔬 <span class="i18n" data-fr="Lame mince" data-en="Thin section">Lame mince</span></div>
+      <button class="cg-close" onclick="lmClose()">✕ <span class="i18n" data-fr="Fermer" data-en="Close">Fermer</span></button>
+    </div>
+    <div id="lmModes" class="lab-chips" style="margin:8px 0;"></div>
+    <canvas id="lmCanvas" width="160" height="160" style="width:100%;max-width:480px;aspect-ratio:1;border-radius:8px;border:1px solid var(--line-strong);display:block;margin:0 auto 8px;image-rendering:auto;"></canvas>
+    <div id="lmText" style="font-size:12.5px;line-height:1.55;margin-bottom:8px;"></div>
+    <div id="lmStats"></div>
+  </div>
+</div>
 <div id="miniGamesModal" style="position:fixed;inset:0;z-index:1400;background:var(--bg);display:none;flex-direction:column;align-items:center;overflow-y:auto;padding:20px 14px 40px;">
   <div class="menu-card" style="max-width:600px;">
     <div class="cg-header">
@@ -3293,6 +3305,133 @@ function faultSealHtml(b){
     ${infoRow(TR('Fenêtre de fuite (réservoir face à réservoir)','Leak window (reservoir against reservoir)'), pct(a.leakFrac))}${infoRow('SGR (Shale Gouge Ratio)', pct(a.sgr))}${infoRow(TR('Rejet critique (en dessous, le réservoir fait face à lui-même)','Critical throw (below it the reservoir faces itself)'), '~'+Math.round(a.hr*0.85/10)*10+' m')}
     ${gsFaultSealSvg(e, a)}
     <div style="color:var(--muted);font-size:11px;">${TR('Diagramme d\'Allan simplifié : à gauche le compartiment relevé, à droite l\'abaissé décalé du rejet. Barre au centre : rouge là où le réservoir fait face à un réservoir (fuite possible), verte là où il fait face à autre chose. Seuils usuels (SGR au-dessus d\'environ 25 % : colmatée ; sous 15 % : fuyante), colonne type de la province. C\'est une estimation : l\'argile réellement entraînée et l\'ouverture de la faille ne se voient qu\'à un forage voisin. Dans le jeu, une faille étanche arrête la migration et forme un piège du côté abaissé ; une faille qui fuit (petit rejet sans argile, ou réactivée et ouverte) vide la couverture voisine et laisse passer la charge.','Simplified Allan diagram: raised block on the left, downthrown block on the right shifted by the throw. Centre bar: red where the reservoir faces a reservoir (possible leak), green where it faces something else. Usual thresholds (SGR above about 25 %: clogged; below 15 %: leaking), province type column. This is an estimate: the clay actually smeared and the fault opening only show at a neighbouring well. In the game, a sealing fault stops migration and forms a trap on the downthrown side; a leaking fault (small throw without clay, or reactivated and open) empties the neighbouring seal and lets the charge through.')}</div>`;
+}
+
+// LAME MINCE (V5.37) : image procédurale de la roche réservoir de ce bloc, construite à partir de ce que la carotte a mesuré (porosité, granulométrie, classement, ciment, argile, saturation en hydrocarbures).
+// Grains : diagramme de Voronoï pondéré (rayon variable selon le classement). Pores : les pixels les plus proches des joints entre grains, bruités (les gorges se pincent, la connectivité devient réelle). Ciment et argile bouchent d'abord les
+// gorges les plus étroites. Fluides : l'huile occupe les plus gros pores (roche mouillée à l'eau), l'eau le reste. Écoulement : équation de Laplace résolue sur le réseau de pores connecté de la face gauche à la face droite.
+// Indicatif : image 2D, échelle choisie pour montrer une douzaine de grains ; elle ne remplace pas une vraie lame.
+function lmParams(b){
+  const c = b.estimate && b.estimate.core; if(!c || c.noReservoir) return null;
+  const res = b.horizons.find(h=>h.role==='reservoir'), nm = res ? `${FRN(res.name)||''} ${FRN(res.lith)||''}`.toLowerCase() : '';
+  const carb = /calcaire|dolomi|carbonat|oolit|limestone/.test(nm), g = String(c.grain), so = String(c.sorting), ce = String(c.cement);
+  const hc = c.hcSaturation ? clamp(+c.hcSaturation/100, 0, 0.95) : 0;
+  let api = 35; try{ const fp = fluidCfg(b, true); if(fp && fp.api) api = fp.api; }catch(e){}
+  return { carb, dmm: /^(Fin|Fine)/.test(g) ? 0.18 : /^(Moyen|Medium)/.test(g) ? 0.35 : 1.0, sort: /^(Bien|Well)/.test(so) ? 0.12 : /^(Mod)/.test(so) ? 0.3 : 0.5,
+    cem: /Calcit/.test(ce) ? { k:'calcite', f:0.08 } : /Silic/.test(ce) ? { k:'silice', f:0.06 } : { k:'argile', f:0.07 },
+    phi: clamp(c.porosity/100, 0.02, 0.40), clay: clamp((c.vshale||0)/100*0.25, 0, 0.10), hc, gas: !!(b.isGas || /^Gaz|^Gas/.test(String(c.rti||''))), api, perm: c.permeability,
+    seedKey: `${G.seedNum ?? 'x'}|lame|${b.id}`, noise: carb ? 1.5 : 1.0 };
+}
+// Rapport entre la perméabilité mesurée et celle de Kozeny-Carman (pores propres et connectés) : il pilote le pincement des gorges de l'image. Rapport proche de 1 : gorges larges, réseau connecté ; rapport faible : gorges pincées, pores isolés.
+function lmRatio(P){ const d = P.dmm*1e-3, kc = d*d*Math.pow(P.phi,3)/(180*Math.pow(1-P.phi,2))/9.869e-16; return clamp(P.perm/Math.max(1e-6, kc), 1e-3, 1); }
+function lmDT(N, inside){   // distance (chanfrein 1 ; 1,41) au plus proche pixel hors de la zone ; les bords de l'image sont ouverts
+  const dt = new Float32Array(N*N); for(let q=0;q<N*N;q++) dt[q] = inside[q] ? 1e6 : 0;
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++){ const q=y*N+x; if(!inside[q]) continue; let v=dt[q]; if(x>0) v=Math.min(v, dt[q-1]+1); if(y>0) v=Math.min(v, dt[q-N]+1); if(x>0&&y>0) v=Math.min(v, dt[q-N-1]+1.41); if(x<N-1&&y>0) v=Math.min(v, dt[q-N+1]+1.41); dt[q]=v; }
+  for(let y=N-1;y>=0;y--) for(let x=N-1;x>=0;x--){ const q=y*N+x; if(!inside[q]) continue; let v=dt[q]; if(x<N-1) v=Math.min(v, dt[q+1]+1); if(y<N-1) v=Math.min(v, dt[q+N]+1); if(x<N-1&&y<N-1) v=Math.min(v, dt[q+N+1]+1.41); if(x>0&&y<N-1) v=Math.min(v, dt[q+N-1]+1.41); dt[q]=v; }
+  return dt;
+}
+function lmBuild(P){
+  const N = 320, n2 = N*N, gsz = 30, TW = P.tw ?? 0.15, cells = Math.ceil(N/gsz)+2, M = cells+1, rng = makeRng(seedToInt(P.seedKey)), seeds = [];
+  for(let j=-1;j<cells;j++) for(let i=-1;i<cells;i++){ const r = clamp(gsz/2*Math.exp(P.sort*gauss(rng)), gsz*0.25, gsz*0.9); seeds.push({ x:(i+0.5)*gsz+(rng()-.5)*gsz*0.5, y:(j+0.5)*gsz+(rng()-.5)*gsz*0.5, r, tint:rng() }); }
+  const gid = new Int32Array(n2), mm = new Float32Array(n2), dd = new Float32Array(n2), nzf = new Float32Array(n2);
+  // bruit lisse (valeurs aux nœuds d'une grille de 10 pixels, interpolées)
+  const G0 = Math.ceil(N/20)+2, nv = new Float32Array(G0*G0); for(let i=0;i<nv.length;i++) nv[i] = rng()*2-1;
+  const noise = (x,y)=>{ const fx=x/20, fy=y/20, i=Math.floor(fx), j=Math.floor(fy), tx=fx-i, ty=fy-j, a=nv[j*G0+i], b=nv[j*G0+i+1], c=nv[(j+1)*G0+i], d=nv[(j+1)*G0+i+1]; return (a*(1-tx)+b*tx)*(1-ty)+(c*(1-tx)+d*tx)*ty; };
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++){ const ci = Math.floor(x/gsz), cj = Math.floor(y/gsz); let d1=1e9, d2=1e9, d3=1e9, i1=0;
+    for(let dj=-1;dj<=1;dj++) for(let di=-1;di<=1;di++){ const i=ci+di, j=cj+dj; if(i<-1||j<-1||i>=cells||j>=cells) continue; const k=(j+1)*M+(i+1), sd=seeds[k], dist=Math.hypot(x-sd.x, y-sd.y)/sd.r; if(dist<d1){ d3=d2; d2=d1; d1=dist; i1=k; } else if(dist<d2){ d3=d2; d2=dist; } else if(dist<d3) d3=dist; }
+    const q = y*N+x; gid[q]=i1; dd[q]=d1; mm[q]=((d2-d1) + TW*(d3-d2))*gsz*0.5; nzf[q]=noise(x,y); }
+  // le bruit est proportionnel à la demi-largeur de la bande de pores (échelle relative) : il pince les gorges sans casser tout le réseau
+  const Kc = Math.round(P.cem.f*n2), Kcl = Math.round(P.clay*n2), Kp = Math.round(P.phi*n2), nTot0 = Math.min(n2, Kc+Kcl+Kp);
+  const srt0 = Float32Array.from(mm).sort(), T0 = srt0[Math.max(0, nTot0-1)], amp = P.noise*(P.nz ?? 0.7)*T0; for(let q=0;q<n2;q++) mm[q] += amp*nzf[q];
+  const order = Array.from({length:n2}, (_,i)=>i).sort((u,v)=>mm[u]-mm[v]);
+  const S = new Uint8Array(n2);   // 0 grain, 1 pore, 2 cement, 3 clay
+  // le ciment et l'argile tapissent d'abord les parois des grains (les pixels les plus proches d'un grain) et bouchent donc les gorges étroites avant les gros pores
+  const nTot = Math.min(n2, Kc+Kcl+Kp), inP0 = new Uint8Array(n2), p0 = order.slice(0, nTot); p0.forEach(q=>{ inP0[q]=1; });
+  const dt0 = lmDT(N, inP0); p0.sort((u,v)=>(dt0[u]-dt0[v]) + (lmHash(u)-lmHash(v))*0.6);
+  for(let r=0; r<nTot; r++){ S[p0[r]] = r<Kc ? (P.cem.k==='argile' ? 3 : 2) : r<Kc+Kcl ? 3 : 1; }
+  // pores connectés de la face gauche à la face droite (8 voisins : une coupe 2D sous-estime la connectivité, les pores se rejoignent aussi hors du plan)
+  const comp = new Int32Array(n2).fill(-1), touchL = [], touchR = []; let nc = 0; const stack = [], DX = [-1,1,0,0,-1,-1,1,1], DY = [0,0,-1,1,-1,1,-1,1];
+  for(let q0=0;q0<n2;q0++){ if(S[q0]!==1 || comp[q0]>=0) continue; let l=false, rr=false; stack.length=0; stack.push(q0); comp[q0]=nc;
+    while(stack.length){ const q=stack.pop(), x=q%N, y=(q-x)/N; if(x<=3) l=true; if(x>=N-4) rr=true;   // bords gauche et droit : une bande de 4 pixels (réservoirs de pression)
+      for(let k=0;k<8;k++){ const xx=x+DX[k], yy=y+DY[k]; if(xx<0||yy<0||xx>=N||yy>=N) continue; const qq=yy*N+xx; if(S[qq]===1 && comp[qq]<0){ comp[qq]=nc; stack.push(qq); } } }
+    touchL.push(l); touchR.push(rr); nc++; }
+  const span = new Uint8Array(n2); let nPore = 0, nSpan = 0; for(let q=0;q<n2;q++){ if(S[q]===1){ nPore++; if(touchL[comp[q]] && touchR[comp[q]]){ span[q]=1; nSpan++; } } }
+  // écoulement : pression 1 à gauche, 0 à droite, flux nul sur les grains (Gauss-Seidel sur-relaxé ; diagonales de poids 0,5)
+  const WT = [1,1,1,1,0.5,0.5,0.5,0.5], pr = new Float32Array(n2); for(let q=0;q<n2;q++) if(span[q]){ const x=q%N; pr[q] = x<=3 ? 1 : x>=N-4 ? 0 : 1 - (x-3)/(N-7); }
+  for(let it=0; it<600; it++){ let dmax = 0; for(let y=0;y<N;y++) for(let x=4;x<N-4;x++){ const q=y*N+x; if(!span[q]) continue; let sum=0, cnt=0;
+      for(let k=0;k<8;k++){ const xx=x+DX[k], yy=y+DY[k]; if(yy<0||yy>=N) continue; const qq=yy*N+xx; if(span[qq]){ sum+=WT[k]*pr[qq]; cnt+=WT[k]; } }
+      if(!cnt) continue; const nv2 = pr[q] + 1.8*(sum/cnt - pr[q]); dmax = Math.max(dmax, Math.abs(nv2-pr[q])); pr[q] = nv2; } if(dmax<1e-5) break; }
+  const flux = new Float32Array(n2); let Q = 0, fmax = 0, qmid = Math.floor(N/2);
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++){ const q=y*N+x; if(!span[q]) continue; let f=0;
+    for(let k=0;k<8;k++){ const xx=x+DX[k], yy=y+DY[k]; if(xx<0||yy<0||xx>=N||yy>=N) continue; const qq=yy*N+xx; if(span[qq]) f += WT[k]*Math.abs(pr[q]-pr[qq]); }
+    flux[q]=f; if(f>fmax) fmax=f;
+    if(x===qmid) for(const k of [0,4,5]){ const xx=x+DX[k], yy=y+DY[k]; if(yy<0||yy>=N) continue; const qq=yy*N+xx; if(span[qq]) Q += WT[k]*(pr[qq]-pr[q]); } }
+  const keff = Q*(N-7)/N;
+  // distance au grain ou au ciment le plus proche : les plus gros pores reçoivent l'huile ou le gaz en premier
+  const poreMask = new Uint8Array(n2); for(let q=0;q<n2;q++) poreMask[q] = S[q]===1 ? 1 : 0;
+  const dt = lmDT(N, poreMask);
+  const fluid = new Uint8Array(n2).fill(0), pores = []; for(let q=0;q<n2;q++) if(S[q]===1){ pores.push(q); fluid[q] = 1; }
+  pores.sort((u,v)=>dt[v]-dt[u] || u-v); const nHc = Math.round(P.hc*pores.length); for(let r=0;r<nHc;r++) fluid[pores[r]] = P.gas ? 3 : 2;
+  const phi = nPore/n2, d = P.dmm*1e-3, kcM2 = d*d*Math.pow(phi,3)/(180*Math.pow(1-phi,2)), kcMd = kcM2/9.869e-16;
+  return { N, S, gid, seeds, dd, mm, span, flux, fmax, fluid, stats:{ phi, conn: nPore ? nSpan/nPore : 0, keff, kcMd, hcSeen: nPore ? nHc/nPore : 0, viewMm:(N/gsz)*P.dmm, nPore, nSpan, comps:nc } };
+}
+const LM = { b:null, P:null, L:null, mode:'ppl' };
+function lmHash(i){ let h = Math.imul(i+1, 2654435761)>>>0; h ^= h>>>15; h = Math.imul(h, 2246822519)>>>0; return (h>>>8)/16777216; }
+function lmPaint(cv, L, P, mode){
+  const N = L.N, ctx = cv.getContext('2d'), img = ctx.createImageData(N, N), px = img.data, hcCol = P.api>=40 ? [190,220,255] : P.api>=25 ? [205,222,60] : [196,112,30];
+  const vir = t=>{ const a=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]], x=clamp(t,0,1)*4, i=Math.min(3,Math.floor(x)), f=x-i; return a[i].map((v,k)=>v+(a[i+1][k]-v)*f); };
+  for(let q=0;q<N*N;q++){ const st=L.S[q], g=L.gid[q], t=lmHash(g), nz=(lmHash(q*7)-.5)*14; let c;
+    if(mode==='ppl'){
+      if(st===1) c=[72+nz*.5,150+nz*.5,232];
+      else if(st===2) c = P.cem.k==='silice' ? [232,232,228] : [236,196,206];
+      else if(st===3) c=[150+nz,120+nz,92];
+      else { const edge = clamp(L.mm[q]/5,0,1), base = P.carb ? [212,192,160] : [226,226,220], dark = 1-0.16*(1-edge); const ring = P.carb ? 1+0.06*Math.sin(L.dd[q]*16) : 1; c=[(base[0]+(t-.5)*14)*dark*ring+nz*.4, (base[1]+(t-.5)*12)*dark*ring+nz*.4, (base[2]+(t-.5)*12)*dark*ring+nz*.4]; }
+    } else if(mode==='xpl'){
+      if(st===1) c=[14,14,24];
+      else if(st===2) c = P.cem.k==='silice' ? [150,150,155] : [196+nz,186+nz,228];
+      else if(st===3) c=[78+nz,66+nz,58+nz];
+      else { const ext = t<0.14, pal=[[236,236,232],[250,238,150],[190,190,196],[238,200,140],[160,160,170],[206,222,242]], pc=pal[Math.floor(lmHash(g*3+5)*pal.length)]; c = ext ? [28,28,36] : [pc[0]+nz*.5, pc[1]+nz*.5, pc[2]+nz*.5]; }
+    } else if(mode==='uv'){
+      if(st===1){ const f=L.fluid[q]; c = f===2 ? [hcCol[0]*(.8+.2*lmHash(q*5)), hcCol[1]*(.8+.2*lmHash(q*5)), hcCol[2]*(.8+.2*lmHash(q*5))] : f===3 ? [10,10,14] : [8,12,40]; }
+      else if(st===2) c = P.cem.k==='silice' ? [22,22,30] : [28,24,40]; else if(st===3) c=[34,28,24]; else c=[18+nz*.3,18+nz*.3,26+nz*.3];
+    } else {
+      if(st===1){ if(L.span[q]) c = vir(Math.sqrt(L.flux[q]/(L.fmax||1))); else c=[120,120,130]; }
+      else if(st===2||st===3) c=[52,56,66]; else c=[30,32,42];
+    }
+    px[q*4]=clamp(c[0],0,255); px[q*4+1]=clamp(c[1],0,255); px[q*4+2]=clamp(c[2],0,255); px[q*4+3]=255; }
+  cv.width = N; cv.height = N; ctx.putImageData(img, 0, 0);
+  // barre d'échelle
+  const W = L.stats.viewMm, nice = [0.1,0.2,0.5,1,2,5].filter(v=>v<=W*0.35).pop() || 0.1, bw = nice/W*N; ctx.fillStyle='rgba(255,255,255,.92)'; ctx.fillRect(8, N-14, bw, 4); ctx.font='9px sans-serif'; ctx.fillStyle='rgba(255,255,255,.95)'; ctx.fillText(nice+' mm', 8, N-17);
+}
+function lmOpen(blockId){
+  const b = blocks[blockId], P = b && lmParams(b); if(!P) return;
+  P.r = lmRatio(P); P.nz = clamp(0.55 - 0.3*Math.log10(Math.max(0.01, P.perm)), 0.1, 1.3);   // pincement des gorges selon la perméabilité mesurée : 0,1 mD → 0,85 ; 1 mD → 0,55 ; 10 mD → 0,25 ; 100 mD → 0,1
+  let L = lmBuild(P);   // une réalisation unique d'un réseau près du seuil de percolation peut s'écarter de la mesure : au plus une reconstruction, avec un pincement plus faible (roche perméable) ou plus fort (roche compacte)
+  if(P.perm>=3 && L.stats.conn<0.4){ P.nz = 0.05; P.tw = 0; P.cem = { ...P.cem, f:P.cem.f*0.5 }; P.clay *= 0.5; L = lmBuild(P); } else if(P.perm<0.3 && L.stats.conn>0.6){ P.nz = 1.3; L = lmBuild(P); }
+  LM.b = b; LM.P = P; LM.L = L; LM.mode = 'ppl'; document.getElementById('lmModal').style.display = 'flex'; lmRender();
+}
+function lmMode(m){ LM.mode = m; lmRender(); }
+function lmClose(){ document.getElementById('lmModal').style.display = 'none'; }
+function lmRender(){
+  if(!LM.L) return; const P = LM.P, L = LM.L, st = L.stats, pc = v=>Math.round(v*100)+' %', fx = v=>String(v).replace('.',DEC);
+  lmPaint(document.getElementById('lmCanvas'), L, P, LM.mode);
+  const modes = [['ppl',TR('Lumière naturelle','Plane light')],['xpl',TR('Polars croisés','Crossed polars')],['uv',TR('Fluorescence UV','UV fluorescence')],['flow',TR('Écoulement','Flow')]];
+  document.getElementById('lmModes').innerHTML = modes.map(([k,l])=>`<button class="lab-pick ${LM.mode===k?'sel':''}" onclick="lmMode('${k}')">${l}</button>`).join('');
+  const hcTxt = P.hc>0 ? (P.gas ? TR('gaz','gas') : TR('huile','oil')) : '';
+  const txt = {
+    ppl: TR(`Lumière naturelle. L'époxy bleu remplit les vides : on voit la porosité (${pc(st.phi)} de l'image). Le ciment est coloré (rose : calcite teinte à l'alizarine), l'argile est brune.`,`Plane light. The blue epoxy fills the voids: the porosity is visible (${pc(st.phi)} of the image). The cement is stained (pink: calcite stained with alizarin), the clay is brown.`),
+    xpl: TR(`Polars croisés. Chaque grain prend sa couleur d'interférence (certains sont à l'extinction), le ciment calcite est vif, les pores restent noirs. Sert à distinguer grains, ciment et argile.`,`Crossed polars. Each grain takes its interference colour (some are at extinction), calcite cement is bright, the pores stay black. It tells grains, cement and clay apart.`),
+    uv: P.hc>0 ? TR(`Fluorescence UV. ${P.gas?'Le gaz ne fluoresce pas : les pores restent noirs.':`L'huile fluoresce (${P.api>=40?'bleu-blanc : huile légère':P.api>=25?'jaune-vert : huile moyenne':'orange : huile lourde'}), l'eau reste noire.`} Fraction des pores occupée par ${hcTxt} : ${pc(st.hcSeen)} (la carotte donne ${Math.round(P.hc*100)} %). Elle occupe les plus gros pores d'abord, l'eau reste dans les plus petits.`,`UV fluorescence. ${P.gas?'Gas does not fluoresce: the pores stay black.':`Oil fluoresces (${P.api>=40?'blue-white: light oil':P.api>=25?'yellow-green: medium oil':'orange: heavy oil'}), water stays black.`} Share of the pores occupied by ${hcTxt}: ${pc(st.hcSeen)} (the core gives ${Math.round(P.hc*100)} %). It fills the largest pores first, water stays in the smallest.`)
+        : TR(`Fluorescence UV. Aucun hydrocarbure dans cet échantillon : tous les pores sont pleins d'eau et restent noirs.`,`UV fluorescence. No hydrocarbon in this sample: all the pores are water-filled and stay black.`),
+    flow: TR(`Écoulement simulé de gauche (pression forte) à droite (pression nulle) : couleur du violet au jaune = flux croissant dans les pores reliés d'un bord à l'autre ; gris = pores isolés, sans écoulement. Le flux passe par les gorges larges ; le ciment les bouche d'abord.`,`Simulated flow from left (high pressure) to right (zero pressure): colour from purple to yellow = increasing flux in the pores linked from one edge to the other; grey = isolated pores, no flow. Flow goes through the wide throats; cement plugs them first.`) };
+  document.getElementById('lmText').textContent = txt[LM.mode];
+  const row = (l,v)=>`<div class="info-row"><span class="il">${l}</span><span>${v}</span></div>`;
+  document.getElementById('lmStats').innerHTML = row(TR('Porosité de l\'image (carotte)','Image porosity (core)'), `${pc(st.phi)} (${fx(LM.b.estimate.core.porosity.toFixed(1))} %)`)
+    + row(TR('Pores reliés d\'un bord à l\'autre','Pores linked edge to edge'), pc(st.conn))
+    + row(TR('Conductance relative de la lame','Relative conductance of the slice'), fx(st.keff.toFixed(3)))
+    + row(TR('Perméabilité : Kozeny-Carman (carotte)','Permeability: Kozeny-Carman (core)'), `${fx(st.kcMd<10 ? st.kcMd.toFixed(1) : Math.round(st.kcMd))} mD (${fx(LM.b.estimate.core.permeability.toFixed(2))} mD)`)
+    + row(TR('Vue','Field of view'), `${fx(st.viewMm.toFixed(1))} mm`)
+    + `<div style="color:var(--muted);font-size:11px;margin-top:6px;line-height:1.5;">${TR('Kozeny-Carman suppose des pores propres et connectés ; l\'écart avec la mesure vient du ciment, de l\'argile et des gorges pincées. Image 2D indicative construite d\'après la carotte, elle ne remplace pas une vraie lame.','Kozeny-Carman assumes clean, connected pores; the gap with the measurement comes from cement, clay and pinched throats. Indicative 2D image built from the core, it does not replace a real thin section.')}</div>`;
 }
 
 // Modèle 3D de lithologie le long d'une coupe : le toit de CHAQUE couche est krigé séparément à partir de tous les blocs qui portent une donnée de couches (log, sismique 2D), pas seulement ceux du profil.
@@ -5976,6 +6115,7 @@ function renderGeoPanel(b){
     if(b.strati && !b.well && !b.dryHole) html+=`<div style="color:var(--muted);font-size:11px;margin-top:6px;">${TR(`Sondage stratigraphique : foré hors du sommet du piège, il ne renseigne pas sur les fluides.`,`Stratigraphic test well: drilled off the top of the trap, it gives no information on fluids.`)}</div>`;
     if(c.hcSaturation) html+=infoRow(TR('Saturation HC','HC saturation'),`${c.hcSaturation} %`);
     if(c.odour) html+=`<div style="color:var(--amber);font-size:11px;margin-top:6px;">${c.odour}</div>`;
+    html+=`<button class="study-btn study-btn-compact" style="margin-top:8px;" onclick="lmOpen(${b.id})">🔬 ${TR('Lame mince : fluides et écoulements','Thin section: fluids and flow')}</button>`;
   }
 
   // Géochimie Rock-Eval
@@ -8960,6 +9100,7 @@ const GLOSSARY_ENTRIES = [
   {term:TR('Écart-type et intervalle à 90 %','Standard deviation and 90 % interval'), def:TR('L\'écart-type mesure la dispersion probable d\'une estimation. L\'intervalle à 90 % vaut ± 1,64 écart-type : sur beaucoup de blocs, environ 9 sur 10 doivent y tomber. La validation croisée et le compteur « prévu contre réel » vérifient si c\'est vrai sur votre carte.','The standard deviation measures the probable spread of an estimate. The 90 % interval is ± 1.64 standard deviations: over many blocks, about 9 in 10 should fall inside. Cross-validation and the "predicted vs actual" counter check whether that holds on your map.')},
   {term:TR('Rejet, compartiment relevé et abaissé','Throw, raised and downthrown block'), def:TR('Le rejet est le décalage vertical des couches de part et d\'autre d\'une faille. Le côté où le toit du réservoir est le plus haut est le compartiment relevé, l\'autre est abaissé.','The throw is the vertical offset of the layers on either side of a fault. The side where the reservoir top is highest is the raised block, the other is downthrown.')},
   {term:TR('Faille finie, faille aveugle','Finite fault, blind fault'), def:TR('Une faille finie s\'arrête sur sa longueur : son rejet est maximal au centre et tombe à zéro aux extrémités. Une faille aveugle s\'arrête vers le haut : les couches supérieures sont plissées, pas décalées, et la couverture reste intacte si la tête de faille reste dessous.','A finite fault dies out along its length: its throw is maximal at the centre and falls to zero at the tips. A blind fault dies out upward: the upper layers are folded, not offset, and the seal stays intact if the fault tip stays below it.')},
+  {term:TR('Lame mince','Thin section'), def:TR('Tranche de roche de 30 µm collée sur une lame de verre et observée au microscope. En lumière naturelle, de l\'époxy bleu remplit les pores ; entre polars croisés, les minéraux prennent des couleurs d\'interférence ; en fluorescence UV, l\'huile brille. On y lit la porosité, la taille et le classement des grains, le ciment, l\'argile et la connexion des pores.','A 30 µm slice of rock glued on a glass slide and observed under a microscope. In plane light, blue epoxy fills the pores; between crossed polars, minerals take interference colours; under UV fluorescence, oil glows. It shows porosity, grain size and sorting, cement, clay and pore connectivity.')},
   {term:TR('Piège de faille et drain','Fault trap and drain'), def:TR('Une faille étanche arrête la migration contre son plan et forme un piège, du côté abaissé. Une faille qui fuit (petit rejet sans argile) ou réactivée et ouverte est un drain : elle vide la couverture voisine et laisse passer la charge.','A sealing fault stops migration against its plane and forms a trap, on the downthrown side. A leaking fault (small throw without clay) or a reactivated, open one is a drain: it empties the neighbouring seal and lets the charge through.')},
   {term:TR('Shale Gouge Ratio (SGR) et diagramme d\'Allan','Shale Gouge Ratio (SGR) and Allan diagram'), def:TR('Le SGR est la proportion d\'argile des couches qui ont glissé devant le toit du réservoir, sur la hauteur du rejet ; au-dessus d\'environ 25 % la faille colmate, sous 15 % elle fuit. Le diagramme d\'Allan place les deux compartiments face à face, décalés du rejet, pour voir ce qui fait face au réservoir.','The SGR is the clay proportion of the layers that slid past the reservoir top, over the height of the throw; above about 25 % the fault clogs, below 15 % it leaks. The Allan diagram puts the two blocks face to face, offset by the throw, to see what faces the reservoir.')},
   {term:TR('Biseau stratigraphique','Stratigraphic pinch-out'), def:TR('Amincissement progressif puis disparition latérale d\'une couche, créant un piège stratigraphique sans avoir besoin de déformation.','Gradual thinning then lateral disappearance of a layer, creating a stratigraphic trap with no need for deformation.')},
@@ -8980,6 +9121,7 @@ const GLOSSARY_ENTRIES = [
 // Réel ou simplifié : pour chaque mécanisme, loi physique, approximation ou réglage de jeu (honnêteté sur ce que le jeu enseigne)
 const REALITY_TAGS = { loi:TR('Loi physique','Physical law'), approx:'Approximation', jeu:TR('Réglage de jeu','Game setting'), repere:TR('Repère réel sourcé','Sourced real benchmark') };
 const REALITY_ENTRIES = [
+  {tag:'approx', term:TR('Lame mince générée','Generated thin section'), def:TR('Les lames minces, le réseau de pores, le ciment, l\'argile, la répartition des fluides (l\'huile dans les plus gros pores d\'une roche mouillée à l\'eau) et l\'écoulement (équation de Laplace sur le réseau connecté) sont des principes réels. L\'image est pourtant fabriquée d\'après la carotte du jeu : grains en diagramme de Voronoï, coupe 2D avec une connectivité plus faible qu\'en 3D, pincement des gorges réglé sur la perméabilité mesurée. Elle ne remplace pas une vraie lame.','Thin sections, the pore network, cement, clay, the fluid distribution (oil in the largest pores of a water-wet rock) and flow (Laplace equation on the connected network) are real principles. The image is however built from the game\'s core: Voronoi grains, a 2D cut with lower connectivity than in 3D, throat pinching tuned to the measured permeability. It does not replace a real thin section.')},
   {tag:'approx', term:TR('Krigeage de la carte','Kriging of the map'), def:TR('Le krigeage est une méthode statistique réelle. Dans le jeu, la covariance est gaussienne de portée 3,3 blocs, mesurée sur les cartes du jeu (qualité) ou ajustée sur le variogramme de leur profondeur (pépite 0,08), pas sur un bassin réel ; la tendance de la profondeur est un plan.','Kriging is a real statistical method. In the game, the covariance is Gaussian with a range of 3.3 blocks, measured on the game\'s maps (quality) or fitted to the variogram of their depth (nugget 0.08), not on a real basin; the depth trend is a plane.')},
   {tag:'approx', term:TR('Faille probable ou possible','Probable or possible fault'), def:TR('Dans le jeu, un saut de profondeur entre deux blocs voisins est une faille probable s\'il vaut au moins 2,5 écarts-types et 80 m et reste une marche (au moins deux fois plus grand que les sauts des blocs voisins), possible si un voisin n\'est pas mesuré. En réel, la sismique voit un rejet sur la section elle-même ; ici il se déduit des pointés de blocs, avec une erreur de pointé corrélée le long d\'un même profil.','In the game, a depth step between two neighbouring blocks is a probable fault if it is at least 2.5 standard deviations and 80 m and remains a step (at least twice the steps of the neighbouring blocks), possible if a neighbour is not measured. In reality, seismic sees a throw on the section itself; here it is inferred from block picks, with a pick error correlated along a profile.')},
   {tag:'jeu', term:TR('Failles finies et aveugles dans le jeu','Finite and blind faults in the game'), def:TR('Réglages de jeu : 70 % des failles sont finies (rejet elliptique, maximal au centre, nul aux extrémités, demi-longueur de 2,5 à 7 cases pour une carte de 12) et s\'atténuent en travers ; 30 % sont régionales. 40 % sont aveugles, avec une tête à 25 à 85 % de la colonne au-dessus du réservoir (au moins 1,3 fois le rejet). Une faille aveugle plisse les couches supérieures au lieu de les décaler et ne vide la couverture que si elle la traverse. En réel, le rejet croît aussi avec la profondeur sur les failles de croissance, ce que le jeu ne modélise pas.','Game settings: 70 % of faults are finite (elliptical throw, maximum at the centre, zero at the tips, half-length of 2.5 to 7 blocks for a 12-block map) and fade across the plane; 30 % are regional. 40 % are blind, with a tip at 25 to 85 % of the column above the reservoir (at least 1.3 times the throw). A blind fault folds the upper layers instead of offsetting them and only empties the seal if it cuts through it. In reality, throw also grows with depth on growth faults, which the game does not model.')},
@@ -11189,8 +11331,8 @@ function _doStartGame(){
         After a well or a survey hole, the `)}<b>Études</b>${TR(` propose aussi la `,` tab also offers the `)}<b>${TR(`carotte`,`core`)}</b>${TR(` (porosité, perméabilité, pétrographie)
         et la géochimie `,` (porosity, permeability, petrography)
         and `)}<b>Rock-Eval</b>${TR(` (TOC, Tmax, potentiel de la roche-mère). Le guide vous propose un sondage quand la sismique est muette et qu'aucun puits du profil n'a de log.`,` geochemistry (TOC, Tmax, source rock potential). The guide offers you a survey hole when the seismic is silent and no well on the profile has a log.`)}<br><br>${TR(`
-        Une carotte cale le puits d'office et double la portée de sa lithologie le long de la coupe.`,`
-        A core ties the well automatically and doubles the reach of its lithology along the section.`)}`,
+        Une carotte cale le puits d'office et double la portée de sa lithologie le long de la coupe. Sur la fiche du bloc, le bouton <b>Lame mince</b> ouvre une image de la roche construite d'après la carotte, en quatre modes : lumière naturelle (la porosité en bleu), polars croisés (grains, ciment, argile), fluorescence UV (l'huile brille, l'eau et le gaz restent noirs) et écoulement simulé (les chenaux qui portent le flux, les pores isolés en gris).`,`
+        A core ties the well automatically and doubles the reach of its lithology along the section. On the block sheet, the <b>Thin section</b> button opens an image of the rock built from the core, in four modes: plane light (porosity in blue), crossed polars (grains, cement, clay), UV fluorescence (oil glows, water and gas stay black) and simulated flow (the channels that carry the flux, isolated pores in grey).`)}`,
     },
     {
       title: TR('Prix du brut et alertes','Crude price and alerts'),
