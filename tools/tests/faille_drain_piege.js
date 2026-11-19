@@ -7,7 +7,7 @@ const { chromium } = require('playwright'); const path = require('path');
   const r = await pg.evaluate(async()=>{ const out={ faults:0, small:0, open:0, piege:0, drain:0, pP:0, pD:0, pN:0, nN:0, badSide:0, badTrap:0, badDrain:0, dd:true, hasFields:true, badS:0 }; const BT=['paris','permian','rift','north_sea','aquitaine','passive','gulf_coast','foreland','hydrogen','helium'];
     for(const bt of BT) for(let s=0;s<6;s++){ const SD=8100+s*17+BT.indexOf(bt)*1009; generateGeology(12,bt,false,SD); const F=LAST_FAULTS.map(f=>({...f})); const snap=blocks.map(b=>b.faultRole+'|'+(b.faultInfo&&b.faultInfo.T)).join(','); generateGeology(12,bt,false,SD); if(snap!==blocks.map(b=>b.faultRole+'|'+(b.faultInfo&&b.faultInfo.T)).join(',')) out.dd=false;
       F.forEach(f=>{ out.faults++; if(Math.abs(f.throw)<80) out.small++; if(f.open) out.open++; if(typeof f.gouge!=='number'||typeof f.open!=='boolean') out.hasFields=false; });
-      const near=b=>F.filter(f=>Math.abs((b.x-f.px)*f.nx+(b.y-f.py)*f.ny)<=0.75);
+      const near=b=>F.filter(f=>Math.abs((b.x-f.px)*f.nx+(b.y-f.py)*f.ny)<=0.75 && faultThrowAt(f,b.x,b.y)>=20);
       for(const b of blocks){ if(b.inSalt) continue;
         if(b.faultRole==='piege'){ out.piege++; out.pP+=b.trueProbability; const lowered=near(b).some(f=>(f.throw>0 ? ((b.x-f.px)*f.nx+(b.y-f.py)*f.ny)>0 : ((b.x-f.px)*f.nx+(b.y-f.py)*f.ny)<0)); if(!lowered) out.badSide++; if(b.faultInfo.s<0.6) out.badS++; if(b.trapFactor < FAULT_TRAP_A + FAULT_TRAP_B*b.faultInfo.s*Math.min(1,b.faultInfo.T/80) - 0.01){ out.badTrap++; if(!out.ex) out.ex=[b.trapFactor, b.faultInfo, bt, SD]; } }
         else if(b.faultRole==='drain'){ out.drain++; out.pD+=b.trueProbability; if(b.faultInfo.s>=0.3) out.badDrain++; }

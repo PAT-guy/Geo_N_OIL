@@ -38,7 +38,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(T.noDouble && T.logDone, 'la diagraphie ne se paie qu\'une fois');
   ok(T.guideLog, 'le guide propose la carotte d\'un sondage non carotté');
   ok(T.sandFree, 'diagraphie gratuite en bac à sable');
-  const tut = await pg.evaluate(()=>{ document.getElementById('openTutorialBtn')?.click(); let s=''; for(let i=0;i<14;i++){ s += document.getElementById('tutoSlideBody').innerHTML; const n=document.getElementById('tutoNextBtn'); if(!n || /Terminer|Finish/.test(n.textContent)) break; n.click(); } return { strati:/carte <b>Sondage<\/b>/.test(s), aband:/abandon<\/b> \(12 %/.test(s), rig:/console de forage<\/b> \(pilotage/.test(s), daily:/Défi du jour<\/b>/.test(s) }; });
+  const tut = await pg.evaluate(()=>{ document.getElementById('openTutorialBtn')?.click(); let s=''; for(let i=0;i<30;i++){ s += document.getElementById('tutoSlideBody').innerHTML; const n=document.getElementById('tutoNextBtn'); if(!n || /Terminer|Finish/.test(n.textContent)) break; n.click(); } return { strati:/carte <b>Sondage<\/b>/.test(s), aband:/abandon<\/b> \(12 %/.test(s), rig:/console de forage<\/b> \(pilotage/.test(s), daily:/Défi du jour<\/b>/.test(s) }; });
   ok(tut.strati && tut.aband && tut.rig && tut.daily, 'le tutoriel décrit le sondage, l\'abandon, la console de forage et le défi du jour '+JSON.stringify(tut));
   ok(errs.length===0, 'aucune erreur JS '+errs.join('|'));
   await br.close(); console.log(ko? 'ECHECS: '+ko : 'TOUT OK'); process.exit(ko?1:0); })();

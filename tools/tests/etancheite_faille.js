@@ -17,9 +17,9 @@ const { chromium } = require('playwright'); const path = require('path');
     // un verdict qui change dans la marge d'erreur du rejet est annoncé incertain
     b.horizons.forEach(h=>{ if(h.role!=='reservoir') h.vshale=10; }); const edge=gsFaultSeal(mk(hr*0.85, 25)); out.robust=edge.robust; out.edgeV=edge.verdict; b.horizons.forEach((h,i)=>{ h.vshale=keep[i]; });
     // fiche : section, diagramme, lignes
-    document.getElementById('geoSeed').value='52'; menuConfig.mode='expert'; menuConfig.basinType='rift'; menuConfig.seed='52'; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); setSpeed(0); G.budget=90e6; LABOPT.pick=false; G.labOpt.pick=false; performStudy(null,'gravity');
-    const n=Math.sqrt(blocks.length)|0, idOf=(x,y)=>blocks.find(b=>b.x===x&&b.y===y).id; for(const [a,b2] of [[idOf(1,2),idOf(n-2,2)],[idOf(1,5),idOf(n-2,5)],[idOf(1,n-3),idOf(n-2,n-3)]]){ G.sectionA=a; G.sectionB=b2; performStudy(null,'seismic2d'); }
-    const FE=gsFaultEdges(); const e=FE.list[0]; selectedBlock=e.a; renderGeoPanel(blocks[e.a]); const gc=document.getElementById('geoContent'), t=gc.textContent;
+    let e0=null; for(let sd=52; sd<140 && !e0; sd++){ document.getElementById('geoSeed').value=String(sd); menuConfig.mode='expert'; menuConfig.basinType='rift'; menuConfig.seed=String(sd); labOptLaunch(); await new Promise(r=>setTimeout(r,300)); setSpeed(0); G.budget=90e6; LABOPT.pick=false; G.labOpt.pick=false; performStudy(null,'gravity');
+      const n=Math.sqrt(blocks.length)|0, idOf=(x,y)=>blocks.find(b=>b.x===x&&b.y===y).id; for(const [a,b2] of [[idOf(1,2),idOf(n-2,2)],[idOf(1,5),idOf(n-2,5)],[idOf(1,n-3),idOf(n-2,n-3)]]){ G.sectionA=a; G.sectionB=b2; performStudy(null,'seismic2d'); } e0=gsFaultEdges().list[0]; }
+    const FE=gsFaultEdges(); const e=e0; selectedBlock=e.a; renderGeoPanel(blocks[e.a]); const gc=document.getElementById('geoContent'), t=gc.textContent;
     out.sec=/Étanchéité de la faille/.test(t) && /Fenêtre de fuite/.test(t) && /SGR/.test(t) && /Rejet critique/.test(t); out.svg=!!gc.querySelector('svg[role="img"] line') && gc.querySelectorAll('svg[role="img"] rect').length>6; out.verdictTxt=/Faille (plutôt étanche|plutôt fuyante|incertaine)/.test(t); out.note=/une faille étanche arrête la migration et forme un piège/.test(t);
     out.noSeal=!/seul le forage tranche/.test(t); 
     // bloc sans faille : pas de section

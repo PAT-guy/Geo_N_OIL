@@ -13,5 +13,5 @@ console.log(JSON.stringify(score));
 // tutoriel : nombre de diapositives et texte
 await pg.evaluate(()=>{ document.getElementById('qzCloseBtn').click(); });
 await pg.click('#openTutorialBtn'); await pg.waitForTimeout(200);
-const slides = await pg.evaluate(async()=>{ const titres=[]; for(let i=0;i<14;i++){ titres.push(document.getElementById('tutoSlideTitle').textContent); const nb=document.getElementById('tutoNextBtn'); if(/Terminer/.test(nb.textContent)) break; nb.click(); } return titres; });
+const slides = await pg.evaluate(async()=>{ const titres=[]; for(let i=0;i<30;i++){ titres.push(document.getElementById('tutoSlideTitle').textContent); const nb=document.getElementById('tutoNextBtn'); if(/Terminer/.test(nb.textContent)) break; nb.click(); } return titres; });
 console.log(JSON.stringify(slides)); console.log(errs); await br.close(); })();

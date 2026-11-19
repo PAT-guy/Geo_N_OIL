@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.35</title>
+<title>GeoExplorer V5.36</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2061,6 +2061,14 @@ let STRAT_PROVINCES = []; // toutes les provinces lithostratigraphiques de la pa
 let blocks = [];
 let GS = 12; // grid size courant
 
+// FAILLES FINIES ET AVEUGLES (V5.36). Une faille n'est plus une droite infinie de rejet constant qui traverse toute la colonne : (1) le long de sa direction, le rejet suit une enveloppe elliptique (maximal au centre, nul aux extrémités) ;
+// (2) en travers, le décalage s'atténue avec la distance au plan (entraînement) ; (3) vers le haut, une faille aveugle meurt à la fraction f.tipFrac de la colonne au-dessus du toit du réservoir : le rejet décroît linéairement jusqu'à 0 et les couches
+// supérieures sont seulement plissées. Une faille sans `len` ni `tipFrac` garde l'ancien comportement (régionale, traversante).
+function faultEnv(f, x, y){ if(!f.len) return 1; const s = -(x-f.px)*f.ny + (y-f.py)*f.nx, q = Math.abs(s)/f.len; return q>=1 ? 0 : Math.sqrt(1-q*q); }
+function faultDisp(f, x, y){ const side = (x-f.px)*f.nx + (y-f.py)*f.ny; if(side<=0) return 0; return f.throw*faultEnv(f,x,y)*(f.R ? Math.exp(-side/f.R) : 1); }
+function faultThrowAt(f, x, y){ return Math.abs(f.throw)*faultEnv(f,x,y); }
+function faultTipH(f, colH){ return Math.max(f.tipFrac*colH, 1.3*Math.abs(f.throw)); }   // hauteur de la tête au-dessus du toit du réservoir : une fraction de la colonne, au moins 1,3 fois le rejet (sinon les couches minces se renverseraient)
+function faultTaper(f, h, colH){ return f.tipFrac ? clamp(1 - h/faultTipH(f, colH), 0, 1) : 1; }
 // ÉTANCHÉITÉ PHYSIQUE D'UNE FAILLE (V5.33, appliquée à la génération en V5.34) : juxtaposition (part du réservoir qui fait face à un autre réservoir de l'autre côté, colonne décalée du rejet T)
 // et Shale Gouge Ratio (argile des couches qui ont glissé devant le toit du réservoir sur la hauteur T, multipliée par le coefficient de gouge de la faille). Force d'étanchéité s dans [0 ; 1] : 1 si le réservoir fait
 // face à autre chose, ou si l'argile entraînée colmate (SGR de 25 % et plus) ; une faille ouverte (réactivée) ne retient rien. H : colonne (horizons du bloc).
@@ -2153,6 +2161,10 @@ function generateGeology(gridSize, basinType, offshore, seed){
   // Tirages sur un flux propre à chaque faille : le reste de la géologie de la graine n'est pas décalé.
   faults.forEach((f,i)=>{ const r2 = makeRng(seedToInt(seed+'|failleV534|'+i)); if(r2()<0.35) f.throw = Math.sign(f.throw)*(20+r2()*60); else r2();
     f.gouge = clamp(Math.exp(0.35*gauss(r2)), 0.5, 1.8); f.open = r2() < 0.15; });
+  // V5.36 : 70 % des failles sont finies (demi-longueur de 2,5 à 7 cases pour une carte de 12, proportionnelle à la taille) et s'atténuent en travers (2,5 à 5 cases) ; 30 % sont régionales. 40 % sont aveugles :
+  // leur tête est à 25 à 85 % de la colonne au-dessus du réservoir (au moins 1,3 fois le rejet : dans une colonne mince, une faille de grand rejet reste donc traversante).
+  faults.forEach((f,i)=>{ const r3 = makeRng(seedToInt(seed+'|failleV536|'+i)); if(r3()<0.7){ f.len = (2.5 + r3()*4.5)*(gridSize/12); f.R = 2.5 + r3()*2.5; } else { r3(); r3(); }
+    if(r3()<0.4) f.tipFrac = 0.25 + r3()*0.6; });
 
   // Diapirs de sel
   // Les ids 'salt'/'evaporite' n'existent plus dans les listes de lithologies
@@ -2200,7 +2212,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
     if(jd>=0 && STRAT_PROVINCES.some(col=>col[jd]?.hiatus)){
       const cnt = new Array(nProvinces).fill(0);
       for(let y=0;y<gridSize;y++) for(let x=0;x<gridSize;x++){
-        let ft = 0; faults.forEach(f=>{ if((x-f.px)*f.nx + (y-f.py)*f.ny > 0) ft += f.throw; });
+        let ft = 0; faults.forEach(f=>{ ft += faultDisp(f, x, y); });
         cnt[clamp(Math.floor((provinceField(x,y) + ft*0.0006)*nProvinces), 0, nProvinces-1)]++;
       }
       const share = () => STRAT_PROVINCES.reduce((t,col,i)=> t + (col[jd].hiatus ? 0 : cnt[i]), 0) / (gridSize*gridSize);
@@ -2234,10 +2246,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
 
       // Failles
       let faultThrow = 0;
-      faults.forEach(f=>{
-        const side = (x-f.px)*f.nx + (y-f.py)*f.ny;
-        if(side>0) faultThrow += f.throw;
-      });
+      faults.forEach(f=>{ faultThrow += faultDisp(f, x, y); });
 
       // Province lithostratigraphique de ce bloc : champ lissé à basse
       // fréquence, légèrement décalé par le rejet de faille cumulé. La
@@ -2279,6 +2288,15 @@ function generateGeology(gridSize, basinType, offshore, seed){
         depth += labThArr[i];
       });
 
+      // V5.36 : failles aveugles. Au-dessus du réservoir, une couche située à la hauteur h reçoit la part taper(h) du rejet ; le reste est absorbé par un plissement (les couches s'amincissent côté relevé, s'épaississent côté abaissé).
+      const colH = reservoirIdx>0 ? labThArr.slice(0, reservoirIdx).reduce((t,v)=>t+v, 0) : 0;   // hauteur de la colonne au-dessus du réservoir (sans faille)
+      if(reservoirIdx>0 && faults.some(f=>f.tipFrac)){
+        const th0 = labThArr, adj = new Array(horizons.length).fill(0); let hAbove = 0;
+        for(let i=reservoirIdx-1;i>=0;i--){ hAbove += th0[i]; let a = 0; faults.forEach(f=>{ if(!f.tipFrac) return; const u = faultDisp(f, x, y); if(u) a -= u*(1 - faultTaper(f, hAbove, colH)); }); adj[i] = a; }
+        let nextTop = horizons[reservoirIdx].top;
+        for(let i=reservoirIdx-1;i>=0;i--){ const th = Math.min(nextTop, th0[i]>0 ? Math.max(0.2*th0[i], th0[i] + (adj[i+1]||0) - adj[i]) : 0); horizons[i].thicknessLocal = th; horizons[i].top = nextTop - th; horizons[i].base = nextTop; nextTop = horizons[i].top; }   // contiguïté garantie : une couche peut être amincie jusqu'à disparaître sous la surface
+      }
+
       // Température et pression au réservoir
       const tempAtRes  = 14 + topOfReservoir/1000*gradient;
       const tempAtSrc  = sourceIdx>=0 ? 14 + horizons[sourceIdx]?.top/1000*gradient : tempAtRes+20;
@@ -2313,7 +2331,8 @@ function generateGeology(gridSize, basinType, offshore, seed){
         if(ui>=0 && horizons[ui] && horizons[ui].top>0){
           const pt = 14 + horizons[ui].top*exhumation/1000*gradient, mu = pt<60 ? .05 : pt<=150 ? clamp(1-Math.abs(pt-105)/45,.15,1) : clamp(.8-(pt-150)/180,.3,.8);
           upperGen = clamp(.1+srcFaciesVal*.85,.02,.9)*mu;
-          faultJuxt = faults.some(f=> Math.abs(f.throw) > 60 && Math.abs((x-f.px)*f.nx + (y-f.py)*f.ny) <= 0.75);
+          const hUi = reservoirIdx>=0 ? horizons[reservoirIdx].top - horizons[ui].top : 0;   // V5.36 : la faille doit atteindre la roche-mère superficielle (une faille aveugle qui s'arrête dessous ne la met pas en contact)
+          faultJuxt = faults.some(f=> faultThrowAt(f,x,y) > 60 && Math.abs((x-f.px)*f.nx + (y-f.py)*f.ny) <= 0.75 && faultTaper(f,hUi,colH) > 0.5);
         } }
       // V4.49 : le TOC de la roche-mère suit la richesse organique LOCALE (le faciès qui fixe aussi la force de génération),
       // de 0,3 à 9,5 %. Avant, il était tiré une fois par couche (1,5 à 9,5 %) sans lien avec la charge : une roche-mère affichée
@@ -2332,10 +2351,11 @@ function generateGeology(gridSize, basinType, offshore, seed){
       const saltFlank = inSalt ? 0 : saltRing;
       // V5.34 : une faille étanche arrête la migration contre son plan et forme un piège côté abaissé ; une faille qui fuit (petit rejet sans argile, ou réactivée et ouverte) vide la couverture voisine.
       let faultTrap = 0, leakMult = 1, faultRole = null, faultInfo = null;
-      faults.forEach(f=>{ const d = (x-f.px)*f.nx + (y-f.py)*f.ny; if(Math.abs(d)>0.75 || inSalt) return; const T = Math.abs(f.throw); if(T<20) return;
-        const sc = faultSealCore(horizons, T, f.gouge, f.open); if(!sc) return; const lowered = f.throw>0 ? d>0 : d<0;
-        if(sc.s>=0.6){ if(lowered){ const ft = FAULT_TRAP_A + FAULT_TRAP_B*sc.s*Math.min(1, T/80); if(ft>faultTrap){ faultTrap = ft; faultRole = 'piege'; faultInfo = { T:Math.round(T), s:+sc.s.toFixed(2), open:false }; } } }
-        else if(sc.s<0.3){ leakMult *= 0.55 + 0.45*(sc.s/0.3); if(faultTrap<0.35){ faultRole = 'drain'; faultInfo = { T:Math.round(T), s:+sc.s.toFixed(2), open:!!f.open }; } } });
+      const sealTop = reservoirIdx>0 ? horizons.slice(0, reservoirIdx).reverse().find(h=>h.role==='seal') : null, hSeal = sealTop ? horizons[reservoirIdx].top - sealTop.top : 0;
+      faults.forEach(f=>{ const d = (x-f.px)*f.nx + (y-f.py)*f.ny; if(Math.abs(d)>0.75 || inSalt) return; const T = faultThrowAt(f, x, y); if(T<20) return;
+        const sc = faultSealCore(horizons, T, f.gouge, f.open); if(!sc) return; const lowered = f.throw>0 ? d>0 : d<0, breach = faultTaper(f, hSeal, colH) > 0.35;   // V5.36 : une faille ne vide la couverture que si elle la traverse
+        if(sc.s>=0.6){ if(lowered){ const ft = FAULT_TRAP_A + FAULT_TRAP_B*sc.s*Math.min(1, T/80); if(ft>faultTrap){ faultTrap = ft; faultRole = 'piege'; faultInfo = { T:Math.round(T), s:+sc.s.toFixed(2), open:false, blind:!!f.tipFrac, breach }; } } }
+        else if(sc.s<0.3 && breach){ leakMult *= 0.55 + 0.45*(sc.s/0.3); if(faultTrap<0.35){ faultRole = 'drain'; faultInfo = { T:Math.round(T), s:+sc.s.toFixed(2), open:!!f.open, blind:!!f.tipFrac, breach:true }; } } });
       const trapFactor     = clamp(Math.max(anticlineTop, pinchTrap, saltFlank, faultTrap), .03, .97);
       const resFactor      = inSalt ? .01 : clamp(.2+resFaciesVal*.75, .05, .95);
       // La lithologie de la couverture compte : sel et anhydrite scellent mieux qu'une argile, et
@@ -2435,7 +2455,8 @@ function generateGeology(gridSize, basinType, offshore, seed){
       const sideB = (b.x-f.px)*f.nx + (b.y-f.py)*f.ny;
       const sideK = (k.x-f.px)*f.nx + (k.y-f.py)*f.ny;
       if(sideB===0 || sideK===0 || Math.sign(sideB)===Math.sign(sideK)) return; // la faille ne coupe pas le trajet
-      const throwAbs = Math.abs(f.throw);
+      const tc = sideB/(sideB-sideK), throwAbs = faultThrowAt(f, b.x+tc*(k.x-b.x), b.y+tc*(k.y-b.y));   // V5.36 : rejet à l'endroit où le trajet croise le plan (nul au-delà de l'extrémité)
+      if(throwAbs <= 0) return;
       if(f.open){ factor *= 1.3; return; }   // V5.34 : faille ouverte (réactivée), drain : la charge la traverse
       if(throwAbs > 60) factor *= sourceAbove ? 1.3 : 0.35;      // faille majeure : barrière (conduit si la roche-mère est au-dessus)
       else if(throwAbs > 20) factor *= sourceAbove ? 1.15 : 0.7; // faille moyenne : gêne partiellement (aide si la roche-mère est au-dessus)
@@ -3194,15 +3215,20 @@ function predCheckHtml(b){
 // FAILLES LISIBLES (V5.32) : un saut de profondeur entre deux blocs voisins n'est une faille probable que s'il dépasse le bruit de la mesure. Le test compare le saut à l'écart-type du saut :
 // deux blocs d'un même profil 2D partagent presque la même erreur de pointé (corrélation PICK_RHO), donc leur saut est précis ; deux blocs de profils ou de méthodes différentes ont des erreurs indépendantes.
 // Seuils : z ≥ 2,5 faille probable, 1,5 ≤ z < 2,5 faille possible, et un saut d'au moins 80 m. Mesuré sur 10 cartes : l'ancien critère (saut > 120 m) ne donnait que 19 % de vraies failles parmi les alertes.
-function gsFaultTest(b1, b2){
+function gsFaultTest(b1, b2, bPrev, bNext){
   const e1=b1.estimate, e2=b2.estimate; if(!e1 || !e2 || e1.depth===undefined || e2.depth===undefined) return null;
   const only2d = b => !b.well && !b.dryHole && !b.studies.some(q=>q.type==='seismic3d'||q.type==='welllog'), st2 = b => b.studies.find(q=>q.type==='seismic2d');
   const s1=Math.max(5,(e1.depthErr||0)/Math.sqrt(3)), s2=Math.max(5,(e2.depthErr||0)/Math.sqrt(3));
   const a=st2(b1), c=st2(b2), same2d = only2d(b1) && only2d(b2) && a && c && a.result.profile!==undefined && a.result.profile===c.result.profile;
   const rho = same2d ? PICK_RHO : 0, sd = Math.sqrt(Math.max(25, s1*s1+s2*s2-2*rho*s1*s2)), jump = Math.abs(e1.depth-e2.depth), z = jump/sd;
-  const level = jump>=80 && z>=2.5 ? 'probable' : jump>=80 && z>=1.5 ? 'possible' : null;
-  return { jump, sd, z, level, same2d, raised: e1.depth<e2.depth ? b1.id : b2.id, lowered: e1.depth<e2.depth ? b2.id : b1.id };
+  // V5.36 : une faille est une MARCHE, pas une rampe. Un pendage ou un entraînement donne des sauts du même ordre de bloc en bloc ; une faille donne un saut isolé, au moins deux fois plus grand que ceux de ses voisins le long de la ligne.
+  // Mesure (16 cartes, 302 paires) : marche vérifiée 67 % de vraies failles, rampe 0 %, saut entre 1,5 et 2,5 écarts-types 0 %. Sans voisin mesuré on ne peut pas trancher : faille « possible » (à vérifier).
+  let level = null, contrast = null;
+  if(jump>=80 && z>=2.5){ const jp = bPrev ? gsJump(bPrev, b1) : null, jq = bNext ? gsJump(b2, bNext) : null;
+    if(jp!==null && jq!==null){ contrast = jump/Math.max(jp, jq, 1e-9); level = contrast>=2 ? 'probable' : null; } else level = 'possible'; }
+  return { jump, sd, z, level, contrast, same2d, raised: e1.depth<e2.depth ? b1.id : b2.id, lowered: e1.depth<e2.depth ? b2.id : b1.id };
 }
+function gsJump(b1, b2){ const e1=b1.estimate, e2=b2.estimate; return (!e1 || !e2 || e1.depth===undefined || e2.depth===undefined) ? null : Math.abs(e1.depth-e2.depth); }
 let GS_FAULT_CACHE = { key:'', v:null };
 function gsFaultEdges(){
   if(typeof blocks==='undefined' || !blocks.length) return { list:[], right:{}, bottom:{}, byBlock:{} };
@@ -3210,13 +3236,13 @@ function gsFaultEdges(){
   if(GS_FAULT_CACHE.key===key) return GS_FAULT_CACHE.v;
   const at = {}; blocks.forEach(b=>{ at[b.x+','+b.y]=b; });
   const list=[], right={}, bottom={}, byBlock={};
-  blocks.forEach(b=>{ if(b.inSalt) return; [[1,0,'r'],[0,1,'b']].forEach(([dx,dy,ax])=>{ const c=at[(b.x+dx)+','+(b.y+dy)]; if(!c || c.inSalt) return; const t=gsFaultTest(b,c); if(!t || !t.level) return;
+  blocks.forEach(b=>{ if(b.inSalt) return; [[1,0,'r'],[0,1,'b']].forEach(([dx,dy,ax])=>{ const c=at[(b.x+dx)+','+(b.y+dy)]; if(!c || c.inSalt) return; const t=gsFaultTest(b, c, at[(b.x-dx)+','+(b.y-dy)], at[(c.x+dx)+','+(c.y+dy)]); if(!t || !t.level) return;
     const edge = { a:b.id, b:c.id, axis:ax, ...t }; list.push(edge); (ax==='r'?right:bottom)[b.id]=edge; (byBlock[b.id]=byBlock[b.id]||[]).push(edge); (byBlock[c.id]=byBlock[c.id]||[]).push(edge); }); });
   const v = { list, right, bottom, byBlock }; GS_FAULT_CACHE = { key, v }; return v;
 }
 function gsFaultTitle(e){
   return e.level==='probable' ? TR(`Faille probable : saut de profondeur d'environ ${Math.round(e.jump/10)*10} m entre ces deux blocs (écart-type du saut ${Math.round(e.sd)} m).`,`Probable fault: depth step of about ${Math.round(e.jump/10)*10} m between these two blocks (standard deviation of the step ${Math.round(e.sd)} m).`)
-                             : TR(`Faille possible : saut d'environ ${Math.round(e.jump/10)*10} m, mais à peine plus grand que le bruit de mesure (écart-type ${Math.round(e.sd)} m). Une sismique plus fine ou un forage tranche.`,`Possible fault: step of about ${Math.round(e.jump/10)*10} m, barely larger than the measurement noise (standard deviation ${Math.round(e.sd)} m). Finer seismic or a well settles it.`);
+                             : TR(`Faille possible : saut d'environ ${Math.round(e.jump/10)*10} m, bien au-dessus du bruit (écart-type ${Math.round(e.sd)} m), mais un bloc voisin n'est pas mesuré : impossible de dire s'il s'agit d'une marche (faille) ou d'une rampe (pendage). Mesurez le voisin.`,`Possible fault: step of about ${Math.round(e.jump/10)*10} m, well above the noise (standard deviation ${Math.round(e.sd)} m), but a neighbouring block is not measured: impossible to tell a step (fault) from a ramp (dip). Measure the neighbour.`);
 }
 
 // ÉTANCHÉITÉ D'UNE FAILLE (V5.33) : ce que le joueur peut estimer de ses mesures. Deux critères classiques, calculés sur la colonne du compartiment relevé et le rejet mesuré (avec son écart-type) :
@@ -3249,8 +3275,8 @@ function faultRoleHtml(b){
   if(!(b.well || b.dryHole) || !b.faultRole || !b.faultInfo) return '';
   const trap = b.faultRole==='piege', fi = b.faultInfo;
   return `<div class="ps-section">${TR('Rôle de la faille voisine','Role of the neighbouring fault')}</div><div style="font-size:12px;"><b style="color:${trap?'var(--green)':'var(--red)'};">${trap?TR('Piège de faille','Fault trap'):TR('Drain','Drain')}</b> : ${trap
-    ? TR(`une faille étanche de ${fi.T} m de rejet arrête la migration contre son plan ; ce bloc, du côté abaissé, a bénéficié de la fermeture.`,`a sealing fault with ${fi.T} m of throw stops migration against its plane; this block, on the downthrown side, benefited from the closure.`)
-    : fi.open ? TR(`une faille de ${fi.T} m de rejet, réactivée et restée ouverte, a fait fuir la couverture de ce bloc et laisse passer la charge.`,`a fault with ${fi.T} m of throw, reactivated and still open, leaked the seal of this block and lets the charge through.`)
+    ? TR(`une faille étanche de ${fi.T} m de rejet arrête la migration contre son plan ; ce bloc, du côté abaissé, a bénéficié de la fermeture.${fi.blind?' C\'est une faille aveugle : elle s\'arrête vers le haut, la couverture reste intacte.':''}`,`a sealing fault with ${fi.T} m of throw stops migration against its plane; this block, on the downthrown side, benefited from the closure.${fi.blind?' It is a blind fault: it dies out upward, the seal stays intact.':''}`)
+    : fi.open ? TR(`une faille de ${fi.T} m de rejet, réactivée et restée ouverte, a fait fuir la couverture de ce bloc et laisse passer la charge.${fi.blind?' Elle est aveugle, mais sa tête dépasse la couverture.':''}`,`a fault with ${fi.T} m of throw, reactivated and still open, leaked the seal of this block and lets the charge through.${fi.blind?' It is blind, but its tip rises above the seal.':''}`)
                : TR(`une faille de ${fi.T} m de rejet, sans argile suffisante pour colmater, a fait fuir la couverture de ce bloc.`,`a fault with ${fi.T} m of throw, without enough clay to clog it, leaked the seal of this block.`)}</div>`;
 }
 function faultSealHtml(b){
@@ -6685,7 +6711,7 @@ function interpretSection(blockData, profileBlocks){
   // Détecter les failles : sauts brusques entre blocs contigus
   const faults = [];
   for(let i=1; i<dataPoints.length; i++){
-    const ft = gsFaultTest(dataPoints[i].b, dataPoints[i-1].b);   // V5.32 : même test que sur la carte, saut comparé au bruit de la mesure
+    const ft = gsFaultTest(dataPoints[i-1].b, dataPoints[i].b, dataPoints[i-2] && dataPoints[i-2].b, dataPoints[i+1] && dataPoints[i+1].b);   // V5.32 : même test que sur la carte, saut comparé au bruit de la mesure
     if(ft && ft.level) faults.push({ pos: (dataPoints[i].t + dataPoints[i-1].t)/2, throw: ft.jump, level: ft.level, sd: ft.sd });
   }
 
@@ -7698,7 +7724,7 @@ function renderSection(){
       if(!prev.layers) return;
       const resIdx = STRAT.findIndex(l=>l.role==='reservoir');
       if(resIdx < 0) return;
-      const ft = gsFaultTest(bd.b, prev.b);   // V5.32 : saut comparé au bruit de la mesure, plus de seuil fixe
+      const ft = gsFaultTest(prev.b, bd.b, blockData[i-2] && blockData[i-2].b, blockData[i+1] && blockData[i+1].b);   // V5.32 : saut comparé au bruit de la mesure, plus de seuil fixe
       if(ft && ft.level){
         const x = xOf((bd.t + prev.t)/2);
         const conf = ft.level==='probable' ? 0.9 : 0.5, dash = ft.level==='possible' ? 'stroke-dasharray="5,3"' : '';
@@ -8933,6 +8959,7 @@ const GLOSSARY_ENTRIES = [
   {term:TR('Krigeage','Kriging'), def:TR('Méthode qui interpole une grandeur (ici la qualité ou la profondeur du réservoir) entre des blocs mesurés en pondérant chaque mesure selon sa distance et son erreur. Elle donne à la fois une valeur et un écart-type : l\'incertitude croît avec la distance à une mesure.','Method that interpolates a quantity (here reservoir quality or depth) between measured blocks, weighting each measurement by its distance and its error. It gives both a value and a standard deviation: the uncertainty grows with the distance to a measurement.')},
   {term:TR('Écart-type et intervalle à 90 %','Standard deviation and 90 % interval'), def:TR('L\'écart-type mesure la dispersion probable d\'une estimation. L\'intervalle à 90 % vaut ± 1,64 écart-type : sur beaucoup de blocs, environ 9 sur 10 doivent y tomber. La validation croisée et le compteur « prévu contre réel » vérifient si c\'est vrai sur votre carte.','The standard deviation measures the probable spread of an estimate. The 90 % interval is ± 1.64 standard deviations: over many blocks, about 9 in 10 should fall inside. Cross-validation and the "predicted vs actual" counter check whether that holds on your map.')},
   {term:TR('Rejet, compartiment relevé et abaissé','Throw, raised and downthrown block'), def:TR('Le rejet est le décalage vertical des couches de part et d\'autre d\'une faille. Le côté où le toit du réservoir est le plus haut est le compartiment relevé, l\'autre est abaissé.','The throw is the vertical offset of the layers on either side of a fault. The side where the reservoir top is highest is the raised block, the other is downthrown.')},
+  {term:TR('Faille finie, faille aveugle','Finite fault, blind fault'), def:TR('Une faille finie s\'arrête sur sa longueur : son rejet est maximal au centre et tombe à zéro aux extrémités. Une faille aveugle s\'arrête vers le haut : les couches supérieures sont plissées, pas décalées, et la couverture reste intacte si la tête de faille reste dessous.','A finite fault dies out along its length: its throw is maximal at the centre and falls to zero at the tips. A blind fault dies out upward: the upper layers are folded, not offset, and the seal stays intact if the fault tip stays below it.')},
   {term:TR('Piège de faille et drain','Fault trap and drain'), def:TR('Une faille étanche arrête la migration contre son plan et forme un piège, du côté abaissé. Une faille qui fuit (petit rejet sans argile) ou réactivée et ouverte est un drain : elle vide la couverture voisine et laisse passer la charge.','A sealing fault stops migration against its plane and forms a trap, on the downthrown side. A leaking fault (small throw without clay) or a reactivated, open one is a drain: it empties the neighbouring seal and lets the charge through.')},
   {term:TR('Shale Gouge Ratio (SGR) et diagramme d\'Allan','Shale Gouge Ratio (SGR) and Allan diagram'), def:TR('Le SGR est la proportion d\'argile des couches qui ont glissé devant le toit du réservoir, sur la hauteur du rejet ; au-dessus d\'environ 25 % la faille colmate, sous 15 % elle fuit. Le diagramme d\'Allan place les deux compartiments face à face, décalés du rejet, pour voir ce qui fait face au réservoir.','The SGR is the clay proportion of the layers that slid past the reservoir top, over the height of the throw; above about 25 % the fault clogs, below 15 % it leaks. The Allan diagram puts the two blocks face to face, offset by the throw, to see what faces the reservoir.')},
   {term:TR('Biseau stratigraphique','Stratigraphic pinch-out'), def:TR('Amincissement progressif puis disparition latérale d\'une couche, créant un piège stratigraphique sans avoir besoin de déformation.','Gradual thinning then lateral disappearance of a layer, creating a stratigraphic trap with no need for deformation.')},
@@ -8954,7 +8981,8 @@ const GLOSSARY_ENTRIES = [
 const REALITY_TAGS = { loi:TR('Loi physique','Physical law'), approx:'Approximation', jeu:TR('Réglage de jeu','Game setting'), repere:TR('Repère réel sourcé','Sourced real benchmark') };
 const REALITY_ENTRIES = [
   {tag:'approx', term:TR('Krigeage de la carte','Kriging of the map'), def:TR('Le krigeage est une méthode statistique réelle. Dans le jeu, la covariance est gaussienne de portée 3,3 blocs, mesurée sur les cartes du jeu (qualité) ou ajustée sur le variogramme de leur profondeur (pépite 0,08), pas sur un bassin réel ; la tendance de la profondeur est un plan.','Kriging is a real statistical method. In the game, the covariance is Gaussian with a range of 3.3 blocks, measured on the game\'s maps (quality) or fitted to the variogram of their depth (nugget 0.08), not on a real basin; the depth trend is a plane.')},
-  {tag:'approx', term:TR('Faille probable ou possible','Probable or possible fault'), def:TR('Dans le jeu, un saut de profondeur entre deux blocs voisins est une faille probable si le saut vaut au moins 2,5 écarts-types et 80 m, possible à partir de 1,5 écart-type. En réel, la sismique voit un rejet sur la section elle-même ; ici il se déduit des pointés de blocs, avec une erreur de pointé corrélée le long d\'un même profil.','In the game, a depth step between two neighbouring blocks is a probable fault if it is at least 2.5 standard deviations and 80 m, possible from 1.5. In reality, seismic sees a throw on the section itself; here it is inferred from block picks, with a pick error correlated along a profile.')},
+  {tag:'approx', term:TR('Faille probable ou possible','Probable or possible fault'), def:TR('Dans le jeu, un saut de profondeur entre deux blocs voisins est une faille probable s\'il vaut au moins 2,5 écarts-types et 80 m et reste une marche (au moins deux fois plus grand que les sauts des blocs voisins), possible si un voisin n\'est pas mesuré. En réel, la sismique voit un rejet sur la section elle-même ; ici il se déduit des pointés de blocs, avec une erreur de pointé corrélée le long d\'un même profil.','In the game, a depth step between two neighbouring blocks is a probable fault if it is at least 2.5 standard deviations and 80 m and remains a step (at least twice the steps of the neighbouring blocks), possible if a neighbour is not measured. In reality, seismic sees a throw on the section itself; here it is inferred from block picks, with a pick error correlated along a profile.')},
+  {tag:'jeu', term:TR('Failles finies et aveugles dans le jeu','Finite and blind faults in the game'), def:TR('Réglages de jeu : 70 % des failles sont finies (rejet elliptique, maximal au centre, nul aux extrémités, demi-longueur de 2,5 à 7 cases pour une carte de 12) et s\'atténuent en travers ; 30 % sont régionales. 40 % sont aveugles, avec une tête à 25 à 85 % de la colonne au-dessus du réservoir (au moins 1,3 fois le rejet). Une faille aveugle plisse les couches supérieures au lieu de les décaler et ne vide la couverture que si elle la traverse. En réel, le rejet croît aussi avec la profondeur sur les failles de croissance, ce que le jeu ne modélise pas.','Game settings: 70 % of faults are finite (elliptical throw, maximum at the centre, zero at the tips, half-length of 2.5 to 7 blocks for a 12-block map) and fade across the plane; 30 % are regional. 40 % are blind, with a tip at 25 to 85 % of the column above the reservoir (at least 1.3 times the throw). A blind fault folds the upper layers instead of offsetting them and only empties the seal if it cuts through it. In reality, throw also grows with depth on growth faults, which the game does not model.')},
   {tag:'approx', term:TR('Étanchéité d\'une faille','Fault seal'), def:TR('Juxtaposition et SGR sont les critères usuels de l\'industrie. Les seuils du jeu (SGR de 15 à 25 %) viennent de la littérature et ne sont pas calés sur des données de bassin ; le diagramme d\'Allan est simplifié (une seule colonne type, un plan).','Juxtaposition and SGR are the industry\'s usual criteria. The game\'s thresholds (SGR of 15 to 25 %) come from the literature and are not calibrated on basin data; the Allan diagram is simplified (one type column, one plane).')},
   {tag:'jeu', term:TR('Faille piège ou drain dans le jeu','Fault trap or drain in the game'), def:TR('Réglages de jeu : 35 % des failles ont un petit rejet (20 à 80 m), 15 % sont réactivées et ouvertes, la qualité d\'un piège de faille vaut de 0,05 à 0,15, et une faille qui fuit réduit la couverture voisine jusqu\'à 45 %. Ces valeurs équilibrent le jeu, elles ne viennent pas d\'un bassin réel.','Game settings: 35 % of faults have a small throw (20 to 80 m), 15 % are reactivated and open, the quality of a fault trap is 0.05 to 0.15, and a leaking fault reduces the neighbouring seal by up to 45 %. These values balance the game, they do not come from a real basin.')},
   {tag:'repere', term:TR('Eau produite : le Permien','Produced water: the Permian'), def:TR('Repère réel : un puits du Wolfcamp démarre vers 2 barils d\'eau par baril d\'huile, environ 5 vers la 4e année et jusqu\'à 7 ; dans le Delaware l\'eau atteint 70 à 80 % (Wood Mackenzie, 2018-2019). Un puits conventionnel produit en moyenne bien plus d\'eau (environ 13 pour 1, étude du Bureau of Economic Geology). Dans le jeu : BSW des puits fracturés de 60-75 % au départ à 75-90 % après cinq ans, conventionnel de 60 à 90 % au plus ; le jeu est un peu plus doux que la réalité pour le conventionnel.','Real benchmark: a Wolfcamp well starts near 2 barrels of water per barrel of oil, about 5 by year four and up to 7; in the Delaware water reaches 70 to 80 % (Wood Mackenzie, 2018-2019). A conventional well produces on average far more water (about 13 to 1, Bureau of Economic Geology study). In the game: BSW of fracked wells from 60-75 % at the start to 75-90 % after five years, conventional up to 60-90 %; the game is somewhat gentler than reality for conventional wells.')},
@@ -11110,7 +11138,7 @@ function _doStartGame(){
     },
     {
       title: TR('Les failles : piège ou drain','Faults: trap or drain'),
-      body: `${TR(`Une <b>faille</b> décale les couches : d'un côté le toit du réservoir est plus haut (compartiment <i>relevé</i>), de l'autre plus bas (<i>abaissé</i>). Sur la carte, un trait rouge entre deux blocs voisins est une faille que vos mesures révèlent : <b>plein</b> si elle est probable, <b>en pointillé</b> si elle est seulement possible. Le jeu compare le saut de profondeur au bruit de la mesure. Deux blocs d'un même profil 2D partagent presque la même erreur, leur saut est donc précis ; deux blocs mesurés par des profils différents n'ont pas cet avantage. Un saut de moins de 80 m n'est jamais retenu, et une faille à petit rejet peut passer inaperçue.`,`A <b>fault</b> offsets the layers: on one side the reservoir top is higher (<i>raised</i> block), on the other lower (<i>downthrown</i>). On the map, a red line between two neighbouring blocks is a fault your measurements reveal: <b>solid</b> if probable, <b>dashed</b> if only possible. The game compares the depth step with the measurement noise. Two blocks of the same 2D profile share almost the same error, so their step is precise; two blocks measured by different profiles do not have that advantage. A step under 80 m is never kept, and a small-throw fault can go unnoticed.`)}<br><br>${TR(`Une faille est un <b>piège</b> ou un <b>drain</b>. Étanche, elle arrête la migration contre son plan et forme un piège du côté abaissé. Si elle fuit, elle vide la couverture des blocs voisins ; réactivée et restée ouverte, elle laisse aussi passer la charge. Pour en juger, la fiche d'un bloc voisin affiche une analyse d'étanchéité : la <b>fenêtre de fuite</b> (part du réservoir qui fait face à un autre réservoir de l'autre côté) et le <b>SGR</b> (l'argile entraînée le long du plan), avec un diagramme d'Allan simplifié. C'est une estimation : l'argile réellement entraînée et l'ouverture de la faille ne se révèlent qu'au forage d'un bloc voisin, qui indique alors son rôle, piège ou drain.`,`A fault is a <b>trap</b> or a <b>drain</b>. Sealing, it stops migration against its plane and forms a trap on the downthrown side. If it leaks, it empties the seal of the neighbouring blocks; reactivated and left open, it also lets the charge through. To judge it, the sheet of a neighbouring block shows a seal analysis: the <b>leak window</b> (share of the reservoir facing another reservoir across the fault) and the <b>SGR</b> (the clay smeared along the plane), with a simplified Allan diagram. It is an estimate: the clay actually smeared and the opening of the fault only show when a neighbouring block is drilled, which then tells you its role, trap or drain.`)}`,
+      body: `${TR(`Une <b>faille</b> décale les couches : d'un côté le toit du réservoir est plus haut (compartiment <i>relevé</i>), de l'autre plus bas (<i>abaissé</i>). Sur la carte, un trait rouge entre deux blocs voisins est une faille que vos mesures révèlent : <b>plein</b> si elle est probable, <b>en pointillé</b> si elle est seulement possible. Le jeu compare le saut de profondeur au bruit de la mesure. Deux blocs d'un même profil 2D partagent presque la même erreur, leur saut est donc précis ; deux blocs mesurés par des profils différents n'ont pas cet avantage. Une faille est une marche, pas une rampe : un saut isolé, au moins deux fois plus grand que ceux des blocs voisins le long de la ligne ; un pendage donne des sauts du même ordre de bloc en bloc. Si un voisin n'est pas mesuré, le jeu ne peut pas trancher et le trait reste en pointillé. Un saut de moins de 80 m n'est jamais retenu, et une faille à petit rejet peut passer inaperçue.<br><br>Une faille ne traverse pas toujours tout. Elle s'arrête sur sa longueur (son rejet décroît vers ses extrémités) et peut être <b>aveugle</b> : elle s'arrête vers le haut, où les couches sont seulement plissées et la couverture reste intacte. Sur la coupe, un rejet qui diminue vers le haut trahit une faille aveugle ; une telle faille ne vide pas la couverture.`,`A <b>fault</b> offsets the layers: on one side the reservoir top is higher (<i>raised</i> block), on the other lower (<i>downthrown</i>). On the map, a red line between two neighbouring blocks is a fault your measurements reveal: <b>solid</b> if probable, <b>dashed</b> if only possible. The game compares the depth step with the measurement noise. Two blocks of the same 2D profile share almost the same error, so their step is precise; two blocks measured by different profiles do not have that advantage. A fault is a step, not a ramp: an isolated jump at least twice as large as those of the neighbouring blocks along the line; a dip gives jumps of the same order from block to block. If a neighbour is not measured, the game cannot tell and the line stays dashed. A step under 80 m is never kept, and a small-throw fault can go unnoticed.<br><br>A fault does not always cut everything. It dies out along its length (its throw decreases toward its tips) and can be <b>blind</b>: it dies out upward, where the layers are only folded and the seal stays intact. On the section, a throw that decreases upward betrays a blind fault; such a fault does not empty the seal.`)}<br><br>${TR(`Une faille est un <b>piège</b> ou un <b>drain</b>. Étanche, elle arrête la migration contre son plan et forme un piège du côté abaissé. Si elle fuit, elle vide la couverture des blocs voisins ; réactivée et restée ouverte, elle laisse aussi passer la charge. Pour en juger, la fiche d'un bloc voisin affiche une analyse d'étanchéité : la <b>fenêtre de fuite</b> (part du réservoir qui fait face à un autre réservoir de l'autre côté) et le <b>SGR</b> (l'argile entraînée le long du plan), avec un diagramme d'Allan simplifié. C'est une estimation : l'argile réellement entraînée et l'ouverture de la faille ne se révèlent qu'au forage d'un bloc voisin, qui indique alors son rôle, piège ou drain.`,`A fault is a <b>trap</b> or a <b>drain</b>. Sealing, it stops migration against its plane and forms a trap on the downthrown side. If it leaks, it empties the seal of the neighbouring blocks; reactivated and left open, it also lets the charge through. To judge it, the sheet of a neighbouring block shows a seal analysis: the <b>leak window</b> (share of the reservoir facing another reservoir across the fault) and the <b>SGR</b> (the clay smeared along the plane), with a simplified Allan diagram. It is an estimate: the clay actually smeared and the opening of the fault only show when a neighbouring block is drilled, which then tells you its role, trap or drain.`)}`,
     },
     {
       title: TR('Forer et produire','Drilling and producing'),
