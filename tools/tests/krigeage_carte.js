@@ -80,5 +80,19 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(nbr.n===3 && nbr.sep && nbr.sorted && nbr.noWell,'où mesurer : trois blocs distants d\'au moins 3 cases, classés, ni forés ni déjà en 3D '+JSON.stringify([nbr.n,nbr.sep,nbr.sorted,nbr.noWell]));
   ok(Math.abs(nbr.reel-nbr.annonce)<=0.2*nbr.annonce+0.3,'le gain annoncé est exact : mesurer le bloc retire bien '+nbr.reel.toFixed(2)+' % d\'incertitude pondérée pour '+nbr.annonce.toFixed(2)+' % annoncés');
   ok(nbr.offBefore===0 && nbr.rings===3 && nbr.chips===3 && nbr.picked && nbr.simpleChips===0 && nbr.offAfter===0,'anneaux et pastilles : absents couche éteinte et en Découverte, trois quand la couche est active, la pastille sélectionne le bloc '+JSON.stringify([nbr.offBefore,nbr.rings,nbr.chips,nbr.picked,nbr.simpleChips,nbr.offAfter]));
+  const lr = await pg.evaluate(async()=>{ document.getElementById('geoSeed').value='91'; menuConfig.mode='expert'; menuConfig.basinType='permian'; menuConfig.seed='91'; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); setSpeed(0); G.budget=90e6; LABOPT.pick=false; G.labOpt.pick=false; performStudy(null,'gravity');
+    const n=Math.sqrt(blocks.length)|0, idOf=(x,y)=>blocks.find(b=>b.x===x&&b.y===y).id; for(const [a,b2] of [[idOf(1,2),idOf(n-2,2)],[idOf(1,5),idOf(n-2,5)],[idOf(1,n-3),idOf(n-2,n-3)]]){ G.sectionA=a; G.sectionB=b2; performStudy(null,'seismic2d'); }
+    const land=blocks.filter(b=>!b.isOffshore&&!b.inSalt&&b.studies.some(s=>s.type==='seismic2d')); land.slice(0,14).forEach(b=>performStudy(b.id,'seismic3d'));
+    const out={}; out.loo=gsLOO('q'); const D=GS_SURF.q.data(); out.n=D.d.length;
+    // formule exacte contre calcul par retrait un à un (qualité : moyenne fixe, sans tendance)
+    let maxd=0; for(let i=0;i<D.d.length;i++){ const rest=D.d.filter((_,k)=>k!==i); const f=gsKrigeFit(rest,[{x:D.d[i].x,y:D.d[i].y}],D.sd0,D.opt)[0]; const brute=D.d[i].v-f.m; maxd=Math.max(maxd,Math.abs(brute-out.loo.err[i])); } out.maxd=maxd;
+    // fiabilité réelle de l'intervalle sur les blocs non mesurés, contre la couverture annoncée par la validation croisée
+    const S=gsSurface('q'); let c=0,h=0; for(const b of blocks){ if(S.own[b.id]) continue; if(S.sd[b.id]/S.sd0>0.92) continue; c++; if(Math.abs(S.m[b.id]-b.trueQuality)<=1.64*S.sd[b.id]) h++; } out.real=h/c; out.c=c;
+    for(let k=0;k<5 && document.getElementById('krgBtn').dataset.mode!=='q';k++) document.getElementById('krgBtn').click(); out.txt=document.getElementById('krgScale').textContent;
+    const z=gsLOO('z'); out.zloo=z?{n:z.n,cov:z.cov}:null;
+    return out; });
+  ok(lr.n>=8 && lr.loo && lr.maxd<1e-6,'validation croisée : la formule exacte de Dubrule retrouve le retrait un à un sur '+lr.n+' mesures (écart max '+(lr.maxd&&lr.maxd.toExponential(1))+')');
+  ok(lr.loo && lr.loo.cov>=0.6 && lr.loo.cov<=1 && lr.loo.rmsZ>0.3 && lr.loo.rmsZ<2.5 && Math.abs(lr.real-lr.loo.cov)<=0.25,'la couverture annoncée par la validation croisée ('+Math.round(lr.loo.cov*100)+' %) est proche de la couverture réelle sur la carte ('+Math.round(lr.real*100)+' %, '+lr.c+' blocs)');
+  ok(/Validation croisée sur vos \d+ mesures/.test(lr.txt) && /intervalle à 90 %/.test(lr.txt),'l\'échelle affiche le résultat : '+lr.txt.replace(/\s+/g,' ').slice(-120));
   ok(errs.length===0,'aucune erreur JS '+errs.join('|'));
   await br.close(); console.log(ko?'ECHECS: '+ko:'TOUT OK'); process.exit(ko?1:0); })();

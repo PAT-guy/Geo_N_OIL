@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.30</title>
+<title>GeoExplorer V5.31</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2997,9 +2997,10 @@ const GEO = (()=>{
       out.push(r); }
     return out;
   }
-  return { cov, krige, field, condSim, gauss, chol, fwd };
+  return { cov, krige, field, condSim, gauss, chol, fwd, bwd };
 })();
 const GS_MODEL = { m:'gauss', a:3.3 };
+let GS_Z_MODEL = { m:'gauss', a:3.3, nug:0.08 };   // modèle de la profondeur du toit (V5.31) : variogramme empirique des résidus de profondeur sur 8 bassins ≈ gaussien de portée 3,3 à 3,6 avec une pépite d'environ 0,08 ; validé : rmsZ 1,01 (idéal 1)
 const GS_Q = { hydrogen:[28,10], helium:[30,10], permian:[30,10], paris:[40,14], rift:[29,10.5], aquitaine:[28,9.5], passive:[30,10.3], north_sea:[22,7.7], gulf_coast:[15.6,5.4], foreland:[32,12] };   // moyenne et écart-type de la qualité réservoir, mesurés par bassin
 const gsQStat = () => GS_Q[G.basinType] || [29,10];
 let GS_UNC_ON = false, GS_UNC_CACHE = { sig:'', v:null }, GS_KRG = '', GS_MODE = '';   // GS_MODE : bouton Cartes ('' éteint, 'unc' incertitude, 'q' qualité, 'z' profondeur) ; GS_UNC_ON et GS_KRG en découlent   // GS_KRG : couche de krigeage affichée sur la carte ('' aucune, 'q' qualité, 'z' profondeur)
@@ -3028,24 +3029,29 @@ const gsConfidence = b => 1 - gsUncertainty()[b.id];
 // TOUS les blocs, avec un écart-type de krigeage (l'incertitude). La profondeur est krigée sur les résidus d'un plan de tendance (le pendage régional) ; la qualité sur sa moyenne de bassin.
 // Ce que le joueur ne mesure pas n'est jamais révélé : seules ses propres mesures (avec leur erreur annoncée) alimentent le calcul, jamais la vérité du bloc.
 // =====================================================================
-function gsKrigeFit(data, tg, sd0, opt){
-  const n=data.length; if(!n) return null;
-  const mz = (opt && opt.mean!==undefined) ? opt.mean : data.reduce((t,p)=>t+p.v,0)/n; let T = ()=>mz;
+function gsTrendFn(data, opt){
+  const n=data.length, mz = (opt && opt.mean!==undefined) ? opt.mean : data.reduce((t,p)=>t+p.v,0)/n; let T = ()=>mz;
   if(opt && opt.trend && n>=5){   // plan de tendance par moindres carrés, seulement s'il est bien conditionné
     const mx=data.reduce((t,p)=>t+p.x,0)/n, my=data.reduce((t,p)=>t+p.y,0)/n; let vx=0,vy=0,cxy=0,cxz=0,cyz=0;
     data.forEach(p=>{ vx+=(p.x-mx)**2; vy+=(p.y-my)**2; cxy+=(p.x-mx)*(p.y-my); cxz+=(p.x-mx)*(p.v-mz); cyz+=(p.y-my)*(p.v-mz); });
     vx/=n; vy/=n; cxy/=n; cxz/=n; cyz/=n; const det = vx*vy-cxy*cxy;
     if(vx>0.5 && vy>0.5 && det>0.1*vx*vy){ const b=(cxz*vy-cyz*cxy)/det, c=(cyz*vx-cxz*cxy)/det, a=mz-b*mx-c*my, lo=Math.min(...data.map(p=>p.v)), hi=Math.max(...data.map(p=>p.v)), pad=0.5*(hi-lo); T=(x,y)=>clamp(a+b*x+c*y, lo-pad, hi+pad); }
   }
+  return T;
+}
+function gsKrigeFit(data, tg, sd0, opt){
+  const n=data.length; if(!n) return null;
+  const T = gsTrendFn(data, opt);
+  const mod = (opt && opt.model) || GS_MODEL, nug = mod.nug || 0, ps = 1-nug;   // pépite : part de variance sans corrélation spatiale
   const pts=data.map(p=>({ x:p.x, y:p.y, noise:Math.max(0.01,(p.sd/sd0)**2) })), res=data.map(p=>p.v-T(p.x,p.y));
-  const r=GEO.krige(pts, tg, GS_MODEL.m, GS_MODEL.a);
-  return tg.map((t,i)=>{ const w=r.W[i]; let sm=0; for(let k=0;k<n;k++) sm+=w[k]*res[k]; return { m:T(t.x,t.y)+sm, sd:sd0*Math.sqrt(r.V[i]) }; });
+  const r=GEO.krige(pts, tg, mod.m, mod.a, ps);
+  return tg.map((t,i)=>{ const w=r.W[i]; let sm=0; for(let k=0;k<n;k++) sm+=w[k]*res[k]; return { m:T(t.x,t.y)+sm, sd:sd0*Math.sqrt(r.V[i]+nug) }; });
 }
 let GS_SURF_CACHE = {};
 const GS_SURF = {
   q: { data:()=>{ const [mu,sd0]=gsQStat(), d=[]; blocks.forEach(b=>{ const e=b.estimate; if(e && e.quality!==undefined) d.push({ x:b.x, y:b.y, v:e.quality, sd:Math.max(1,(e.qualErr||0)/Math.sqrt(3)), id:b.id }); }); return { d, sd0, opt:{ mean:mu } }; },
        unit:'/100', fmt:v=>String(Math.round(v)), lo:0, hi:100 },
-  z: { data:()=>{ const d=[]; blocks.forEach(b=>{ const e=b.estimate; if(e && e.depth!==undefined) d.push({ x:b.x, y:b.y, v:e.depth, sd:Math.max(5,(e.depthErr||0)/Math.sqrt(3)), id:b.id }); }); const m=d.length?d.reduce((t,p)=>t+p.v,0)/d.length:1500, sv=d.length>2?Math.sqrt(d.reduce((t,p)=>t+(p.v-m)**2,0)/d.length):0; return { d, sd0:Math.max(80,0.06*m,0.6*sv), opt:{ trend:true } }; },
+  z: { data:()=>{ const d=[]; blocks.forEach(b=>{ const e=b.estimate; if(e && e.depth!==undefined) d.push({ x:b.x, y:b.y, v:e.depth, sd:Math.max(5,(e.depthErr||0)/Math.sqrt(3)), id:b.id }); }); const m=d.length?d.reduce((t,p)=>t+p.v,0)/d.length:1500, sv=d.length>2?Math.sqrt(d.reduce((t,p)=>t+(p.v-m)**2,0)/d.length):0; return { d, sd0:Math.max(80,0.06*m,0.6*sv), opt:{ trend:true, model:GS_Z_MODEL } }; },
        unit:' m', fmt:v=>String(Math.round(v/10)*10), lo:null, hi:null },
 };
 // Surface krigée de la grandeur « q » (qualité du réservoir) ou « z » (profondeur du toit) : { m, sd, own, sd0, n, norm } sur tous les blocs, null sans mesure
@@ -3069,6 +3075,21 @@ function gsKrig(b, kind){
   const u = S.sd[b.id]/S.sd0; if(u>0.92) return null;
   return { m:S.m[b.id], sd:S.sd[b.id], n:S.n, u, fmt:GS_SURF[kind].fmt(S.m[b.id]), unit:GS_SURF[kind].unit };
 }
+// VALIDATION CROISÉE (V5.31) : les intervalles du krigeage sont-ils honnêtes sur la carte du joueur ? Pour chaque mesure, on la retire par la pensée et on regarde si le krigeage des autres la retrouve dans son intervalle à 90 %.
+// Formule exacte de Dubrule, un seul calcul de K⁻¹ : l'erreur de la mesure i est (K⁻¹ r)_i / (K⁻¹)_ii et sa variance prédite 1 / (K⁻¹)_ii, plus la pépite. La tendance (plan) n'est pas réajustée à chaque retrait.
+let GS_LOO_CACHE = {};
+function gsLOO(kind){
+  const D = GS_SURF[kind].data(), n = D.d.length; if(n<8 || n>120) return null;
+  const sig = kind+'|'+D.d.map(p=>p.id+':'+Math.round(p.v*10)+':'+Math.round(p.sd*10)).join(';'); const c = GS_LOO_CACHE[kind]; if(c && c.sig===sig) return c.v;
+  const mod = (D.opt && D.opt.model) || GS_MODEL, nug = mod.nug||0, ps = 1-nug, T = gsTrendFn(D.d, D.opt), K = new Float64Array(n*n);
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++) K[i*n+j] = ps*GEO.cov(mod.m, Math.hypot(D.d[i].x-D.d[j].x, D.d[i].y-D.d[j].y), mod.a) + (i===j ? Math.max(0.01,(D.d[i].sd/D.sd0)**2)+1e-6 : 0);
+  const L = GEO.chol(K, n), Ki = [], e = new Float64Array(n); for(let j=0;j<n;j++){ e.fill(0); e[j]=1; Ki.push(GEO.bwd(L, n, GEO.fwd(L, n, e))); }
+  const r = D.d.map(p=>(p.v-T(p.x,p.y))/D.sd0), Kr = new Float64Array(n); for(let i=0;i<n;i++){ let t=0; for(let j=0;j<n;j++) t+=Ki[i][j]*r[j]; Kr[i]=t; }
+  const err = [], zs = []; let hit=0, z2=0;
+  for(let i=0;i<n;i++){ const kii=Ki[i][i], ei=Kr[i]/kii, sd=Math.sqrt(1/kii+nug), z=ei/sd; err.push(ei*D.sd0); zs.push(z); if(Math.abs(z)<=1.64) hit++; z2+=z*z; }
+  const v = { n, cov:hit/n, rmsZ:Math.sqrt(z2/n), err, zs }; GS_LOO_CACHE[kind] = { sig, v }; return v;
+}
+
 // OÙ MESURER ENSUITE (V5.28) : pour chaque bloc candidat, gain d'information d'une mesure supplémentaire = réduction de la variance de krigeage sur les blocs voisins, pondérée par l'intérêt de chacun
 // (probabilité estimée si elle est connue, sinon position structurale de la gravimétrie, sinon valeur neutre). Formule exacte du processus gaussien : ajouter une donnée de bruit v en b ramène la variance de
 // chaque cible t de cov_post(t,b)² / (var_post(b) + v). Résultat : les trois meilleurs blocs, avec le pourcentage d'incertitude pondérée qu'ils retirent. Les blocs forés ou déjà couverts en 3D sont exclus.
@@ -3077,18 +3098,18 @@ function gsNextBest(kind){
   const S = gsSurface(kind); if(!S || typeof blocks==='undefined') return [];
   const key = (GS_SURF_CACHE[kind]||{}).sig+'|'+blocks.reduce((t,b)=>t+b.studies.length+(b.well?1:0)+(b.dryHole?1:0),0);
   const c = GS_NB_CACHE[kind]; if(c && c.key===key) return c.v;
-  const D = GS_SURF[kind].data(), n = D.d.length, N = blocks.length, a = GS_MODEL.a, m = GS_MODEL.m; let out = [];
+  const D = GS_SURF[kind].data(), n = D.d.length, N = blocks.length, mod = (D.opt && D.opt.model) || GS_MODEL, a = mod.a, m = mod.m, nug = mod.nug||0, ps = 1-nug; let out = [];
   if(n){
     const K = new Float64Array(n*n);
-    for(let i=0;i<n;i++) for(let j=0;j<n;j++) K[i*n+j] = GEO.cov(m, Math.hypot(D.d[i].x-D.d[j].x, D.d[i].y-D.d[j].y), a) + (i===j ? Math.max(0.01,(D.d[i].sd/D.sd0)**2)+1e-6 : 0);
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++) K[i*n+j] = ps*GEO.cov(m, Math.hypot(D.d[i].x-D.d[j].x, D.d[i].y-D.d[j].y), a) + (i===j ? Math.max(0.01,(D.d[i].sd/D.sd0)**2)+1e-6 : 0);
     const L = GEO.chol(K, n), Y = new Array(N), V = new Float64Array(N), cv = new Float64Array(n);
-    for(let t=0;t<N;t++){ for(let i=0;i<n;i++) cv[i] = GEO.cov(m, Math.hypot(D.d[i].x-blocks[t].x, D.d[i].y-blocks[t].y), a); const y = GEO.fwd(L, n, cv); Y[t]=y; let q=0; for(let i=0;i<n;i++) q+=y[i]*y[i]; V[t] = Math.max(0, 1-q); }
+    for(let t=0;t<N;t++){ for(let i=0;i<n;i++) cv[i] = ps*GEO.cov(m, Math.hypot(D.d[i].x-blocks[t].x, D.d[i].y-blocks[t].y), a); const y = GEO.fwd(L, n, cv); Y[t]=y; let q=0; for(let i=0;i<n;i++) q+=y[i]*y[i]; V[t] = Math.max(0, ps-q); }
     const w = blocks.map(b=>{ if(b.well || b.dryHole) return 0.02; const e=b.estimate; return e && e.prob!==undefined ? e.prob : e && e.structPos!==undefined ? clamp(0.25+0.5*e.structPos, 0.05, 0.7) : 0.25; });
-    let tot = 0; for(let t=0;t<N;t++) tot += w[t]*V[t];
+    let tot = 0; for(let t=0;t<N;t++) tot += w[t]*(V[t]+nug);   // variance totale affichée (partie lissée + pépite)
     const NU = 0.5, R = 4.5, cand = [];
     blocks.forEach((b,bi)=>{ if(b.well || b.dryHole || (b.estimate && b.estimate.prob!==undefined) || V[bi]<0.05) return;
       let gain = 0; const den = V[bi]+NU;
-      for(let t=0;t<N;t++){ const h = Math.hypot(blocks[t].x-b.x, blocks[t].y-b.y); if(h>R) continue; let dot=0; for(let i=0;i<n;i++) dot+=Y[t][i]*Y[bi][i]; const cp = GEO.cov(m, h, a) - dot; gain += w[t]*cp*cp/den; }
+      for(let t=0;t<N;t++){ const h = Math.hypot(blocks[t].x-b.x, blocks[t].y-b.y); if(h>R) continue; let dot=0; for(let i=0;i<n;i++) dot+=Y[t][i]*Y[bi][i]; const cp = ps*GEO.cov(m, h, a) - dot; gain += w[t]*cp*cp/den; }
       cand.push({ id:b.id, x:b.x, y:b.y, pct:tot>0 ? 100*gain/tot : 0 }); });
     cand.sort((u,v)=>v.pct-u.pct); for(const c of cand){ if(out.length>=3) break; if(out.every(o=>Math.hypot(o.x-c.x,o.y-c.y)>=3)) out.push(c); }   // trois blocs distants d'au moins 3 cases : deux mesures voisines disent presque la même chose
   }
@@ -3100,7 +3121,8 @@ function krgUpdateTop(){
   const sc=document.getElementById('krgScale');
   if(sc){ const S = GS_KRG && !G.simple ? gsSurface(GS_KRG) : null;
     if(!S){ sc.innerHTML=''; } else { const q=GS_KRG==='q', grad = q ? 'linear-gradient(90deg,hsl(260,65%,38%),hsl(160,65%,49%),hsl(60,65%,60%))' : 'linear-gradient(90deg,hsl(205,70%,86%),hsl(205,70%,62%),hsl(205,70%,38%))', f=GS_SURF[GS_KRG].fmt, u=GS_SURF[GS_KRG].unit;
-      sc.innerHTML = `<span style="color:var(--text);">${q?TR('Qualité du réservoir','Reservoir quality'):TR('Profondeur du toit','Reservoir-top depth')} :</span> <b>${f(S.lo)}${q?'':u}</b><span class="krg-bar" style="background:${grad}"></span><b>${f(S.hi)}${q?u:u}</b> <span>${q?TR('(faible → forte)','(low → high)'):TR('(peu profond → profond)','(shallow → deep)')}</span>`; } }
+      sc.innerHTML = `<span style="color:var(--text);">${q?TR('Qualité du réservoir','Reservoir quality'):TR('Profondeur du toit','Reservoir-top depth')} :</span> <b>${f(S.lo)}${q?'':u}</b><span class="krg-bar" style="background:${grad}"></span><b>${f(S.hi)}${q?u:u}</b> <span>${q?TR('(faible → forte)','(low → high)'):TR('(peu profond → profond)','(shallow → deep)')}</span>`;
+      const lo = gsLOO(GS_KRG); sc.innerHTML += `<div style="margin-top:2px;">${lo ? TR(`Validation croisée sur vos ${lo.n} mesures : ${Math.round(lo.cov*100)} % retombent dans l'intervalle à 90 %. `,`Cross-validation on your ${lo.n} measurements: ${Math.round(lo.cov*100)} % fall inside the 90 % interval. `) + (lo.rmsZ>1.4 ? TR('Les intervalles sont trop optimistes sur cette carte : méfiez-vous.','The intervals are too optimistic on this map: be wary.') : lo.rmsZ<0.7 ? TR('Les intervalles sont prudents.','The intervals are cautious.') : TR('Les intervalles sont fiables.','The intervals are reliable.')) : TR('Validation croisée possible à partir de 8 mesures.','Cross-validation possible from 8 measurements.')}</div>`; } }
   const el=document.getElementById('krgTop'); if(!el) return;
   const nbk = krgNbKind(), nb = nbk && !G.simple ? gsNextBest(nbk) : [];
   el.innerHTML = nb.length ? `<span style="color:var(--text);">${TR('À mesurer en priorité (là où une mesure retire le plus d\'incertitude utile) : ','Measure first (where one measurement removes the most useful uncertainty): ')}</span>` + nb.map(x=>`<button type="button" class="adv-reset" style="margin:0 4px 2px 0;min-height:26px;padding:1px 8px;" onclick="krgPick(${x.id})">(${x.x},${x.y}) −${Math.round(x.pct)} %</button>`).join('') : '';
