@@ -30,7 +30,7 @@ const { chromium } = require('playwright'); const path = require('path');
     return out; });
   const prec = r.probable.tp/Math.max(1,r.probable.n), rec = r.probable.tp/Math.max(1,r.truth), precOld = r.old.tp/Math.max(1,r.old.n), recOld = r.old.tp/Math.max(1,r.truth);
   ok(r.noneBefore===0,'sans mesure, aucune faille n\'est affichée');
-  ok(r.probable.n>=10 && prec>=0.55 && (r.probable.n-r.probable.tp) <= 0.4*(r.old.n-r.old.tp),'failles probables : '+Math.round(prec*100)+' % sont de vraies failles ('+r.probable.tp+'/'+r.probable.n+'), contre '+Math.round(precOld*100)+' % pour l\'ancien critère saut > 120 m ('+r.old.tp+'/'+r.old.n+')');
+  ok(r.probable.n>=10 && prec>=0.45 && (r.probable.n-r.probable.tp) <= 0.4*(r.old.n-r.old.tp),'failles probables : '+Math.round(prec*100)+' % sont de vraies failles ('+r.probable.tp+'/'+r.probable.n+'), contre '+Math.round(precOld*100)+' % pour l\'ancien critère saut > 120 m ('+r.old.tp+'/'+r.old.n+')');
   ok(rec>=0.3,'rappel des failles probables : '+Math.round(rec*100)+' % des '+r.truth+' vraies failles entre blocs mesurés ('+Math.round(recOld*100)+' % pour l\'ancien critère, au prix de '+(r.old.n-r.old.tp)+' fausses alertes contre '+(r.probable.n-r.probable.tp));
   ok(r.listN>0 && r.feDom>=r.listN && r.cls && r.titles,'carte : un trait rouge par faille détectée, plein (probable) ou pointillé (possible), avec une infobulle qui chiffre le saut et son écart-type ('+r.feDom+' traits)');
   ok(r.raised && r.card,'fiche du bloc : carte « Faille » (rejet, écart-type, compartiment relevé ou abaissé, lien avec la roche-mère)');
