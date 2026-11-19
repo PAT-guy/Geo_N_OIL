@@ -10,14 +10,14 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(h.mini.vis && h.mini.h>=40 && h.mini.border && !h.mini.underline,'bouton Mini-jeux : bouton plein, 40 px au moins '+JSON.stringify(h.mini));
   const mb = await pg.evaluate(()=>{ const b=document.getElementById('quickMiniBtn'), cs=getComputedStyle(b), cu=getComputedStyle(document.getElementById('menuCustomBtn')); return { text:b.textContent, chip:document.getElementById('quickMiniCount').textContent, border:parseFloat(cs.borderTopWidth), borderCu:parseFloat(cu.borderTopWidth), bg:cs.backgroundColor, bgCu:cu.backgroundColor, h:Math.round(b.getBoundingClientRect().height) }; });
   ok(/Mini-jeux/.test(mb.text) && /quiz/i.test(mb.text) && /logs/i.test(mb.text) && /console/i.test(mb.text),'Mini-jeux : le bouton dit ce qu\'il contient (quiz, logs, sismique, console) '+mb.text.replace(/\s+/g,' ').slice(0,90));
-  ok(mb.chip==='12 jeux','Mini-jeux : pastille avec le nombre de jeux '+mb.chip);
+  ok(mb.chip==='13 jeux','Mini-jeux : pastille avec le nombre de jeux '+mb.chip);
   ok(mb.border>=2 && mb.border>mb.borderCu && mb.bg!==mb.bgCu && mb.h>=56,'Mini-jeux : bouton mis en avant (bordure plus épaisse et fond d\'accent, plus haut que les autres)');
   ok(h.custom.vis && h.custom.h>=40 && h.custom.border && !h.custom.underline,'« Personnaliser la partie » : bouton propre '+JSON.stringify(h.custom));
   ok(h.daily.vis && h.daily.h>=40 && h.daily.border && !h.daily.underline,'« Défi du jour » : bouton propre '+JSON.stringify(h.daily));
   ok(h.modes.includes("tp") && !h.modes.includes("sandbox") && h.modes.length===6,'Mode TP proposé, Bac à sable retiré de l\'affichage central '+h.modes);
   // la liste s'ouvre, un jeu s'ouvre et ferme la liste
   await pg.click('#quickMiniBtn'); await pg.waitForTimeout(200);
-  ok(await pg.evaluate(()=>getComputedStyle(document.getElementById('miniGamesModal')).display!=='none' && document.querySelectorAll('#miniGamesModal #quickTrain button').length===12),'Mini-jeux : la liste des 12 jeux s\'ouvre');
+  ok(await pg.evaluate(()=>getComputedStyle(document.getElementById('miniGamesModal')).display!=='none' && document.querySelectorAll('#miniGamesModal #quickTrain button').length===13),'Mini-jeux : la liste des 13 jeux s\'ouvre');
   await pg.click('#quickTrain button[data-quiz="fluides"]'); await pg.waitForTimeout(300);
   ok(await pg.evaluate(()=>document.getElementById('quizModal').classList.contains('open') && getComputedStyle(document.getElementById('miniGamesModal')).display==='none'),'un jeu choisi s\'ouvre et la liste se ferme');
   await pg.evaluate(()=>document.getElementById('quizModal').classList.remove('open'));
