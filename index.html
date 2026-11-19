@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.40</title>
+<title>GeoExplorer V5.41</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3391,7 +3391,7 @@ function lmBuild(P){
   const S = new Uint8Array(n2);   // 0 grain, 1 pore, 2 cement, 3 clay
   // le ciment et l'argile tapissent d'abord les parois des grains (les pixels les plus proches d'un grain) et bouchent donc les gorges étroites avant les gros pores
   const nTot = Math.min(n2, Kc+Kcl+Kp), inP0 = new Uint8Array(n2), p0 = order.slice(0, nTot); p0.forEach(q=>{ inP0[q]=1; });
-  const dt0 = lmDT(N, inP0); p0.sort((u,v)=>(dt0[u]-dt0[v]) + (lmHash(u)-lmHash(v))*0.6);
+  const dt0 = lmDT(N, inP0); p0.sort((u,v)=>(dt0[u]-dt0[v]) + (lmHash(u)-lmHash(v))*(P.rough ?? 0.6) || mm[v]-mm[u]);   // à égalité de distance, les pixels les plus proches de l'axe de la bande restent poreux : la partie poreuse reste continue
   for(let r=0; r<nTot; r++){ S[p0[r]] = r<Kc ? (P.cem.k==='argile' ? 3 : 2) : r<Kc+Kcl ? 3 : 1; }
   // pores connectés de la face gauche à la face droite (8 voisins : une coupe 2D sous-estime la connectivité, les pores se rejoignent aussi hors du plan)
   const comp = new Int32Array(n2).fill(-1), touchL = [], touchR = []; let nc = 0; const stack = [], DX = [-1,1,0,0,-1,-1,1,1], DY = [0,0,-1,1,-1,1,-1,1];
@@ -3435,6 +3435,11 @@ function lmPaint(cv, L, P, mode){
       else if(st===2) c = P.cem.k==='silice' ? [150,150,155] : [196+nz,186+nz,228];
       else if(st===3) c=[78+nz,66+nz,58+nz];
       else { const ext = t<0.14, pal=[[236,236,232],[250,238,150],[190,190,196],[238,200,140],[160,160,170],[206,222,242]], pc=pal[Math.floor(lmHash(g*3+5)*pal.length)]; c = ext ? [28,28,36] : [pc[0]+nz*.5, pc[1]+nz*.5, pc[2]+nz*.5]; }
+    } else if(mode==='fluid'){   // vue schématique des fluides en place : eau bleue, huile ambre, gaz rouge (la fluorescence UV ne montre pas le gaz)
+      if(st===1){ const f=L.fluid[q], h=0.85+0.15*lmHash(q*5); c = f===2 ? [190*h,118*h,24*h] : f===3 ? [232*h,74*h,64*h] : [92,156,236]; }
+      else if(st===2) c = P.cem.k==='silice' ? [232,232,228] : [236,196,206];
+      else if(st===3) c=[150+nz,120+nz,92];
+      else { const base = P.carb ? [212,192,160] : [226,226,220]; c=[base[0]+(t-.5)*10, base[1]+(t-.5)*10, base[2]+(t-.5)*10]; }
     } else if(mode==='uv'){
       if(st===1){ const f=L.fluid[q]; c = f===2 ? [hcCol[0]*(.8+.2*lmHash(q*5)), hcCol[1]*(.8+.2*lmHash(q*5)), hcCol[2]*(.8+.2*lmHash(q*5))] : f===3 ? [10,10,14] : [8,12,40]; }
       else if(st===2) c = P.cem.k==='silice' ? [22,22,30] : [28,24,40]; else if(st===3) c=[34,28,24]; else c=[18+nz*.3,18+nz*.3,26+nz*.3];
@@ -3450,8 +3455,17 @@ function lmPaint(cv, L, P, mode){
 function lmOpen(blockId){
   const b = blocks[blockId], P = b && lmParams(b); if(!P) return;
   P.r = lmRatio(P); P.nz = clamp(0.55 - 0.3*Math.log10(Math.max(0.01, P.perm)), 0.1, 1.3);   // pincement des gorges selon la perméabilité mesurée : 0,1 mD → 0,85 ; 1 mD → 0,55 ; 10 mD → 0,25 ; 100 mD → 0,1
-  let L = lmBuild(P);   // une réalisation unique d'un réseau près du seuil de percolation peut s'écarter de la mesure : au plus une reconstruction, avec un pincement plus faible (roche perméable) ou plus fort (roche compacte)
-  if(P.perm>=3 && L.stats.conn<0.4){ P.nz = 0.05; P.tw = 0; P.cem = { ...P.cem, f:P.cem.f*0.5 }; P.clay *= 0.5; L = lmBuild(P); } else if(P.perm<0.3 && L.stats.conn>0.6){ P.nz = 1.3; L = lmBuild(P); }
+  // Une roche de 1 mD n'est pas une roche aux pores isolés, et une roche de 100 mD n'a pas des pores reliés à 100 % par hasard : la rugosité des gorges (P.rough, 0 : partie poreuse continue, 0,6 : gorges hachées) est ajustée par dichotomie, sans résoudre l'écoulement (rapide), pour que la part de pores reliés suive la perméabilité mesurée. L'écoulement n'est résolu qu'une fois, à la fin.
+  const target = P.perm>=20 ? 0.95 : P.perm>=5 ? 0.7 : P.perm>=1 ? 0.4 : P.perm>=0.1 ? 0.15 : P.perm>=0.05 ? 0.05 : 0;
+  P.iters = 0; let L, best = null, pos = null, lo = 0, hi = 1; const nz0 = P.nz;
+  const setU = u => { P.rough = 0.6*u; P.nz = Math.max(0.02, nz0*u); P.tw = 0.15*u; };
+  if(target>0){
+    for(let k=0; k<6; k++){ const u = k===0 ? 0.5 : (lo+hi)/2; setU(u); const Lm = lmBuild(P), c = Lm.stats.conn, err = Math.abs(c-target) - (c>0 ? 0 : 0.02);
+      if(!best || err<best.err) best = { err, u, L:Lm }; if(c>0 && (!pos || u>pos.u)) pos = { u, L:Lm }; if(c>target) lo = u; else hi = u; if(err<0.08) break; }
+    if(best.L.stats.conn===0 && pos) best = pos;   // la percolation est brutale : mieux vaut un réseau à peine relié que 0 % pour une roche mesurée perméable
+    setU(best.u); L = best.L;
+  } else { setU(1); L = lmBuild(P); }
+  P.iters = 600; L = lmBuild(P);
   LM.b = b; LM.P = P; LM.L = L; LM.mode = 'ppl'; document.getElementById('lmModal').style.display = 'flex'; lmRender();
 }
 function lmMode(m){ LM.mode = m; lmRender(); }
@@ -3459,12 +3473,13 @@ function lmClose(){ document.getElementById('lmModal').style.display = 'none'; }
 function lmRender(){
   if(!LM.L) return; const P = LM.P, L = LM.L, st = L.stats, pc = v=>Math.round(v*100)+' %', fx = v=>String(v).replace('.',DEC);
   lmPaint(document.getElementById('lmCanvas'), L, P, LM.mode);
-  const modes = [['ppl',TR('Lumière naturelle','Plane light')],['xpl',TR('Polars croisés','Crossed polars')],['uv',TR('Fluorescence UV','UV fluorescence')],['flow',TR('Écoulement','Flow')]];
+  const modes = [['ppl',TR('Lumière naturelle','Plane light')],['xpl',TR('Polars croisés','Crossed polars')],['fluid',TR('Fluides en place','Fluids in place')],['uv',TR('Fluorescence UV','UV fluorescence')],['flow',TR('Écoulement','Flow')]];
   document.getElementById('lmModes').innerHTML = modes.map(([k,l])=>`<button class="lab-pick ${LM.mode===k?'sel':''}" onclick="lmMode('${k}')">${l}</button>`).join('');
   const hcTxt = P.hc>0 ? (P.gas ? TR('gaz','gas') : TR('huile','oil')) : '';
   const txt = {
     ppl: TR(`Lumière naturelle. L'époxy bleu remplit les vides : on voit la porosité (${pc(st.phi)} de l'image). Le ciment est coloré (rose : calcite teinte à l'alizarine), l'argile est brune.`,`Plane light. The blue epoxy fills the voids: the porosity is visible (${pc(st.phi)} of the image). The cement is stained (pink: calcite stained with alizarin), the clay is brown.`),
     xpl: TR(`Polars croisés. Chaque grain prend sa couleur d'interférence (certains sont à l'extinction), le ciment calcite est vif, les pores restent noirs. Sert à distinguer grains, ciment et argile.`,`Crossed polars. Each grain takes its interference colour (some are at extinction), calcite cement is bright, the pores stay black. It tells grains, cement and clay apart.`),
+    fluid: TR(`Fluides dans les pores (vue schématique) : eau en bleu${P.hc>0 ? `, ${P.gas?'gaz en rouge':'huile en ambre'}` : ''}. ${P.hc>0 ? `${P.gas?'Gaz':'Huile'} : ${pc(st.hcSeen)} des pores, eau : ${pc(1-st.hcSeen)} (la carotte donne ${Math.round(P.hc*100)} % d'hydrocarbures). Dans une roche mouillée à l'eau, l'hydrocarbure occupe les plus gros pores et l'eau reste dans les petits pores et sur les parois.` : 'Aucun hydrocarbure dans cet échantillon : tous les pores sont pleins d\'eau.'}`,`Fluids in the pores (schematic view): water in blue${P.hc>0 ? `, ${P.gas?'gas in red':'oil in amber'}` : ''}. ${P.hc>0 ? `${P.gas?'Gas':'Oil'}: ${pc(st.hcSeen)} of the pores, water: ${pc(1-st.hcSeen)} (the core gives ${Math.round(P.hc*100)} % hydrocarbons). In a water-wet rock, the hydrocarbon fills the largest pores and water stays in the small pores and along the walls.` : 'No hydrocarbon in this sample: all the pores are water-filled.'}`),
     uv: P.hc>0 ? TR(`Fluorescence UV. ${P.gas?'Le gaz ne fluoresce pas : les pores restent noirs.':`L'huile fluoresce (${P.api>=40?'bleu-blanc : huile légère':P.api>=25?'jaune-vert : huile moyenne':'orange : huile lourde'}), l'eau reste noire.`} Fraction des pores occupée par ${hcTxt} : ${pc(st.hcSeen)} (la carotte donne ${Math.round(P.hc*100)} %). Elle occupe les plus gros pores d'abord, l'eau reste dans les plus petits.`,`UV fluorescence. ${P.gas?'Gas does not fluoresce: the pores stay black.':`Oil fluoresces (${P.api>=40?'blue-white: light oil':P.api>=25?'yellow-green: medium oil':'orange: heavy oil'}), water stays black.`} Share of the pores occupied by ${hcTxt}: ${pc(st.hcSeen)} (the core gives ${Math.round(P.hc*100)} %). It fills the largest pores first, water stays in the smallest.`)
         : TR(`Fluorescence UV. Aucun hydrocarbure dans cet échantillon : tous les pores sont pleins d'eau et restent noirs.`,`UV fluorescence. No hydrocarbon in this sample: all the pores are water-filled and stay black.`),
     flow: TR(`Écoulement simulé de gauche (pression forte) à droite (pression nulle) : couleur du violet au jaune = flux croissant dans les pores reliés d'un bord à l'autre ; gris = pores isolés, sans écoulement. Le flux passe par les gorges larges ; le ciment les bouche d'abord.`,`Simulated flow from left (high pressure) to right (zero pressure): colour from purple to yellow = increasing flux in the pores linked from one edge to the other; grey = isolated pores, no flow. Flow goes through the wide throats; cement plugs them first.`) };
@@ -3475,7 +3490,7 @@ function lmRender(){
     + row(TR('Conductance relative de la lame','Relative conductance of the slice'), fx(st.keff.toFixed(3)))
     + row(TR('Perméabilité : Kozeny-Carman (carotte)','Permeability: Kozeny-Carman (core)'), `${fx(st.kcMd<10 ? st.kcMd.toFixed(1) : Math.round(st.kcMd))} mD (${fx(LM.b.estimate.core.permeability.toFixed(2))} mD)`)
     + row(TR('Vue','Field of view'), `${fx(st.viewMm.toFixed(1))} mm`)
-    + `<div style="color:var(--muted);font-size:11px;margin-top:6px;line-height:1.5;">${TR('Kozeny-Carman suppose des pores propres et connectés ; l\'écart avec la mesure vient du ciment, de l\'argile et des gorges pincées. Image 2D indicative construite d\'après la carotte, elle ne remplace pas une vraie lame.','Kozeny-Carman assumes clean, connected pores; the gap with the measurement comes from cement, clay and pinched throats. Indicative 2D image built from the core, it does not replace a real thin section.')}</div>`;
+    + `<div style="color:var(--muted);font-size:11px;margin-top:6px;line-height:1.5;">${TR('Une coupe 2D sous-estime la connexion : des pores isolés dans le plan se rejoignent hors du plan, donc une roche perméable peut afficher peu de pores reliés. Kozeny-Carman suppose des pores propres et connectés ; l\'écart avec la mesure vient du ciment, de l\'argile et des gorges pincées. Image 2D indicative construite d\'après la carotte, elle ne remplace pas une vraie lame.','A 2D cut underestimates connection: pores isolated in the plane join out of the plane, so a permeable rock can show few linked pores. Kozeny-Carman assumes clean, connected pores; the gap with the measurement comes from cement, clay and pinched throats. Indicative 2D image built from the core, it does not replace a real thin section.')}</div>`;
 }
 
 // Modèle 3D de lithologie le long d'une coupe : le toit de CHAQUE couche est krigé séparément à partir de tous les blocs qui portent une donnée de couches (log, sismique 2D), pas seulement ceux du profil.
@@ -10642,6 +10657,7 @@ function _doStartGame(){
   function qzFluidOpts(good, wrongs, fmt, gap){
     const all = [{ v:good, tag:null }, ...wrongs], vals = all.map(a=>a.v);
     for(let i=0;i<vals.length;i++) for(let j=i+1;j<vals.length;j++) if(Math.abs(vals[i]-vals[j]) < (gap||0.08)*Math.max(vals[i],vals[j])) return null;
+    if(new Set(vals.map(fmt)).size < vals.length) return null;   // deux valeurs écartées de plus de 8 % peuvent s'arrondir à la même étiquette (4,6 et 5,4 mD donnent « 5 mD » deux fois)
     const sh = qzShuffled(all);
     return { choices: sh.map(a=>fmt(a.v)), correct: sh.findIndex(a=>a.tag===null), tags: sh.map(a=>a.tag) };
   }
