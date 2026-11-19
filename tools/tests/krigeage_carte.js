@@ -55,5 +55,22 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(r.lm>=5 && r.lmOrd && r.lmK && r.lmConf<=0.5,'coupe : modèle 3D de lithologie krigé, couches contiguës, confiance plafonnée à 0,5 (sismique : 0,7)');
   ok(r.lgQ && r.lgZ && r.lgOff,'légende : une ligne lisible (couleur = valeur, hachures = incertitude) selon la couche, masquée quand la couche est éteinte');
   ok(r.warnOk,'divergence avec la gravimétrie signalée seulement au-delà de 2 écarts-types');
+  const nbr = await pg.evaluate(async()=>{ const out={}; const nb=gsNextBest('z'); out.n=nb.length; out.sep=nb.every((a,i)=>nb.every((b,j)=>i===j||Math.hypot(a.x-b.x,a.y-b.y)>=3)); out.sorted=nb.every((a,i)=>i===0||nb[i-1].pct>=a.pct-1e-9); out.noWell=nb.every(x=>!blocks[x.id].well&&!blocks[x.id].dryHole&&blocks[x.id].estimate?.prob===undefined);
+    // la formule du gain est exacte : ajouter vraiment la mesure retire la part annoncée de variance pondérée
+    const wts=()=>blocks.map(b=>{ if(b.well||b.dryHole) return 0.02; const e=b.estimate; return e&&e.prob!==undefined?e.prob:e&&e.structPos!==undefined?clamp(0.25+0.5*e.structPos,0.05,0.7):0.25; });
+    const tot=()=>{ const S=gsSurface('z'), w=wts(); let t=0; for(let i=0;i<blocks.length;i++){ const u=S.sd[i]/S.sd0; t+=w[i]*u*u; } return t; };
+    const t0=tot(), top=nb[0], b=blocks[top.id], S=gsSurface('z'), old=b.estimate; const sdMeas=Math.sqrt(0.5)*S.sd0;
+    b.estimate={ ...(old||{}), depth:S.m[b.id], depthErr:sdMeas*Math.sqrt(3) }; GS_SURF_CACHE={}; const t1=tot(); b.estimate=old; GS_SURF_CACHE={};
+    out.annonce=top.pct; out.reel=100*(t0-t1)/t0;
+    // affichage : anneaux et pastilles seulement quand la couche est active, hors Découverte ; une pastille sélectionne le bloc
+    out.offBefore=document.querySelectorAll('.block .krg-top').length+document.querySelectorAll('#krgTop button').length;
+    document.getElementById('krgBtn').click(); await new Promise(r=>setTimeout(r,150)); out.rings=document.querySelectorAll('.block .krg-top').length; out.chips=document.querySelectorAll('#krgTop button').length;
+    const first=document.querySelector('#krgTop button'); const idc=+first.getAttribute('onclick').match(/\d+/)[0]; first.click(); await new Promise(r=>setTimeout(r,150)); out.picked=selectedBlock===idc;
+    G.simple=true; krgUpdateTop(); out.simpleChips=document.querySelectorAll('#krgTop button').length; G.simple=false;
+    document.getElementById('krgBtn').click(); document.getElementById('krgBtn').click(); await new Promise(r=>setTimeout(r,100)); out.offAfter=document.querySelectorAll('.block .krg-top').length+document.querySelectorAll('#krgTop button').length;
+    return out; });
+  ok(nbr.n===3 && nbr.sep && nbr.sorted && nbr.noWell,'où mesurer : trois blocs distants d\'au moins 3 cases, classés, ni forés ni déjà en 3D '+JSON.stringify([nbr.n,nbr.sep,nbr.sorted,nbr.noWell]));
+  ok(Math.abs(nbr.reel-nbr.annonce)<=0.2*nbr.annonce+0.3,'le gain annoncé est exact : mesurer le bloc retire bien '+nbr.reel.toFixed(2)+' % d\'incertitude pondérée pour '+nbr.annonce.toFixed(2)+' % annoncés');
+  ok(nbr.offBefore===0 && nbr.rings===3 && nbr.chips===3 && nbr.picked && nbr.simpleChips===0 && nbr.offAfter===0,'anneaux et pastilles : absents couche éteinte et en Découverte, trois quand la couche est active, la pastille sélectionne le bloc '+JSON.stringify([nbr.offBefore,nbr.rings,nbr.chips,nbr.picked,nbr.simpleChips,nbr.offAfter]));
   ok(errs.length===0,'aucune erreur JS '+errs.join('|'));
   await br.close(); console.log(ko?'ECHECS: '+ko:'TOUT OK'); process.exit(ko?1:0); })();
