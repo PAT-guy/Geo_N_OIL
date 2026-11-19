@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.29</title>
+<title>GeoExplorer V5.30</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -145,14 +145,14 @@ main{flex:1; display:grid; grid-template-columns:1fr var(--right-w, 380px); over
 .lab-secchk input{margin:0;}
 .axl{font-family:var(--mono); font-size:10px; color:var(--muted); display:flex; align-items:center; justify-content:center;}
 .block .unc{position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(45deg,rgba(40,40,40,.62) 0 2px,transparent 2px 6px);}
-#uncBtn.on{background:var(--text);color:var(--bg);}
-body.simple-ui #uncBtn, body.simple-ui #krgBtn{display:none !important;}
+body.simple-ui #krgBtn{display:none !important;}
 .block .krg{position:absolute;inset:0;border-radius:inherit;pointer-events:none;}
 .block .krg-top{position:absolute;inset:1px;border:2px dashed #e0561a;border-radius:inherit;pointer-events:none;z-index:3;}
 .block .kv{position:absolute;left:0;right:0;bottom:1px;text-align:center;font-size:9px;line-height:1;font-family:var(--mono);color:#111;text-shadow:0 0 2px #fff,0 0 2px #fff;pointer-events:none;z-index:2;}
 #krgBtn.on{background:var(--text);color:var(--bg);}
 #krgBtn .krg-m{display:none;}
-#krgBtn[data-mode="q"] .krg-q, #krgBtn[data-mode="z"] .krg-z{display:inline;}
+#krgBtn[data-mode="unc"] .krg-u, #krgBtn[data-mode="q"] .krg-q, #krgBtn[data-mode="z"] .krg-z{display:inline;}
+.krg-bar{display:inline-block;vertical-align:middle;width:120px;height:10px;border-radius:3px;border:1px solid var(--border);margin:0 5px;}
 .block{
   width:44px; height:44px; border:1px solid var(--line-strong); cursor:pointer;
   position:relative; display:flex; align-items:center; justify-content:center; border-radius:6px;
@@ -1245,8 +1245,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
       </div>
       <span id="toolLabel">Mode : Sélection</span>
       <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
-        <button class="btn" id="uncBtn" aria-pressed="false"><span class="i18n" data-fr="Incertitude" data-en="Uncertainty">Incertitude</span></button>
-        <button class="btn" id="krgBtn" data-mode="" aria-pressed="false"><span class="i18n" data-fr="Krigeage" data-en="Kriging">Krigeage</span><span class="krg-m krg-q">&nbsp;: <span class="i18n" data-fr="qualité" data-en="quality">qualité</span></span><span class="krg-m krg-z">&nbsp;: <span class="i18n" data-fr="profondeur" data-en="depth">profondeur</span></span></button>
+        <button class="btn" id="krgBtn" data-mode="" aria-pressed="false"><span class="i18n" data-fr="Cartes" data-en="Maps">Cartes</span><span class="krg-m krg-u">&nbsp;: <span class="i18n" data-fr="incertitude" data-en="uncertainty">incertitude</span></span><span class="krg-m krg-q">&nbsp;: <span class="i18n" data-fr="qualité" data-en="quality">qualité</span></span><span class="krg-m krg-z">&nbsp;: <span class="i18n" data-fr="profondeur" data-en="depth">profondeur</span></span></button>
         <label class="lab-secchk" title="Afficher ou masquer tous les traits de coupe sur la carte (la coupe affichée en trait plein, les autres en pointillé)"><input type="checkbox" id="secLineChk" checked onchange="labToggleSecLine(this.checked)"> Traits de coupe</label>
         <button class="btn" id="zoomOut" aria-label="Zoom arrière">−</button>
         <span id="zoomLbl" style="font-size:12px; color:var(--muted); min-width:40px; text-align:center; font-family:var(--mono);">100%</span>
@@ -1254,7 +1253,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
         <button class="btn" id="zoomFit" aria-label="Vue d'ensemble" title="Vue d'ensemble : toute la carte à l'écran">⤢<span class="l-full"> <span class="i18n" data-fr="Tout voir" data-en="Fit">Tout voir</span></span></button>
       </div>
     </div>
-    <div id="krgLegend" style="display:none;font-size:11.5px;color:var(--muted);padding:2px 14px 6px;line-height:1.4;"><span class="krg-lg krg-lq"><span class="i18n" data-fr="Qualité du réservoir interpolée (krigeage) : la couleur donne la valeur de 0 à 100, les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré." data-en="Interpolated reservoir quality (kriging): colour is the value from 0 to 100, hatching is the uncertainty (standard deviation). Measure where it is heavily hatched.">Qualité du réservoir interpolée (krigeage) : la couleur donne la valeur de 0 à 100, les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré.</span></span><span class="krg-lg krg-lz"><span class="i18n" data-fr="Profondeur du toit interpolée (krigeage) : plus la case est foncée, plus le toit est profond ; les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré." data-en="Interpolated reservoir-top depth (kriging): the darker the block, the deeper the top; hatching is the uncertainty (standard deviation). Measure where it is heavily hatched.">Profondeur du toit interpolée (krigeage) : plus la case est foncée, plus le toit est profond ; les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré.</span></span><div id="krgTop" style="margin-top:3px;"></div></div>
+    <div id="krgLegend" style="display:none;font-size:11.5px;color:var(--muted);padding:2px 14px 6px;line-height:1.4;"><span class="krg-lg krg-lu"><span class="i18n" data-fr="Incertitude : les cases hachurées sont celles où vos mesures ne disent presque rien (écart-type de krigeage). Mesurez là où c'est très hachuré." data-en="Uncertainty: hatched blocks are those where your measurements say almost nothing (kriging standard deviation). Measure where it is heavily hatched.">Incertitude : les cases hachurées sont celles où vos mesures ne disent presque rien (écart-type de krigeage). Mesurez là où c'est très hachuré.</span></span><span class="krg-lg krg-lq"><span class="i18n" data-fr="Qualité du réservoir interpolée (krigeage) : la couleur donne la valeur de 0 à 100, les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré." data-en="Interpolated reservoir quality (kriging): colour is the value from 0 to 100, hatching is the uncertainty (standard deviation). Measure where it is heavily hatched.">Qualité du réservoir interpolée (krigeage) : la couleur donne la valeur de 0 à 100, les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré.</span></span><span class="krg-lg krg-lz"><span class="i18n" data-fr="Profondeur du toit interpolée (krigeage) : plus la case est foncée, plus le toit est profond ; les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré." data-en="Interpolated reservoir-top depth (kriging): the darker the block, the deeper the top; hatching is the uncertainty (standard deviation). Measure where it is heavily hatched.">Profondeur du toit interpolée (krigeage) : plus la case est foncée, plus le toit est profond ; les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré.</span></span><div id="krgScale" style="margin-top:3px;"></div><div id="krgTop" style="margin-top:3px;"></div></div>
     <div class="map-body">
       <div id="mapWrap">
         <div class="grid" id="grid"></div>
@@ -3003,7 +3002,7 @@ const GEO = (()=>{
 const GS_MODEL = { m:'gauss', a:3.3 };
 const GS_Q = { hydrogen:[28,10], helium:[30,10], permian:[30,10], paris:[40,14], rift:[29,10.5], aquitaine:[28,9.5], passive:[30,10.3], north_sea:[22,7.7], gulf_coast:[15.6,5.4], foreland:[32,12] };   // moyenne et écart-type de la qualité réservoir, mesurés par bassin
 const gsQStat = () => GS_Q[G.basinType] || [29,10];
-let GS_UNC_ON = false, GS_UNC_CACHE = { sig:'', v:null }, GS_KRG = '';   // GS_KRG : couche de krigeage affichée sur la carte ('' aucune, 'q' qualité, 'z' profondeur)
+let GS_UNC_ON = false, GS_UNC_CACHE = { sig:'', v:null }, GS_KRG = '', GS_MODE = '';   // GS_MODE : bouton Cartes ('' éteint, 'unc' incertitude, 'q' qualité, 'z' profondeur) ; GS_UNC_ON et GS_KRG en découlent   // GS_KRG : couche de krigeage affichée sur la carte ('' aucune, 'q' qualité, 'z' profondeur)
 // Bruit de mesure (fraction de la variance du champ) selon ce que le joueur a mesuré sur le bloc ; null : rien de mesuré sur ce bloc
 function gsInfoNoise(b){
   const has = t => b.studies.some(s=>s.type===t);
@@ -3096,9 +3095,14 @@ function gsNextBest(kind){
   GS_NB_CACHE[kind] = { key, v:out }; return out;
 }
 function krgPick(id){ const b=blocks[id]; if(!b) return; selectedBlock=id; rerenderAllBlocks(); renderGeoPanel(b); renderStudiesPanel(b); renderGuide(); if(isMobileLayout()) renderMobileSheet(); else showMobileScreen('geo'); }
+function krgNbKind(){ return GS_KRG || (GS_UNC_ON ? 'z' : ''); }
 function krgUpdateTop(){
+  const sc=document.getElementById('krgScale');
+  if(sc){ const S = GS_KRG && !G.simple ? gsSurface(GS_KRG) : null;
+    if(!S){ sc.innerHTML=''; } else { const q=GS_KRG==='q', grad = q ? 'linear-gradient(90deg,hsl(260,65%,38%),hsl(160,65%,49%),hsl(60,65%,60%))' : 'linear-gradient(90deg,hsl(205,70%,86%),hsl(205,70%,62%),hsl(205,70%,38%))', f=GS_SURF[GS_KRG].fmt, u=GS_SURF[GS_KRG].unit;
+      sc.innerHTML = `<span style="color:var(--text);">${q?TR('Qualité du réservoir','Reservoir quality'):TR('Profondeur du toit','Reservoir-top depth')} :</span> <b>${f(S.lo)}${q?'':u}</b><span class="krg-bar" style="background:${grad}"></span><b>${f(S.hi)}${q?u:u}</b> <span>${q?TR('(faible → forte)','(low → high)'):TR('(peu profond → profond)','(shallow → deep)')}</span>`; } }
   const el=document.getElementById('krgTop'); if(!el) return;
-  const nb = GS_KRG && !G.simple ? gsNextBest(GS_KRG) : [];
+  const nbk = krgNbKind(), nb = nbk && !G.simple ? gsNextBest(nbk) : [];
   el.innerHTML = nb.length ? `<span style="color:var(--text);">${TR('À mesurer en priorité (là où une mesure retire le plus d\'incertitude utile) : ','Measure first (where one measurement removes the most useful uncertainty): ')}</span>` + nb.map(x=>`<button type="button" class="adv-reset" style="margin:0 4px 2px 0;min-height:26px;padding:1px 8px;" onclick="krgPick(${x.id})">(${x.x},${x.y}) −${Math.round(x.pct)} %</button>`).join('') : '';
 }
 
@@ -5563,7 +5567,8 @@ function renderBlock(b){
     const col = GS_KRG==='q' ? `hsl(${260-200*t},65%,${38+22*t}%)` : `hsl(205,70%,${86-48*t}%)`;
     div.insertAdjacentHTML('beforeend', `<span class="krg" style="background:${col};opacity:${S.own[i]?0.85:0.7}"></span><span class="unc" style="opacity:${(0.10+0.7*u).toFixed(2)}"></span>`);
     if(CELL_SIZES[zoomIdx]>=28) div.insertAdjacentHTML('beforeend', `<span class="kv">${GS_SURF[GS_KRG].fmt(S.m[i])}</span>`);
-    if(gsNextBest(GS_KRG).some(x=>x.id===i)) div.insertAdjacentHTML('beforeend', '<span class="krg-top"></span>'); } }
+  } }
+  { const nbk = krgNbKind(); if(nbk && !G.revealFieldsMode && !G.simple && gsNextBest(nbk).some(x=>x.id===b.id)) div.insertAdjacentHTML('beforeend', '<span class="krg-top"></span>'); }
   if(selectedBlock===b.id) div.classList.add('selected');
   if(G.sectionA===b.id){ div.classList.add('section-a'); div.insertAdjacentHTML('beforeend','<span class="mk">A</span>'); }
   if(G.sectionB===b.id){ div.classList.add('section-b'); div.insertAdjacentHTML('beforeend','<span class="mk">B</span>'); }
@@ -7888,6 +7893,7 @@ function drawSparkline(){
 function updateHud(){
   if(GS_UNC_ON && typeof blocks!=='undefined' && blocks.length && !G.simple){ const before=GS_UNC_CACHE; gsUncertainty(); if(before!==GS_UNC_CACHE) blocks.forEach(renderBlock); }
   if(GS_KRG && typeof blocks!=='undefined' && blocks.length && !G.simple){ const b4=GS_SURF_CACHE[GS_KRG]; gsSurface(GS_KRG); if(b4!==GS_SURF_CACHE[GS_KRG]) blocks.forEach(renderBlock); krgUpdateTop(); }
+  else if(GS_UNC_ON && !G.simple){ krgUpdateTop(); }
   if(typeof renderGisementsPanel==='function') renderGisementsPanel();
   if(typeof renderEndGisementsPanel==='function') renderEndGisementsPanel();
   const m=MODES[G.mode];
@@ -8535,10 +8541,15 @@ function fitMapWidth(){
   zoomIdx = idx; rerenderAllBlocks(); document.getElementById('zoomLbl').textContent = Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';
 }
 document.getElementById('zoomFit').addEventListener('click', fitMap);
-document.getElementById('uncBtn').title = TR('Incertitude : les cases hachurées sont celles où vos mesures ne disent presque rien (krigeage, portée 3,3 blocs)','Uncertainty: hatched blocks are those where your measurements say almost nothing (kriging, range 3.3 blocks)');
-document.getElementById('krgBtn').title = TR('Krigeage : interpole la qualité du réservoir (1er clic) ou la profondeur du toit (2e clic) sur toute la carte à partir de vos mesures. La couleur donne la valeur, les hachures donnent l\'incertitude (écart-type de krigeage). 3e clic : coupe la couche.','Kriging: interpolates reservoir quality (1st click) or reservoir-top depth (2nd click) across the whole map from your measurements. Colour is the value, hatching is the uncertainty (kriging standard deviation). 3rd click: turns the layer off.');
-document.getElementById('krgBtn').addEventListener('click', ()=>{ GS_KRG = GS_KRG==='' ? 'q' : GS_KRG==='q' ? 'z' : ''; const u=document.getElementById('krgBtn'); u.dataset.mode=GS_KRG; u.classList.toggle('on', !!GS_KRG); u.setAttribute('aria-pressed', GS_KRG?'true':'false'); const lg=document.getElementById('krgLegend'); lg.style.display=GS_KRG&&!G.simple?'block':'none'; lg.querySelector('.krg-lq').style.display=GS_KRG==='q'?'inline':'none'; lg.querySelector('.krg-lz').style.display=GS_KRG==='z'?'inline':'none'; blocks.forEach(renderBlock); krgUpdateTop(); });
-document.getElementById('uncBtn').addEventListener('click', ()=>{ GS_UNC_ON = !GS_UNC_ON; const u=document.getElementById('uncBtn'); u.classList.toggle('on', GS_UNC_ON); u.setAttribute('aria-pressed', GS_UNC_ON?'true':'false'); blocks.forEach(renderBlock); });
+document.getElementById('krgBtn').title = TR('Cartes : un clic change la couche. Incertitude (hachures là où vos mesures ne disent presque rien), puis qualité du réservoir interpolée (krigeage), puis profondeur du toit interpolée, puis éteint. La couleur donne la valeur, les hachures donnent l\'incertitude (écart-type de krigeage), les anneaux orange disent où mesurer ensuite.','Maps: each click changes the layer. Uncertainty (hatching where your measurements say almost nothing), then interpolated reservoir quality (kriging), then interpolated reservoir-top depth, then off. Colour is the value, hatching is the uncertainty (kriging standard deviation), orange rings say where to measure next.');
+function krgSetMode(m){
+  GS_MODE = m; GS_UNC_ON = m==='unc'; GS_KRG = (m==='q' || m==='z') ? m : '';
+  const u=document.getElementById('krgBtn'); u.dataset.mode=m; u.classList.toggle('on', !!m); u.setAttribute('aria-pressed', m?'true':'false');
+  const lg=document.getElementById('krgLegend'); lg.style.display=m&&!G.simple?'block':'none';
+  [['u','unc'],['q','q'],['z','z']].forEach(([k,v])=>{ lg.querySelector('.krg-l'+k).style.display = m===v ? 'inline' : 'none'; });
+  blocks.forEach(renderBlock); krgUpdateTop();
+}
+document.getElementById('krgBtn').addEventListener('click', ()=>krgSetMode(GS_MODE==='' ? 'unc' : GS_MODE==='unc' ? 'q' : GS_MODE==='q' ? 'z' : ''));
 document.getElementById('zoomIn').addEventListener('click',()=>{ if(zoomIdx<CELL_SIZES.length-1){zoomIdx++;rerenderAllBlocks();document.getElementById('zoomLbl').textContent=Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';} });
 document.getElementById('zoomOut').addEventListener('click',()=>{ if(zoomIdx>0){zoomIdx--;rerenderAllBlocks();document.getElementById('zoomLbl').textContent=Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';} });
 
