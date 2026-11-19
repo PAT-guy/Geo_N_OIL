@@ -377,6 +377,8 @@ Trois défauts trouvés.
 
 (3) Les crêtes de sismique 2D (sommet intérieur, relief de 80 m, fermeture de 40 m) donnent un piège utile 9 à 30 % du temps (base 4 à 11 %) : un indice, pas une preuve, ce que dit maintenant le texte.
 
-Effet sur l'équilibrage, mesuré avec `sim_equilibrage` (robot qui suit le guide, 30 parties, mêmes graines) : Découverte 63 % puis 83 % (40 parties sur d'autres graines : 75 % puis 85 %), Junior 53 % puis 53 %, Expert 37 % puis 40 %. Le robot choisit les hauts structuraux de la gravimétrie : une gravimétrie plus juste le rend meilleur, surtout en Découverte où elle pèse le plus.
+Piège évité en route : `depthFromGravity` (profondeur estimée avant forage, donc coût et matériel) lisait `structPos` comme une profondeur relative. Avec le résidu elle aurait perdu le pendage régional et fait des estimations fausses (le test `krigeage_carte` l'a signalé). La profondeur relative reste donc stockée à part (`depthPos`, même formule et même bruit qu'avant) et c'est elle que lit `depthFromGravity` ; les parties enregistrées avant V5.44, qui n'ont que `structPos` (ancienne définition), retombent dessus.
+
+Effet sur l'équilibrage, mesuré avec `sim_equilibrage` (robot qui suit le guide, 30 parties, mêmes graines, une fois `depthPos` en place) : Découverte 63 % puis 83 % (40 parties sur d'autres graines : 75 % puis 85 %), Junior 53 % puis 50 %, Expert 37 % puis 47 %. L'incertitude est d'environ ±9 points pour 30 parties. Le robot choisit les hauts structuraux de la gravimétrie : une gravimétrie plus juste le rend meilleur, surtout en Découverte où elle pèse le plus.
 
 Test : `structure_gravimetrie.js` (libellés, fermeture, seuil de 40 m, AUC par bassin).

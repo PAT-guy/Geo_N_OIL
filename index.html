@@ -2719,6 +2719,7 @@ const STUDIES = {
       // V5.44 : la position structurale se lit sur le résidu de profondeur, une fois le pendage régional retiré (plan ajusté par moindres carrés, à terre et en mer séparément), et se classe en rang parmi les blocs.
       // Avant, elle se lisait sur la profondeur brute : le côté peu profond du pendage régional passait pour un « haut structural ». Mesure (sim_structure_piege) : AUC pour un piège utile (facteur réel de 0,5 ou plus)
       // de 0,51 à 0,80 avec la profondeur brute, de 0,87 à 0,95 avec le résidu. La carte et la géologie ne changent pas, seul ce que la gravimétrie affiche.
+      const allDepths = blocks.map(b2 => b2.topOfReservoir), dMinAll = Math.min(...allDepths), dRangeAll = (Math.max(...allDepths) - dMinAll) || 1;
       const resid = new Map(), groups = [blocks.filter(x=>!x.isOffshore && !x.inSalt), blocks.filter(x=>x.isOffshore && !x.inSalt)];
       groups.forEach(g=>{ if(g.length<3) return; const m = g.length; let sx=0,sy=0,sd=0,sxx=0,syy=0,sxy=0,sxd=0,syd=0; g.forEach(q=>{ sx+=q.x; sy+=q.y; sd+=q.topOfReservoir; sxx+=q.x*q.x; syy+=q.y*q.y; sxy+=q.x*q.y; sxd+=q.x*q.topOfReservoir; syd+=q.y*q.topOfReservoir; });
         const A = [[m,sx,sy],[sx,sxx,sxy],[sy,sxy,syy]], v = [sd,sxd,syd], det3 = a=>a[0][0]*(a[1][1]*a[2][2]-a[1][2]*a[2][1])-a[0][1]*(a[1][0]*a[2][2]-a[1][2]*a[2][0])+a[0][2]*(a[1][0]*a[2][1]-a[1][1]*a[2][0]), D = det3(A);
@@ -2731,12 +2732,14 @@ const STUDIES = {
         const rel = rankOf.has(b.id) ? rankOf.get(b.id) : 0.5;
         // structPos ∈ [-0.5 ; +0.5] : positif = haut structural (réservoir plus haut que le pendage régional)
         const structPos = clamp((rel - 0.5) + noise, -.5, .5);
+        // La profondeur relative (ancienne définition de structPos) reste disponible : elle sert à estimer la profondeur de forage, que le pendage régional explique en grande partie.
+        const depthPos = clamp((1 - (b.topOfReservoir - dMinAll) / dRangeAll - 0.5) + noise, -.5, .5);
         const saltHint  = b.inSalt && rng() < .75
           ? TR('Anomalie négative forte : probable corps salifère','Strong negative anomaly: probable salt body')
           : null;
         const existing = b.studies.find(s => s.type==='gravity');
         if(!existing){
-          const result = { structPos, saltHint };
+          const result = { structPos, depthPos, saltHint };
           b.studies.push({ type:'gravity', cost:0, result, month:G.month });
           b.studyLevel = Math.max(b.studyLevel, 1);
           updateBlockEstimate(b);
@@ -3588,15 +3591,15 @@ function updateBlockEstimate(b){
     est.prob = r.probEst; est.probErr = r.probErr;
     est.quality = r.qualityEst; est.qualErr = r.qualErr;
     est.amplitude = r.amplitude;
-    if(gravStudy) est.structPos = gravStudy.result.structPos;
+    if(gravStudy){ est.structPos = gravStudy.result.structPos; est.depthPos = gravStudy.result.depthPos; }
   } else if(seisStudy){
     const r = seisStudy.result;
     est.depth = r.topReservoirEst; est.depthErr = r.topErr;
     est.faultPresent = r.faultPresent;
     // Estimation grossière de la prob à partir de la position structurale si gravité disponible
-    if(gravStudy) est.structPos = gravStudy.result.structPos;
+    if(gravStudy){ est.structPos = gravStudy.result.structPos; est.depthPos = gravStudy.result.depthPos; }
   } else if(gravStudy){
-    est.structPos = gravStudy.result.structPos;
+    est.structPos = gravStudy.result.structPos; est.depthPos = gravStudy.result.depthPos;
     est.saltHint = gravStudy.result.saltHint;
   }
   if(coreStudy && !coreStudy.result.noReservoir){
@@ -3811,7 +3814,7 @@ function depthFromGravity(b){
     _depthMin = Math.min(...ds); _depthRange = (Math.max(...ds)-_depthMin) || 1;
     _depthStatsFor = blocks;
   }
-  const sp = b.estimate?.structPos;
+  const sp = b.estimate?.depthPos ?? b.estimate?.structPos;   // depthPos : profondeur relative ; les parties enregistrées avant V5.44 n'ont que structPos, qui avait cette définition
   // La gravimétrie donne une position relative, pas une profondeur : on y
   // ajoute une incertitude fixe par bloc (±20 % de l'étendue des profondeurs),
   // sinon l'estimation serait plus précise qu'une sismique 2D.
