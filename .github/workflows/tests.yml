@@ -21,9 +21,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Cache des navigateurs Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Installer Playwright et Chromium
+        # Les miroirs apt d'Ubuntu échouent parfois (déjà vu : « Failed to install browsers », hors du code du jeu) : trois essais avant d'abandonner.
         run: |
           npm ci --no-audit --no-fund
-          npx playwright install --with-deps chromium
+          for i in 1 2 3; do
+            if npx playwright install --with-deps chromium; then exit 0; fi
+            echo "Installation des navigateurs : échec de l'essai $i"
+            sleep 20
+          done
+          exit 1
       - name: Lancer la suite
         run: node tools/run_tests.js

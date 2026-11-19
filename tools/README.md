@@ -382,3 +382,6 @@ Piège évité en route : `depthFromGravity` (profondeur estimée avant forage, 
 Effet sur l'équilibrage, mesuré avec `sim_equilibrage` (robot qui suit le guide, 30 parties, mêmes graines, une fois `depthPos` en place) : Découverte 63 % puis 83 % (40 parties sur d'autres graines : 75 % puis 85 %), Junior 53 % puis 50 %, Expert 37 % puis 47 %. L'incertitude est d'environ ±9 points pour 30 parties. Le robot choisit les hauts structuraux de la gravimétrie : une gravimétrie plus juste le rend meilleur, surtout en Découverte où elle pèse le plus.
 
 Test : `structure_gravimetrie.js` (libellés, fermeture, seuil de 40 m, AUC par bassin).
+
+## CI plus robuste (après V5.44)
+Le CI avait échoué une fois à l'étape « Installer Playwright et Chromium » : les miroirs apt d'Ubuntu étaient injoignables (`Failed to install browsers`, code 100), sans lien avec le jeu. Le workflow met maintenant en cache `~/.cache/ms-playwright` (clé : `package-lock.json`) et tente l'installation trois fois, avec 20 secondes d'attente. Non testable en local : le premier passage du CI après la fusion en sera la vérification.
