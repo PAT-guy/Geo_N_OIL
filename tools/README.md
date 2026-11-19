@@ -349,3 +349,10 @@ Nouvelle vue « Fluides en place » : eau en bleu, huile en ambre, gaz en rouge,
 Test : `lame_fluides.js` (connexion à 1, 5, 20 et 0,3 mD, pixels bleus, ambre et rouges, textes, anglais).
 
 Correctif joint (cause racine d'un échec intermittent de `quiz_analyses` au CI) : `qzFluidOpts` vérifiait l'écart entre valeurs (8 %) mais pas l'unicité des étiquettes arrondies ; 4,6 et 5,4 mD donnaient « 5 mD » deux fois. Il rejette maintenant le tirage si deux étiquettes sont identiques.
+
+## V5.42 : options de sondage et de forage dans la grande coupe
+Demande du joueur : retrouver ses options de sondage et de forage sur l'écran agrandi de la coupe (usage sur grand écran avec des amis). La grande coupe avait une barre réduite (sondage, forer, forer horizontal) dont le bouton « Plus d'options » basculait l'onglet Études derrière la vue plein écran : il semblait ne rien faire.
+
+Maintenant « Plus d'options » (et « ⚙ Toutes les options » quand la barre n'en a pas) ouvre un volet « Options du bloc » à droite de la grande coupe : l'écran des études complet (gravimétrie, sismique 3D, carotte, Rock-Eval, sondage, forage avec choix du type et du matériel). Le nœud `#studiesContent` est déplacé dans le volet tant que la vue est ouverte et remis à sa place à la fermeture : son code et ses identifiants ne changent pas. La coupe se réduit à côté du volet (460 px au plus, plein écran sur téléphone) et se redessine après chaque action. Choisir un autre bloc se fait toujours en touchant son point sous la coupe.
+
+Test : `coupe_grande_options.js` (bouton, volet, coupe non recouverte, étude lancée depuis le volet, retour à la place).
