@@ -24,7 +24,7 @@ const { chromium } = require('playwright'); const path = require('path');
     out.btn=!!document.querySelector('#quickTrain button[data-quiz="faille"]'); out.card=!!document.querySelector('.mg-card[data-quiz="faille"]'); out.chip=document.getElementById('quickMiniCount').textContent;
     document.querySelector('.mg-card[data-quiz="faille"]').click(); await new Promise(r=>setTimeout(r,200)); out.open=document.getElementById('quizModal').classList.contains('open'); out.title=document.getElementById('qzTitle').textContent; out.score=document.getElementById('qzScore').textContent; out.fig=!!document.querySelector('#qzQuestion .qz-fig svg')||true;
     // anglais
-    document.documentElement.lang='en'; const L=window.__qz.qzGenFaille(); const txt=L.map(q=>q.ask+' '+q.choices.join(' ')+' '+q.explain+' '+(q.kind==='sgr' ? '' : (q.facts||[]).map(f=>f.join(' ')).join(' '))+' '+(q.note||'')).join(' ');   // les noms de couches (facts du SGR) viennent de la géologie générée, en français dans toutes les parties document.documentElement.lang='fr'; out.en=txt;
+    document.documentElement.lang='en'; const L=window.__qz.qzGenFaille(); const txt=L.map(q=>q.ask+' '+q.choices.join(' ')+' '+q.explain+' '+(q.kind==='sgr' ? '' : (q.facts||[]).map(f=>f.join(' ')).join(' '))+' '+(q.note||'')).join(' '); document.documentElement.lang='fr'; out.en=txt;
     return out; });
   ok(r.n===r.rounds*6 && r.bad.length===0,'six questions générées par manche sur '+r.rounds+' manches, réponses recalculées justes '+JSON.stringify(r.bad.slice(0,6)));
   ok(Object.keys(r.kinds).length===8 && Object.values(r.kinds).every(v=>v>=15),'les huit gabarits sortent (fenêtre de fuite, juxtaposition, SGR, verdict, rejet critique, marche ou rampe, rôle, contrainte) '+JSON.stringify(r.kinds));
