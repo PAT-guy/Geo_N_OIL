@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.28</title>
+<title>GeoExplorer V5.29</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3102,6 +3102,34 @@ function krgUpdateTop(){
   el.innerHTML = nb.length ? `<span style="color:var(--text);">${TR('À mesurer en priorité (là où une mesure retire le plus d\'incertitude utile) : ','Measure first (where one measurement removes the most useful uncertainty): ')}</span>` + nb.map(x=>`<button type="button" class="adv-reset" style="margin:0 4px 2px 0;min-height:26px;padding:1px 8px;" onclick="krgPick(${x.id})">(${x.x},${x.y}) −${Math.round(x.pct)} %</button>`).join('') : '';
 }
 
+// PRÉVU CONTRE RÉEL (V5.29) : avant chaque forage on garde ce que le jeu annonçait pour le toit du réservoir et la qualité, avec son intervalle (± erreur de la mesure, ou 1,64 écart-type du krigeage, soit 90 %).
+// Le log du forage donne ensuite la vérité : on compte les forages tombés dans l'intervalle annoncé. C'est la seule façon pour le joueur de savoir si les intervalles de l'outil sont honnêtes.
+function gsPredSnapshot(b){
+  const e=b.estimate||{}, out={};
+  if(e.depth!==undefined) out.z={ m:e.depth, h:Math.max(1,e.depthErr||0), src:'mesure' };
+  else { const k=gsKrig(b,'z'); if(k && k.n>=2) out.z={ m:k.m, h:1.64*k.sd, src:'krigeage' }; }
+  if(e.quality!==undefined) out.q={ m:e.quality, h:Math.max(1,e.qualErr||0), src:'mesure' };
+  else { const k=gsKrig(b,'q'); if(k && k.n>=2) out.q={ m:k.m, h:1.64*k.sd, src:'krigeage' }; }
+  return out;
+}
+function gsPredCheck(b){
+  const p=b.predAtDrill; if(!p || b.predCheck || G.simple) return;
+  G.predStats = G.predStats || { z:{n:0,h:0}, q:{n:0,h:0} };
+  const chk={}, one=(k,real)=>{ if(!p[k]) return; const hit=Math.abs(real-p[k].m)<=p[k].h; chk[k]={ pred:p[k].m, h:p[k].h, real, hit, src:p[k].src }; G.predStats[k].n++; if(hit) G.predStats[k].h++; };
+  one('z', b.topOfReservoir); one('q', b.trueQuality);
+  if(!chk.z && !chk.q) return;
+  b.predCheck = chk; const st=G.predStats, n=st.z.n+st.q.n, h=st.z.h+st.q.h, mk=x=>x?(x.hit?'✓':'✗'):'';
+  addLog(TR(`📐 Prévu contre réel, bloc (${b.x},${b.y}) : ${chk.z?`toit ${Math.round(chk.z.pred)} ± ${Math.round(chk.z.h)} m, réel ${Math.round(chk.z.real)} m ${mk(chk.z)}`:''}${chk.z&&chk.q?' ; ':''}${chk.q?`qualité ${Math.round(chk.q.pred)} ± ${Math.round(chk.q.h)}, réelle ${Math.round(chk.q.real)} ${mk(chk.q)}`:''}. Dans l'intervalle annoncé depuis le début : ${h} sur ${n}.`,
+            `📐 Predicted vs actual, block (${b.x},${b.y}): ${chk.z?`top ${Math.round(chk.z.pred)} ± ${Math.round(chk.z.h)} m, actual ${Math.round(chk.z.real)} m ${mk(chk.z)}`:''}${chk.z&&chk.q?'; ':''}${chk.q?`quality ${Math.round(chk.q.pred)} ± ${Math.round(chk.q.h)}, actual ${Math.round(chk.q.real)} ${mk(chk.q)}`:''}. Within the stated interval so far: ${h} of ${n}.`), 'ev');
+}
+function predCheckHtml(b){
+  const c=b.predCheck; if(!c) return '';
+  const row=(lab,x,u,dec)=>{ if(!x) return ''; const f=v=>String(Math.round(v)); return infoRow(lab, `<span style="color:${x.hit?'var(--green)':'var(--red)'};">${f(x.pred)} ± ${f(x.h)}${u} → ${f(x.real)}${u} ${x.hit?'✓':'✗'}</span>${x.src==='krigeage'?` <span style="color:var(--muted);font-size:10.5px;">(${TR('interpolé','interpolated')})</span>`:''}`); };
+  const st=G.predStats||{z:{n:0,h:0},q:{n:0,h:0}}, n=st.z.n+st.q.n, h=st.z.h+st.q.h;
+  return `<div class="ps-section">${TR('Prévu et réel','Predicted and actual')}</div>`+row(TR('Toit du réservoir','Reservoir top'), c.z, ' m')+row(TR('Qualité du réservoir','Reservoir quality'), c.q, '')+
+    `<div style="color:var(--muted);font-size:11px;margin-top:4px;">${TR(`Dans l'intervalle annoncé depuis le début de la partie : ${h} sur ${n}. L'intervalle est l'erreur annoncée de la mesure, ou 1,64 écart-type du krigeage (90 % de confiance : sur beaucoup de forages, environ 9 sur 10 doivent y tomber).`,`Within the stated interval since the start of the game: ${h} of ${n}. The interval is the stated measurement error, or 1.64 kriging standard deviations (90 % confidence: over many wells, about 9 in 10 should fall inside).`)}</div>`;
+}
+
 // Modèle 3D de lithologie le long d'une coupe : le toit de CHAQUE couche est krigé séparément à partir de tous les blocs qui portent une donnée de couches (log, sismique 2D), pas seulement ceux du profil.
 // Les épaisseurs se déduisent des toits krigés (pas de vide entre deux couches) ; la confiance de chaque couche décroît avec l'écart-type de krigeage. Nom, couleur et rôle viennent du bloc mesuré le plus proche.
 function gsLayerModel(pbs){
@@ -3632,6 +3660,7 @@ function drillBlock(blockId, method, equip, est, prog){
   if(G.budget < cost && G.mode!=='sandbox'){addLog(TR('Budget insuffisant pour ce forage.','Insufficient budget for this well.'),'bad');return;}
   G.budget -= cost;
   if(method==='frac'){ const fw = fracWater(lat); waterState().pool -= fw.fromPool; }
+  if(!G.simple && !b.predAtDrill) b.predAtDrill = gsPredSnapshot(b);   // V5.29 : ce que le jeu annonçait (avec son intervalle) avant le forage
   b.planned = false; b.estAtDrill = (b.playerEst && b.playerEst.p!==null && b.playerEst.p!==undefined) ? {p:b.playerEst.p, own:true} : (b.estimate?.prob!==undefined ? {p:b.estimate.prob, own:false} : null);
 
   const drillingMonths = method==='strati' ? Math.max(1, Math.round(depth/1200)) : Math.max(2, Math.round(depth/600*(1 + (prog ? 0.12*prog.shoes.length : 0))));
@@ -3713,10 +3742,12 @@ function resolveDrillingCore(d){
     b.well = well;
     b.el?.classList.add('has-well');
     injectWellLog(b); // le forage donne toujours le log complet, succès ou non
+    gsPredCheck(b);
     revealTrueGeology(b); // mode TP : commentaire pédagogique additionnel
     addLog(isFrac ? TR(`✓ Puits fracturé productif : bloc (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barils'}/mois au départ, déclin raide.`,`✓ Productive fracked well: block (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barrels'}/month at the start, steep decline.`) : TR(`✓ Puits productif : bloc (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barils'}/mois.`,`✓ Producing well: block (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barrels'}/month.`),'good');
   } else {
     injectWellLog(b);
+    gsPredCheck(b);
     revealTrueGeology(b);
     if(isFrac) b.fracInfo = { ...sh, lat:d.lat||2000, ip:0, why: geoOk ? '' : sh.why };
     const prevDry = d.reentry ? b.dryHoleInfo : null;
@@ -5730,6 +5761,7 @@ function renderGeoPanel(b){
   } else {
     html += `<div class="pcard"><div class="pc-top"><span>${TR(`Résultat du forage`,`Drilling result`)}</span><span class="pc-val" style="color:${b.well?'var(--green)':'var(--red)'}">${b.well?TR('Productif','Productive'):'Sec'}</span></div>
       <div class="pc-note">${b.well ? TR('Le puits produit : voir l\'onglet Gisements pour son suivi.','The well produces: see the Fields tab to follow it.') : TR('Aucun hydrocarbure exploitable. Les diagraphies ci-dessous montrent pourquoi.','No exploitable hydrocarbons. The logs below show why.')}</div></div>`;
+    html += predCheckHtml(b);
   }
 
   // Système pétrolier : ce que vous savez
@@ -9350,7 +9382,7 @@ function _doStartGame(){
     uncertaintyLevel: menuConfig.uncertainty,
     budget:         m.budget,
     month:0, speed:1, paused:false, labPick:null, labCal:{}, labProc:{}, labSecPrev:null, labOpt:{ ...LABOPT },
-    price:80, priceHistory:[80], priceAlerts:[], labPickBonusProv:{}, anaDone:{},
+    price:80, priceHistory:[80], priceAlerts:[], labPickBonusProv:{}, anaDone:{}, predStats:null,
     wells:[], drilling:[], sectionA:null, sectionB:null, sectionsHistory:[], marketEvents:[], informant:null, stormMonthsLeft:0, taxMonthsLeft:0, eventLog:[], calibLog:[],
     tool:'select', history:[], lastCF:0, lastRevenue:0, lastOpex:0, lastLoanPayment:0,
     priceTrend:0, priceTrendTarget:0, revealFieldsMode:false,
@@ -10987,7 +11019,7 @@ function _doStartGame(){
     },
     {
       title: TR('Production avancée et incertitude','Advanced production and uncertainty'),
-      body: `${TR(`L'option <b>Production avancée</b> (Senior, Grande exploration, Permien, ou case des options de partie) ajoute ce qui se passe après le forage : l'<b>eau</b> et le <b>BSW</b> (camion, puits d'injection, recyclage), la <b>qualité</b> du brut et le <b>gaz associé</b>, la <b>capacité</b> de traitement et d'export, la <b>pression</b> du réservoir et son mécanisme de drainage, puis le drainage assisté, lancé depuis l'onglet Gisements : <b>injection de CO2</b> (miscible au-dessus de la pression minimale de miscibilité, avec percée et coût au Mcf) ou <b>réinjection du gaz associé</b> (pression soutenue, mais gaz non vendu). Le guide vous propose alors l'action utile : agrandir le traitement, construire un SWD, vendre le gaz. Le bouton <b>Incertitude</b> de la carte hachure les blocs où vos mesures ne disent presque rien, et le bouton <b>Krigeage</b> remplit la carte : il interpole la qualité du réservoir, puis la profondeur du toit, entre vos blocs mesurés (couleur = valeur, hachures = incertitude ; trois anneaux orange et leurs pastilles indiquent où une mesure de plus retire le plus d'incertitude utile), et le résumé de forage donne une fourchette de production P90 / P50 / P10. Si vous activez <b>Dimensionner le forage</b>, vous composez aussi la boue et le tubage face à la pression du bloc.`,`The <b>Advanced production</b> option (Senior, Grand exploration, Permian, or the game options checkbox) adds what happens after drilling: <b>water</b> and <b>BSW</b> (trucking, disposal well, recycling), crude <b>quality</b> and <b>associated gas</b>, processing and export <b>capacity</b>, reservoir <b>pressure</b> and its drive mechanism, then assisted drainage, launched from the Fields tab: <b>CO2 injection</b> (miscible above the minimum miscibility pressure, with breakthrough and a per-Mcf cost) or <b>associated-gas reinjection</b> (pressure supported, but the gas is not sold). The guide then suggests the useful action: expand processing, build a SWD, sell the gas. The map's <b>Uncertainty</b> button hatches the blocks where your measurements say almost nothing, and the <b>Kriging</b> button fills the map: it interpolates reservoir quality, then reservoir-top depth, between your measured blocks (colour = value, hatching = uncertainty; three orange rings and their chips show where one more measurement removes the most useful uncertainty), and the drilling summary gives a P90 / P50 / P10 production range. If you turn on <b>Size the drilling programme</b>, you also compose the mud and casing against the block's pressure.`)}<br><br><b>${TR(`À vous de jouer`,`Your turn`)}</b> : ${TR(`le guide ne remplace pas votre jugement. Trois exercices courts, avec les vrais chiffres du jeu : lire le mécanisme d'un puits, décider du camion ou du SWD, décider de la torche ou de l'unité de gaz.`,`the guide does not replace your judgment. Three short exercises with the game's real numbers: read a well's drive mechanism, decide between trucking and a SWD, decide between flaring and a gas unit.`)}<br><button class="study-btn study-btn-compact" style="margin-top:8px;" onclick="document.getElementById('tutoCloseBtn').click(); window.__qz && window.__qz.open('fluides_tuto');">💧 ${TR(`Faire les exercices`,`Do the exercises`)}</button>`,
+      body: `${TR(`L'option <b>Production avancée</b> (Senior, Grande exploration, Permien, ou case des options de partie) ajoute ce qui se passe après le forage : l'<b>eau</b> et le <b>BSW</b> (camion, puits d'injection, recyclage), la <b>qualité</b> du brut et le <b>gaz associé</b>, la <b>capacité</b> de traitement et d'export, la <b>pression</b> du réservoir et son mécanisme de drainage, puis le drainage assisté, lancé depuis l'onglet Gisements : <b>injection de CO2</b> (miscible au-dessus de la pression minimale de miscibilité, avec percée et coût au Mcf) ou <b>réinjection du gaz associé</b> (pression soutenue, mais gaz non vendu). Le guide vous propose alors l'action utile : agrandir le traitement, construire un SWD, vendre le gaz. Le bouton <b>Incertitude</b> de la carte hachure les blocs où vos mesures ne disent presque rien, et le bouton <b>Krigeage</b> remplit la carte : il interpole la qualité du réservoir, puis la profondeur du toit, entre vos blocs mesurés (couleur = valeur, hachures = incertitude ; trois anneaux orange et leurs pastilles indiquent où une mesure de plus retire le plus d'incertitude utile), et le résumé de forage donne une fourchette de production P90 / P50 / P10. Après chaque forage, la fiche du bloc compare le prévu et le réel (toit et qualité du réservoir) et compte combien de forages sont tombés dans l'intervalle annoncé. Si vous activez <b>Dimensionner le forage</b>, vous composez aussi la boue et le tubage face à la pression du bloc.`,`The <b>Advanced production</b> option (Senior, Grand exploration, Permian, or the game options checkbox) adds what happens after drilling: <b>water</b> and <b>BSW</b> (trucking, disposal well, recycling), crude <b>quality</b> and <b>associated gas</b>, processing and export <b>capacity</b>, reservoir <b>pressure</b> and its drive mechanism, then assisted drainage, launched from the Fields tab: <b>CO2 injection</b> (miscible above the minimum miscibility pressure, with breakthrough and a per-Mcf cost) or <b>associated-gas reinjection</b> (pressure supported, but the gas is not sold). The guide then suggests the useful action: expand processing, build a SWD, sell the gas. The map's <b>Uncertainty</b> button hatches the blocks where your measurements say almost nothing, and the <b>Kriging</b> button fills the map: it interpolates reservoir quality, then reservoir-top depth, between your measured blocks (colour = value, hatching = uncertainty; three orange rings and their chips show where one more measurement removes the most useful uncertainty), and the drilling summary gives a P90 / P50 / P10 production range. After each well, the block sheet compares predicted and actual (reservoir top and quality) and counts how many wells fell inside the stated interval. If you turn on <b>Size the drilling programme</b>, you also compose the mud and casing against the block's pressure.`)}<br><br><b>${TR(`À vous de jouer`,`Your turn`)}</b> : ${TR(`le guide ne remplace pas votre jugement. Trois exercices courts, avec les vrais chiffres du jeu : lire le mécanisme d'un puits, décider du camion ou du SWD, décider de la torche ou de l'unité de gaz.`,`the guide does not replace your judgment. Three short exercises with the game's real numbers: read a well's drive mechanism, decide between trucking and a SWD, decide between flaring and a gas unit.`)}<br><button class="study-btn study-btn-compact" style="margin-top:8px;" onclick="document.getElementById('tutoCloseBtn').click(); window.__qz && window.__qz.open('fluides_tuto');">💧 ${TR(`Faire les exercices`,`Do the exercises`)}</button>`,
     },
     {
       title: TR('Prêt à jouer','Ready to play'),
