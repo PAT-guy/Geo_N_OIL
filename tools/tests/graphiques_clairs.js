@@ -15,8 +15,8 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(P.texts.some(t=>/fenêtre sûre/.test(t)) && P.texts.some(t=>/hors fenêtre/.test(t)) && P.texts.some(t=>/pression des pores/.test(t)) && P.texts.some(t=>/fracturation/.test(t)),'légende : pores, fracturation, fenêtre sûre, hors fenêtre');
   ok(P.sections===3,'une étiquette de boue par section (3 sections) '+P.sections);
   ok(P.texts.some(t=>/profondeur \(m\)/.test(t)) && P.texts.some(t=>/densité de boue équivalente/.test(t)),'axes nommés');
-  const warn = await pg.evaluate(()=>{ PROGUI.prog.mud[0]=1.0; progRefresh(); const a=[...document.querySelectorAll('#progSvg text')].some(t=>/⚠/.test(t.textContent)); PROGUI.prog=progAuto(blocks[PROGUI.blockId], PROGUI.TD); progRefresh(); const b=[...document.querySelectorAll('#progSvg text')].some(t=>/⚠/.test(t.textContent)); return { a, b }; });
-  ok(warn.a===true,'une boue trop légère affiche « ⚠ venue » sur sa section '+JSON.stringify(warn));
+  const warn = await pg.evaluate(()=>{ { const b0=blocks[PROGUI.blockId]; let w=1.0; for(; w>0.5; w=Math.round((w-0.05)*100)/100){ PROGUI.prog.mud[0]=w; if(progForecast(b0, PROGUI.prog, PROGUI.TD)[0].kick<0) break; } PROGUI.prog.mud[0]=w; } progRefresh(); const a=[...document.querySelectorAll('#progSvg text')].some(t=>/⚠/.test(t.textContent)); PROGUI.prog=progAuto(blocks[PROGUI.blockId], PROGUI.TD); progRefresh(); const b=[...document.querySelectorAll('#progSvg text')].some(t=>/⚠/.test(t.textContent)); return { a, b }; });
+  ok(warn.a===true,'une boue sous la pression des pores affiche « ⚠ venue » sur sa section '+JSON.stringify(warn));
   await pg.evaluate(()=>progClose());
   // 2. étiquette de l'horizon visé
   const L = await pg.evaluate(()=>{ G.budget=30e6; const land=blocks.filter(b=>!b.isOffshore); const rows={}; land.forEach(b=>(rows[b.y]=rows[b.y]||[]).push(b)); const r=Object.values(rows).sort((a,z)=>z.length-a.length)[0].sort((a,z)=>a.x-z.x); G.sectionA=r[0].id; G.sectionB=r[r.length-1].id; performStudy(null,'seismic2d'); switchTab('section'); labSetPick(3); renderSection();
