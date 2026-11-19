@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.32</title>
+<title>GeoExplorer V5.33</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -3194,6 +3194,54 @@ function gsFaultTitle(e){
                              : TR(`Faille possible : saut d'environ ${Math.round(e.jump/10)*10} m, mais à peine plus grand que le bruit de mesure (écart-type ${Math.round(e.sd)} m). Une sismique plus fine ou un forage tranche.`,`Possible fault: step of about ${Math.round(e.jump/10)*10} m, barely larger than the measurement noise (standard deviation ${Math.round(e.sd)} m). Finer seismic or a well settles it.`);
 }
 
+// ÉTANCHÉITÉ D'UNE FAILLE (V5.33) : ce que le joueur peut estimer de ses mesures. Deux critères classiques, calculés sur la colonne du compartiment relevé et le rejet mesuré (avec son écart-type) :
+//  (1) juxtaposition (diagramme d'Allan) : la part du réservoir qui fait face, de l'autre côté de la faille, à un autre réservoir (fenêtre de fuite) ; si le rejet dépasse l'épaisseur du réservoir, il fait face à autre chose ;
+//  (2) Shale Gouge Ratio (SGR) : proportion d'argile (Vsh) des couches qui ont glissé devant le toit du réservoir sur la hauteur du rejet ; au-dessus d'environ 25 % la faille colmate, sous 15 % elle fuit.
+// Seuils de la littérature (Yielding et al.), non calés sur le jeu. Indicatif : cette analyse n'agit PAS (encore) sur la probabilité des blocs, la génération du jeu ne fait ni sceller ni fuir un piège par une faille.
+function gsFaultSeal(edge){
+  const R = blocks[edge.raised]; if(!R) return null;
+  const H = R.horizons.filter(h=>h.thicknessLocal>0), ri = H.findIndex(h=>h.role==='reservoir'); if(ri<0) return null;
+  const rt = H[ri].top, hr = H[ri].thicknessLocal;
+  const at = T => {
+    let leak = 0; H.forEach(l=>{ if(l.role!=='reservoir') return; leak += Math.max(0, Math.min(rt+hr, l.top+l.thicknessLocal+T) - Math.max(rt, l.top+T)); });
+    const leakFrac = clamp(leak/hr, 0, 1); let sh = 0, len = 0;
+    H.forEach(l=>{ const ov = Math.max(0, Math.min(rt, l.top+l.thicknessLocal) - Math.max(rt-T, l.top)); sh += ov*(Math.round(l.vshale/10)*10/100); len += ov; });
+    const sgr = len>0 ? sh/len : 0, verdict = (leakFrac<=0.15 || sgr>=0.25) ? 'scelle' : (leakFrac>0.5 && sgr<0.15) ? 'fuit' : 'incertain';
+    return { leakFrac, sgr, verdict };
+  };
+  const T = edge.jump, lo = at(Math.max(5, T-edge.sd)), mid = at(T), hi = at(T+edge.sd), vs = [lo,mid,hi].map(x=>x.verdict);
+  const robust = vs.every(v=>v===vs[0]);
+  return { T, sd:edge.sd, hr, critT:hr*0.85, ...mid, robust, verdict: robust ? mid.verdict : 'incertain', col:H, rt, lowBy:Math.max(5,T-edge.sd), highBy:T+edge.sd };
+}
+function gsFaultSealSvg(edge, a){
+  const R = blocks[edge.raised], H = a.col, T = a.T, rt = a.rt, hr = a.hr, W = 340, Hh = 200, top = Math.max(0, rt - Math.max(T,120) - 30), bot = rt + hr + T + 40;
+  const y = d => 14 + (d-top)/(bot-top)*(Hh-28), cx1 = 20, cx2 = 170, cw = 90, fx = (cx1+cw+cx2)/2;
+  let g = `<svg viewBox="0 0 ${W} ${Hh}" width="100%" style="max-width:340px;display:block;margin:6px 0;" role="img" aria-label="${TR('Diagramme d\'Allan de la faille','Allan diagram of the fault')}">`;
+  const col = (x0, shift) => H.map(l=>{ const a0 = l.top+shift, b0 = l.top+l.thicknessLocal+shift; if(b0<top || a0>bot) return ''; const y0=y(Math.max(a0,top)), y1=y(Math.min(b0,bot)); return `<rect x="${x0}" y="${y0.toFixed(1)}" width="${cw}" height="${Math.max(0.5,y1-y0).toFixed(1)}" fill="${l.col}" stroke="${l.role==='reservoir'?'#111':'rgba(0,0,0,.25)'}" stroke-width="${l.role==='reservoir'?1.4:0.5}"/>`; }).join('');
+  g += col(cx1, 0) + col(cx2, T);
+  g += `<line x1="${fx-8}" y1="8" x2="${fx+8}" y2="${Hh-8}" stroke="#c4281c" stroke-width="2"/>`;
+  // ce qui fait face au réservoir du compartiment relevé : rouge si c'est un réservoir (fuite), vert sinon
+  H.forEach(l=>{ const a0 = Math.max(rt, l.top+T), b0 = Math.min(rt+hr, l.top+l.thicknessLocal+T); if(b0<=a0) return; g += `<rect x="${fx-3}" y="${y(a0).toFixed(1)}" width="6" height="${Math.max(1,y(b0)-y(a0)).toFixed(1)}" fill="${l.role==='reservoir'?'#d12b2b':'#2e8b57'}" opacity=".9"/>`; });
+  g += `<text x="${cx1+cw/2}" y="10" font-size="9" text-anchor="middle" fill="var(--muted)">${TR('relevé','raised')} (${R.x},${R.y})</text><text x="${cx2+cw/2}" y="10" font-size="9" text-anchor="middle" fill="var(--muted)">${TR('abaissé','downthrown')}</text>`;
+  g += `<text x="${cx2+cw+3}" y="${y(rt+T).toFixed(1)}" font-size="9" fill="var(--text)" dominant-baseline="middle">↕ ${TR('rejet','throw')} ~${Math.round(T/10)*10} m</text></svg>`;
+  return g;
+}
+function faultSealHtml(b){
+  const es = gsFaultEdges().byBlock[b.id]; if(!es || !es.length) return '';
+  const e = es.slice().sort((u,v)=>v.jump-u.jump)[0], a = gsFaultSeal(e); if(!a) return '';
+  const col = a.verdict==='scelle' ? 'var(--green)' : a.verdict==='fuit' ? 'var(--red)' : 'var(--amber)';
+  const lab = a.verdict==='scelle' ? TR('plutôt étanche','likely sealing') : a.verdict==='fuit' ? TR('plutôt fuyante','likely leaking') : TR('incertaine','uncertain');
+  const pct = v => Math.round(v*100)+' %';
+  const why = a.leakFrac<=0.15 ? TR(`le rejet (~${Math.round(a.T/10)*10} m) dépasse l'épaisseur du réservoir (${Math.round(a.hr)} m) : il fait face à autre chose que du réservoir`,`the throw (~${Math.round(a.T/10)*10} m) exceeds the reservoir thickness (${Math.round(a.hr)} m): it faces something other than reservoir`)
+            : a.sgr>=0.25 ? TR(`le réservoir fait en partie face à lui-même, mais l'argile entraînée le long de la faille (SGR ${pct(a.sgr)}) colmate le plan`,`the reservoir partly faces itself, but the clay smeared along the fault (SGR ${pct(a.sgr)}) clogs the plane`)
+            : TR(`le réservoir fait face à lui-même sur ${pct(a.leakFrac)} de sa hauteur et l'argile entraînée est faible (SGR ${pct(a.sgr)})`,`the reservoir faces itself over ${pct(a.leakFrac)} of its height and the smeared clay is low (SGR ${pct(a.sgr)})`);
+  return `<div class="ps-section">${TR('Étanchéité de la faille','Fault seal')}</div>
+    <div style="font-size:12px;"><b style="color:${col};">${TR('Faille','Fault')} ${lab}</b>${a.robust?'':TR(' (le verdict change dans la marge d\'erreur du rejet)',' (the verdict changes within the throw error margin)')} : ${why}.</div>
+    ${infoRow(TR('Fenêtre de fuite (réservoir face à réservoir)','Leak window (reservoir against reservoir)'), pct(a.leakFrac))}${infoRow('SGR (Shale Gouge Ratio)', pct(a.sgr))}${infoRow(TR('Rejet critique (en dessous, le réservoir fait face à lui-même)','Critical throw (below it the reservoir faces itself)'), '~'+Math.round(a.hr*0.85/10)*10+' m')}
+    ${gsFaultSealSvg(e, a)}
+    <div style="color:var(--muted);font-size:11px;">${TR('Diagramme d\'Allan simplifié : à gauche le compartiment relevé, à droite l\'abaissé décalé du rejet. Barre au centre : rouge là où le réservoir fait face à un réservoir (fuite possible), verte là où il fait face à autre chose. Seuils usuels (SGR au-dessus d\'environ 25 % : colmatée ; sous 15 % : fuyante), colonne type de la province. Indicatif : le jeu n\'applique pas encore l\'étanchéité d\'une faille à la probabilité de succès.','Simplified Allan diagram: raised block on the left, downthrown block on the right shifted by the throw. Centre bar: red where the reservoir faces a reservoir (possible leak), green where it faces something else. Usual thresholds (SGR above about 25 %: clogged; below 15 %: leaking), province type column. Indicative: the game does not yet apply fault seal to the probability of success.')}</div>`;
+}
+
 // Modèle 3D de lithologie le long d'une coupe : le toit de CHAQUE couche est krigé séparément à partir de tous les blocs qui portent une donnée de couches (log, sismique 2D), pas seulement ceux du profil.
 // Les épaisseurs se déduisent des toits krigés (pas de vide entre deux couches) ; la confiance de chaque couche décroît avec l'écart-type de krigeage. Nom, couleur et rôle viennent du bloc mesuré le plus proche.
 function gsLayerModel(pbs){
@@ -5744,7 +5792,7 @@ function blockKnowledge(b){
     out.push(kz && kz.n>=2 ? {n:TR('Réservoir','Reservoir'), st:'ind', t:TR(`Interpolé (krigeage de ${kz.n} blocs mesurés) : vers ${kz.fmt} m ± ${Math.round(kz.sd)} m (écart-type). Une sismique 2D précise.`,`Interpolated (kriging of ${kz.n} measured blocks): about ${kz.fmt} m ± ${Math.round(kz.sd)} m (standard deviation). A 2D seismic refines it.`)} : {n:TR('Réservoir','Reservoir'), st:'inc', t:TR('Précisé par la sismique 2D.','Refined by 2D seismic.')}); }
   { const FE = gsFaultEdges(), es = FE.byBlock[b.id];
     if(es && es.length){ const top = es.slice().sort((u,v)=>v.jump-u.jump)[0], other = blocks[top.a===b.id ? top.b : top.a], raised = top.raised===b.id;
-      out.push({n:TR('Faille','Fault'), st:'ind', t:TR(`${top.level==='probable'?'Faille probable':'Faille possible'} entre ce bloc et (${other.x},${other.y}) : rejet d'environ ${Math.round(top.jump/10)*10} m (écart-type ${Math.round(top.sd)} m). Ce bloc est sur le compartiment ${raised?'relevé (toit plus haut)':'abaissé (toit plus bas)'}. Un grand rejet barre la migration depuis une roche-mère profonde, mais sert de conduit si une roche-mère se trouve au-dessus du réservoir : seul le forage tranche.`,`${top.level==='probable'?'Probable fault':'Possible fault'} between this block and (${other.x},${other.y}): throw of about ${Math.round(top.jump/10)*10} m (standard deviation ${Math.round(top.sd)} m). This block is on the ${raised?'raised (shallower top)':'downthrown (deeper top)'} side. A large throw blocks migration from a deep source rock, but acts as a conduit if a source rock lies above the reservoir: only drilling settles it.`)}); } }
+      out.push({n:TR('Faille','Fault'), st:'ind', t:TR(`${top.level==='probable'?'Faille probable':'Faille possible'} entre ce bloc et (${other.x},${other.y}) : rejet d'environ ${Math.round(top.jump/10)*10} m (écart-type ${Math.round(top.sd)} m). Ce bloc est sur le compartiment ${raised?'relevé (toit plus haut)':'abaissé (toit plus bas)'}. Un grand rejet barre la migration depuis une roche-mère profonde, mais sert de conduit si une roche-mère se trouve au-dessus du réservoir. L'étanchéité de la faille est estimée plus bas (juxtaposition et SGR).`,`${top.level==='probable'?'Probable fault':'Possible fault'} between this block and (${other.x},${other.y}): throw of about ${Math.round(top.jump/10)*10} m (standard deviation ${Math.round(top.sd)} m). This block is on the ${raised?'raised (shallower top)':'downthrown (deeper top)'} side. A large throw blocks migration from a deep source rock, but acts as a conduit if a source rock lies above the reservoir. The fault seal is estimated below (juxtaposition and SGR).`)}); } }
   out.push({n:'Couverture', st:'inc', t:TR('Connue seulement après un forage.','Known only after drilling.')});
   if(isRes() && e?.soilgas){
     const sg = e.soilgas, lv = { forte:TR('forte','strong'), moyenne:TR('moyenne','moderate'), faible:TR('faible','weak'), nulle:TR('nulle','none') }[sg.level];
@@ -5838,6 +5886,8 @@ function renderGeoPanel(b){
   // Système pétrolier : ce que vous savez
   html += `<div class="ps-section">${isRes() ? TR(`Système ${resKind()==='h2'?'hydrogène':'hélium'} · ce que vous savez`,`${resKind()==='h2'?'Hydrogen':'Helium'} system · what you know`) : TR(`Système pétrolier · ce que vous savez`,`Petroleum system · what you know`)}</div><div class="kgrid">` +
     blockKnowledge(b).map(k=>`<div class="kcard"><div class="k-top"><span class="k-name">${k.n}</span><span class="kst ${k.st}">${{conf:TR('Confirmé','Confirmed'),ind:TR('Indice','Index'),inc:'Inconnu'}[k.st]}</span></div><div class="k-txt">${k.t}</div></div>`).join('') + `</div>`;
+
+  html += faultSealHtml(b);
 
   // Études sur ce bloc + avertissement avant de forer sans en savoir assez
   html += `<div class="ps-section">${TR(`Études sur ce bloc`,`Studies on this block`)}</div>` + blockStudiesHtml(b);
