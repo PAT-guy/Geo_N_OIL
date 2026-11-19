@@ -27,7 +27,7 @@ const FR = String.raw`[àâçéèêëîïôûùüœÀÂÇÉÈÊËÎÏÔÛÙÜŒ]
   await mini('onglets', ()=>{ document.querySelectorAll('[data-screen],[data-tab],.tab-btn').forEach(b=>{ try{ b.click(); }catch(e){} }); });
   await mini('mois', ()=>{ for(let i=0;i<14;i++){ try{ monthTick(); }catch(e){} } });
   await mini('pause', ()=>{ document.getElementById('pauseBtn')?.click(); document.querySelectorAll('[data-pause-view]').forEach(b=>{ try{ b.click(); }catch(e){} }); });
-  await mini('tutoriel', ()=>{ document.getElementById('openTutorialBtn')?.click(); for(let i=0;i<14;i++){ const n=document.getElementById('tutoNextBtn'); if(!n) break; n.click(); } });
+  await mini('tutoriel', ()=>{ document.getElementById('openTutorialBtn')?.click(); for(let i=0;i<30;i++){ const n=document.getElementById('tutoNextBtn'); if(!n) break; n.click(); } });
   await mini('lithologies', ()=>{ document.getElementById('openLithoHomeBtn')?.click(); });
   await mini('mini-jeux', async ()=>{ for(const q of ['cards','lithofacies','maturation','rockeval','seismic','logs','sei','rig','dimension']){ document.querySelectorAll('.mg-card').forEach(c=>{ try{ c.click(); }catch(e){} }); } });
   await mini('finance', ()=>{ G.financeMode = true; try{ document.getElementById('tabFinanceBtn')?.click(); renderFinancePanel && renderFinancePanel(); }catch(e){} });
