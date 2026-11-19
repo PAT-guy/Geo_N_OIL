@@ -20,7 +20,7 @@ const { chromium } = require('playwright'); const path = require('path');
     document.getElementById('geoSeed').value='52'; menuConfig.mode='expert'; menuConfig.basinType='rift'; menuConfig.seed='52'; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); setSpeed(0); G.budget=90e6; LABOPT.pick=false; G.labOpt.pick=false; performStudy(null,'gravity');
     const n=Math.sqrt(blocks.length)|0, idOf=(x,y)=>blocks.find(b=>b.x===x&&b.y===y).id; for(const [a,b2] of [[idOf(1,2),idOf(n-2,2)],[idOf(1,5),idOf(n-2,5)],[idOf(1,n-3),idOf(n-2,n-3)]]){ G.sectionA=a; G.sectionB=b2; performStudy(null,'seismic2d'); }
     const FE=gsFaultEdges(); const e=FE.list[0]; selectedBlock=e.a; renderGeoPanel(blocks[e.a]); const gc=document.getElementById('geoContent'), t=gc.textContent;
-    out.sec=/Étanchéité de la faille/.test(t) && /Fenêtre de fuite/.test(t) && /SGR/.test(t) && /Rejet critique/.test(t); out.svg=!!gc.querySelector('svg[role="img"] line') && gc.querySelectorAll('svg[role="img"] rect').length>6; out.verdictTxt=/Faille (plutôt étanche|plutôt fuyante|incertaine)/.test(t); out.note=/n'applique pas encore l'étanchéité/.test(t);
+    out.sec=/Étanchéité de la faille/.test(t) && /Fenêtre de fuite/.test(t) && /SGR/.test(t) && /Rejet critique/.test(t); out.svg=!!gc.querySelector('svg[role="img"] line') && gc.querySelectorAll('svg[role="img"] rect').length>6; out.verdictTxt=/Faille (plutôt étanche|plutôt fuyante|incertaine)/.test(t); out.note=/une faille étanche arrête la migration et forme un piège/.test(t);
     out.noSeal=!/seul le forage tranche/.test(t); 
     // bloc sans faille : pas de section
     const nf=blocks.find(b=>!gsFaultEdges().byBlock[b.id]); selectedBlock=nf.id; renderGeoPanel(nf); out.none=!/Étanchéité de la faille/.test(document.getElementById('geoContent').textContent);
@@ -30,7 +30,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(r.dryV==='fuit' && r.drySgr<0.15,'petit rejet sans argile au-dessus : plus de colmatage, la faille fuit (SGR '+Math.round(r.drySgr*100)+' %)');
   ok(r.critOk,'le rejet critique ('+Math.round(r.crit)+' m) sépare bien fenêtre de fuite ouverte et fermée');
   ok(r.robust===false && r.edgeV==='incertain','un verdict qui change dans la marge d\'erreur du rejet est annoncé incertain');
-  ok(r.sec && r.verdictTxt && r.note,'fiche du bloc : section « Étanchéité de la faille », verdict, fenêtre de fuite, SGR, rejet critique et mention de ce que le jeu n\'applique pas');
+  ok(r.sec && r.verdictTxt && r.note,'fiche du bloc : section « Étanchéité de la faille », verdict, fenêtre de fuite, SGR, rejet critique et lien avec ce que fait le jeu');
   ok(r.svg,'diagramme d\'Allan : deux colonnes décalées du rejet, plan de faille et barre de face à face');
   ok(r.noSeal && r.none,'plus de phrase « seul le forage tranche » ; pas de section sur un bloc sans faille détectée');
   ok(errs.length===0,'aucune erreur JS '+errs.join('|'));

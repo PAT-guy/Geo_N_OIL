@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.33</title>
+<title>GeoExplorer V5.34</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -2061,7 +2061,20 @@ let STRAT_PROVINCES = []; // toutes les provinces lithostratigraphiques de la pa
 let blocks = [];
 let GS = 12; // grid size courant
 
+// ÉTANCHÉITÉ PHYSIQUE D'UNE FAILLE (V5.33, appliquée à la génération en V5.34) : juxtaposition (part du réservoir qui fait face à un autre réservoir de l'autre côté, colonne décalée du rejet T)
+// et Shale Gouge Ratio (argile des couches qui ont glissé devant le toit du réservoir sur la hauteur T, multipliée par le coefficient de gouge de la faille). Force d'étanchéité s dans [0 ; 1] : 1 si le réservoir fait
+// face à autre chose, ou si l'argile entraînée colmate (SGR de 25 % et plus) ; une faille ouverte (réactivée) ne retient rien. H : colonne (horizons du bloc).
+function faultSealCore(H, T, gouge, open){
+  const ri = H.findIndex(h=>h.role==='reservoir'); if(ri<0) return null;
+  const rt = H[ri].top, hr = Math.max(1, H[ri].thicknessLocal); let leak = 0;
+  H.forEach(l=>{ if(l.role!=='reservoir') return; leak += Math.max(0, Math.min(rt+hr, l.top+l.thicknessLocal+T) - Math.max(rt, l.top+T)); });
+  const leakFrac = clamp(leak/hr, 0, 1); let sh = 0, len = 0;
+  H.forEach(l=>{ const ov = Math.max(0, Math.min(rt, l.top+l.thicknessLocal) - Math.max(rt-T, l.top)); sh += ov*(l.vshale/100); len += ov; });
+  const sgr = (len>0 ? sh/len : 0)*(gouge||1), s = open ? 0.05 : clamp(Math.max(1-leakFrac, Math.min(1, sgr/0.25)), 0, 1);
+  return { leakFrac, sgr, s, rt, hr };
+}
 let LAST_FAULTS = [];
+const FAULT_TRAP_A = 0.08, FAULT_TRAP_B = 0.22;   // qualité d'un piège de faille : A + B × force d'étanchéité (× min(1 ; rejet/80 m))
 function generateGeology(gridSize, basinType, offshore, seed){
   ROSE_SEAL_POW = (RESOURCES[RESOURCE_BASINS[basinType]] || {}).sealPow || 1;
   GS = gridSize;
@@ -2135,6 +2148,11 @@ function generateGeology(gridSize, basinType, offshore, seed){
              nx:Math.cos(ang), ny:Math.sin(ang),
              throw: (rng()<.5?-1:1)*(80+rng()*300) };
   });
+
+  // V5.34 : les failles ne se ressemblent pas. 35 % ont un petit rejet (20 à 80 m), le matériau de faille varie (coefficient de gouge, log-normal) et 15 % ont été réactivées et restent ouvertes (drains).
+  // Tirages sur un flux propre à chaque faille : le reste de la géologie de la graine n'est pas décalé.
+  faults.forEach((f,i)=>{ const r2 = makeRng(seedToInt(seed+'|failleV534|'+i)); if(r2()<0.35) f.throw = Math.sign(f.throw)*(20+r2()*60); else r2();
+    f.gouge = clamp(Math.exp(0.35*gauss(r2)), 0.5, 1.8); f.open = r2() < 0.15; });
 
   // Diapirs de sel
   // Les ids 'salt'/'evaporite' n'existent plus dans les listes de lithologies
@@ -2312,7 +2330,13 @@ function generateGeology(gridSize, basinType, offshore, seed){
       // Piège stratigraphique par biseau : une bande étroite où le réservoir s'amincit sans disparaître (pinchT autour de 0,3), pas toute la rampe d'amincissement.
       const pinchTrap = (pinchT > 0.12 && pinchT < 0.9) ? 0.7*Math.exp(-Math.pow((pinchT-0.3)/0.14, 2)) : 0;
       const saltFlank = inSalt ? 0 : saltRing;
-      const trapFactor     = clamp(Math.max(anticlineTop, pinchTrap, saltFlank), .03, .97);
+      // V5.34 : une faille étanche arrête la migration contre son plan et forme un piège côté abaissé ; une faille qui fuit (petit rejet sans argile, ou réactivée et ouverte) vide la couverture voisine.
+      let faultTrap = 0, leakMult = 1, faultRole = null, faultInfo = null;
+      faults.forEach(f=>{ const d = (x-f.px)*f.nx + (y-f.py)*f.ny; if(Math.abs(d)>0.75 || inSalt) return; const T = Math.abs(f.throw); if(T<20) return;
+        const sc = faultSealCore(horizons, T, f.gouge, f.open); if(!sc) return; const lowered = f.throw>0 ? d>0 : d<0;
+        if(sc.s>=0.6){ if(lowered){ const ft = FAULT_TRAP_A + FAULT_TRAP_B*sc.s*Math.min(1, T/80); if(ft>faultTrap){ faultTrap = ft; faultRole = 'piege'; faultInfo = { T:Math.round(T), s:+sc.s.toFixed(2), open:false }; } } }
+        else if(sc.s<0.3){ leakMult *= 0.55 + 0.45*(sc.s/0.3); if(faultTrap<0.35){ faultRole = 'drain'; faultInfo = { T:Math.round(T), s:+sc.s.toFixed(2), open:!!f.open }; } } });
+      const trapFactor     = clamp(Math.max(anticlineTop, pinchTrap, saltFlank, faultTrap), .03, .97);
       const resFactor      = inSalt ? .01 : clamp(.2+resFaciesVal*.75, .05, .95);
       // La lithologie de la couverture compte : sel et anhydrite scellent mieux qu'une argile, et
       // une argile pure mieux qu'une siltite. Avant, le facteur ne dépendait que du faciès spatial.
@@ -2320,7 +2344,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       const sealLith = !sealH ? 1
         : /anhydrit|gypse|halite|évaporit|\bsel\b/i.test(`${FRN(sealH.name)} ${FRN(sealH.lith)||''}`) ? 1.18
         : clamp(1 + ((sealH.vshale ?? 77) - 77)/35*0.35, 0.78, 1.15);
-      const sealFactor     = clamp((.15+sealFaciesVal*.8)*sealLith, .08, .95);
+      const sealFactor     = clamp((.15+sealFaciesVal*.8)*sealLith*leakMult, .08, .95);
       // Force de génération locale : quantité d'HC que CE point produirait s'il
       // était lui-même une kitchen (richesse en matière organique × maturité).
       // Ce n'est pas encore la charge du piège — voir la migration en 2e passe
@@ -2358,7 +2382,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
         id, x, y, horizons, topOfReservoir, tempAtRes, tempAtSrc, pressureRes,
         maturity, maturityClass, isGas, res: RESOURCE_BASINS[basinType] || null,
         gradient, exhumation, paleoTemp, srcTopDepth, // exposés pour les quiz générés (Rock-Eval, Maturation) : aucun effet sur la géologie
-        trapFactor, resFactor, sealFactor, genStrength, trueQuality, upperGen, faultJuxt,
+        trapFactor, resFactor, sealFactor, genStrength, trueQuality, upperGen, faultJuxt, faultRole, faultInfo,
         resThicknessLocal, inSalt, faultThrow, isOffshore, provinceIdx, srcAbsent,
       });
     }
@@ -2412,6 +2436,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       const sideK = (k.x-f.px)*f.nx + (k.y-f.py)*f.ny;
       if(sideB===0 || sideK===0 || Math.sign(sideB)===Math.sign(sideK)) return; // la faille ne coupe pas le trajet
       const throwAbs = Math.abs(f.throw);
+      if(f.open){ factor *= 1.3; return; }   // V5.34 : faille ouverte (réactivée), drain : la charge la traverse
       if(throwAbs > 60) factor *= sourceAbove ? 1.3 : 0.35;      // faille majeure : barrière (conduit si la roche-mère est au-dessus)
       else if(throwAbs > 20) factor *= sourceAbove ? 1.15 : 0.7; // faille moyenne : gêne partiellement (aide si la roche-mère est au-dessus)
       else factor *= 1.25;                                       // faille mineure : drain secondaire, favorise la migration
@@ -2521,7 +2546,7 @@ function generateGeology(gridSize, basinType, offshore, seed){
       gradient:b.gradient, exhumation:b.exhumation, paleoTemp:b.paleoTemp, srcTopDepth:b.srcTopDepth,
       trapFactor:b.trapFactor, resFactor:b.resFactor, sealFactor:b.sealFactor, srcFactor:b.srcFactor,
       genStrength:b.genStrength,
-      resThicknessLocal:b.resThicknessLocal, inSalt:b.inSalt, faultThrow:b.faultThrow, provinceIdx:b.provinceIdx, srcAbsent:b.srcAbsent, chargeFrom:b.chargeFrom, viaFault:b.viaFault, upperGen:b.upperGen,
+      resThicknessLocal:b.resThicknessLocal, inSalt:b.inSalt, faultThrow:b.faultThrow, provinceIdx:b.provinceIdx, srcAbsent:b.srcAbsent, chargeFrom:b.chargeFrom, viaFault:b.viaFault, upperGen:b.upperGen, faultRole:b.faultRole, faultInfo:b.faultInfo,
       isOffshore:b.isOffshore,
       studies: [],
       studyLevel: 0,
@@ -3200,15 +3225,9 @@ function gsFaultTitle(e){
 // Seuils de la littérature (Yielding et al.), non calés sur le jeu. Indicatif : cette analyse n'agit PAS (encore) sur la probabilité des blocs, la génération du jeu ne fait ni sceller ni fuir un piège par une faille.
 function gsFaultSeal(edge){
   const R = blocks[edge.raised]; if(!R) return null;
-  const H = R.horizons.filter(h=>h.thicknessLocal>0), ri = H.findIndex(h=>h.role==='reservoir'); if(ri<0) return null;
+  const H = R.horizons.filter(h=>h.thicknessLocal>0).map(h=>({ ...h, vshale:Math.round(h.vshale/10)*10 })), ri = H.findIndex(h=>h.role==='reservoir'); if(ri<0) return null;
   const rt = H[ri].top, hr = H[ri].thicknessLocal;
-  const at = T => {
-    let leak = 0; H.forEach(l=>{ if(l.role!=='reservoir') return; leak += Math.max(0, Math.min(rt+hr, l.top+l.thicknessLocal+T) - Math.max(rt, l.top+T)); });
-    const leakFrac = clamp(leak/hr, 0, 1); let sh = 0, len = 0;
-    H.forEach(l=>{ const ov = Math.max(0, Math.min(rt, l.top+l.thicknessLocal) - Math.max(rt-T, l.top)); sh += ov*(Math.round(l.vshale/10)*10/100); len += ov; });
-    const sgr = len>0 ? sh/len : 0, verdict = (leakFrac<=0.15 || sgr>=0.25) ? 'scelle' : (leakFrac>0.5 && sgr<0.15) ? 'fuit' : 'incertain';
-    return { leakFrac, sgr, verdict };
-  };
+  const at = T => { const c = faultSealCore(H, T, 1, false), verdict = (c.leakFrac<=0.15 || c.sgr>=0.25) ? 'scelle' : (c.leakFrac>0.5 && c.sgr<0.15) ? 'fuit' : 'incertain'; return { leakFrac:c.leakFrac, sgr:c.sgr, verdict }; };
   const T = edge.jump, lo = at(Math.max(5, T-edge.sd)), mid = at(T), hi = at(T+edge.sd), vs = [lo,mid,hi].map(x=>x.verdict);
   const robust = vs.every(v=>v===vs[0]);
   return { T, sd:edge.sd, hr, critT:hr*0.85, ...mid, robust, verdict: robust ? mid.verdict : 'incertain', col:H, rt, lowBy:Math.max(5,T-edge.sd), highBy:T+edge.sd };
@@ -3226,6 +3245,14 @@ function gsFaultSealSvg(edge, a){
   g += `<text x="${cx2+cw+3}" y="${y(rt+T).toFixed(1)}" font-size="9" fill="var(--text)" dominant-baseline="middle">↕ ${TR('rejet','throw')} ~${Math.round(T/10)*10} m</text></svg>`;
   return g;
 }
+function faultRoleHtml(b){
+  if(!(b.well || b.dryHole) || !b.faultRole || !b.faultInfo) return '';
+  const trap = b.faultRole==='piege', fi = b.faultInfo;
+  return `<div class="ps-section">${TR('Rôle de la faille voisine','Role of the neighbouring fault')}</div><div style="font-size:12px;"><b style="color:${trap?'var(--green)':'var(--red)'};">${trap?TR('Piège de faille','Fault trap'):TR('Drain','Drain')}</b> : ${trap
+    ? TR(`une faille étanche de ${fi.T} m de rejet arrête la migration contre son plan ; ce bloc, du côté abaissé, a bénéficié de la fermeture.`,`a sealing fault with ${fi.T} m of throw stops migration against its plane; this block, on the downthrown side, benefited from the closure.`)
+    : fi.open ? TR(`une faille de ${fi.T} m de rejet, réactivée et restée ouverte, a fait fuir la couverture de ce bloc et laisse passer la charge.`,`a fault with ${fi.T} m of throw, reactivated and still open, leaked the seal of this block and lets the charge through.`)
+               : TR(`une faille de ${fi.T} m de rejet, sans argile suffisante pour colmater, a fait fuir la couverture de ce bloc.`,`a fault with ${fi.T} m of throw, without enough clay to clog it, leaked the seal of this block.`)}</div>`;
+}
 function faultSealHtml(b){
   const es = gsFaultEdges().byBlock[b.id]; if(!es || !es.length) return '';
   const e = es.slice().sort((u,v)=>v.jump-u.jump)[0], a = gsFaultSeal(e); if(!a) return '';
@@ -3239,7 +3266,7 @@ function faultSealHtml(b){
     <div style="font-size:12px;"><b style="color:${col};">${TR('Faille','Fault')} ${lab}</b>${a.robust?'':TR(' (le verdict change dans la marge d\'erreur du rejet)',' (the verdict changes within the throw error margin)')} : ${why}.</div>
     ${infoRow(TR('Fenêtre de fuite (réservoir face à réservoir)','Leak window (reservoir against reservoir)'), pct(a.leakFrac))}${infoRow('SGR (Shale Gouge Ratio)', pct(a.sgr))}${infoRow(TR('Rejet critique (en dessous, le réservoir fait face à lui-même)','Critical throw (below it the reservoir faces itself)'), '~'+Math.round(a.hr*0.85/10)*10+' m')}
     ${gsFaultSealSvg(e, a)}
-    <div style="color:var(--muted);font-size:11px;">${TR('Diagramme d\'Allan simplifié : à gauche le compartiment relevé, à droite l\'abaissé décalé du rejet. Barre au centre : rouge là où le réservoir fait face à un réservoir (fuite possible), verte là où il fait face à autre chose. Seuils usuels (SGR au-dessus d\'environ 25 % : colmatée ; sous 15 % : fuyante), colonne type de la province. Indicatif : le jeu n\'applique pas encore l\'étanchéité d\'une faille à la probabilité de succès.','Simplified Allan diagram: raised block on the left, downthrown block on the right shifted by the throw. Centre bar: red where the reservoir faces a reservoir (possible leak), green where it faces something else. Usual thresholds (SGR above about 25 %: clogged; below 15 %: leaking), province type column. Indicative: the game does not yet apply fault seal to the probability of success.')}</div>`;
+    <div style="color:var(--muted);font-size:11px;">${TR('Diagramme d\'Allan simplifié : à gauche le compartiment relevé, à droite l\'abaissé décalé du rejet. Barre au centre : rouge là où le réservoir fait face à un réservoir (fuite possible), verte là où il fait face à autre chose. Seuils usuels (SGR au-dessus d\'environ 25 % : colmatée ; sous 15 % : fuyante), colonne type de la province. C\'est une estimation : l\'argile réellement entraînée et l\'ouverture de la faille ne se voient qu\'à un forage voisin. Dans le jeu, une faille étanche arrête la migration et forme un piège du côté abaissé ; une faille qui fuit (petit rejet sans argile, ou réactivée et ouverte) vide la couverture voisine et laisse passer la charge.','Simplified Allan diagram: raised block on the left, downthrown block on the right shifted by the throw. Centre bar: red where the reservoir faces a reservoir (possible leak), green where it faces something else. Usual thresholds (SGR above about 25 %: clogged; below 15 %: leaking), province type column. This is an estimate: the clay actually smeared and the fault opening only show at a neighbouring well. In the game, a sealing fault stops migration and forms a trap on the downthrown side; a leaking fault (small throw without clay, or reactivated and open) empties the neighbouring seal and lets the charge through.')}</div>`;
 }
 
 // Modèle 3D de lithologie le long d'une coupe : le toit de CHAQUE couche est krigé séparément à partir de tous les blocs qui portent une donnée de couches (log, sismique 2D), pas seulement ceux du profil.
@@ -5887,7 +5914,7 @@ function renderGeoPanel(b){
   html += `<div class="ps-section">${isRes() ? TR(`Système ${resKind()==='h2'?'hydrogène':'hélium'} · ce que vous savez`,`${resKind()==='h2'?'Hydrogen':'Helium'} system · what you know`) : TR(`Système pétrolier · ce que vous savez`,`Petroleum system · what you know`)}</div><div class="kgrid">` +
     blockKnowledge(b).map(k=>`<div class="kcard"><div class="k-top"><span class="k-name">${k.n}</span><span class="kst ${k.st}">${{conf:TR('Confirmé','Confirmed'),ind:TR('Indice','Index'),inc:'Inconnu'}[k.st]}</span></div><div class="k-txt">${k.t}</div></div>`).join('') + `</div>`;
 
-  html += faultSealHtml(b);
+  html += faultSealHtml(b) + faultRoleHtml(b);
 
   // Études sur ce bloc + avertissement avant de forer sans en savoir assez
   html += `<div class="ps-section">${TR(`Études sur ce bloc`,`Studies on this block`)}</div>` + blockStudiesHtml(b);
