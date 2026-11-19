@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.27</title>
+<title>GeoExplorer V5.30</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -145,13 +145,14 @@ main{flex:1; display:grid; grid-template-columns:1fr var(--right-w, 380px); over
 .lab-secchk input{margin:0;}
 .axl{font-family:var(--mono); font-size:10px; color:var(--muted); display:flex; align-items:center; justify-content:center;}
 .block .unc{position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(45deg,rgba(40,40,40,.62) 0 2px,transparent 2px 6px);}
-#uncBtn.on{background:var(--text);color:var(--bg);}
-body.simple-ui #uncBtn, body.simple-ui #krgBtn{display:none !important;}
+body.simple-ui #krgBtn{display:none !important;}
 .block .krg{position:absolute;inset:0;border-radius:inherit;pointer-events:none;}
+.block .krg-top{position:absolute;inset:1px;border:2px dashed #e0561a;border-radius:inherit;pointer-events:none;z-index:3;}
 .block .kv{position:absolute;left:0;right:0;bottom:1px;text-align:center;font-size:9px;line-height:1;font-family:var(--mono);color:#111;text-shadow:0 0 2px #fff,0 0 2px #fff;pointer-events:none;z-index:2;}
 #krgBtn.on{background:var(--text);color:var(--bg);}
 #krgBtn .krg-m{display:none;}
-#krgBtn[data-mode="q"] .krg-q, #krgBtn[data-mode="z"] .krg-z{display:inline;}
+#krgBtn[data-mode="unc"] .krg-u, #krgBtn[data-mode="q"] .krg-q, #krgBtn[data-mode="z"] .krg-z{display:inline;}
+.krg-bar{display:inline-block;vertical-align:middle;width:120px;height:10px;border-radius:3px;border:1px solid var(--border);margin:0 5px;}
 .block{
   width:44px; height:44px; border:1px solid var(--line-strong); cursor:pointer;
   position:relative; display:flex; align-items:center; justify-content:center; border-radius:6px;
@@ -1244,8 +1245,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
       </div>
       <span id="toolLabel">Mode : Sélection</span>
       <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
-        <button class="btn" id="uncBtn" aria-pressed="false"><span class="i18n" data-fr="Incertitude" data-en="Uncertainty">Incertitude</span></button>
-        <button class="btn" id="krgBtn" data-mode="" aria-pressed="false"><span class="i18n" data-fr="Krigeage" data-en="Kriging">Krigeage</span><span class="krg-m krg-q">&nbsp;: <span class="i18n" data-fr="qualité" data-en="quality">qualité</span></span><span class="krg-m krg-z">&nbsp;: <span class="i18n" data-fr="profondeur" data-en="depth">profondeur</span></span></button>
+        <button class="btn" id="krgBtn" data-mode="" aria-pressed="false"><span class="i18n" data-fr="Cartes" data-en="Maps">Cartes</span><span class="krg-m krg-u">&nbsp;: <span class="i18n" data-fr="incertitude" data-en="uncertainty">incertitude</span></span><span class="krg-m krg-q">&nbsp;: <span class="i18n" data-fr="qualité" data-en="quality">qualité</span></span><span class="krg-m krg-z">&nbsp;: <span class="i18n" data-fr="profondeur" data-en="depth">profondeur</span></span></button>
         <label class="lab-secchk" title="Afficher ou masquer tous les traits de coupe sur la carte (la coupe affichée en trait plein, les autres en pointillé)"><input type="checkbox" id="secLineChk" checked onchange="labToggleSecLine(this.checked)"> Traits de coupe</label>
         <button class="btn" id="zoomOut" aria-label="Zoom arrière">−</button>
         <span id="zoomLbl" style="font-size:12px; color:var(--muted); min-width:40px; text-align:center; font-family:var(--mono);">100%</span>
@@ -1253,7 +1253,7 @@ body.mobile-layout:not([data-mscreen="map"]) #guideBar{display:none;}
         <button class="btn" id="zoomFit" aria-label="Vue d'ensemble" title="Vue d'ensemble : toute la carte à l'écran">⤢<span class="l-full"> <span class="i18n" data-fr="Tout voir" data-en="Fit">Tout voir</span></span></button>
       </div>
     </div>
-    <div id="krgLegend" style="display:none;font-size:11.5px;color:var(--muted);padding:2px 14px 6px;line-height:1.4;"><span class="krg-lg krg-lq"><span class="i18n" data-fr="Qualité du réservoir interpolée (krigeage) : la couleur donne la valeur de 0 à 100, les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré." data-en="Interpolated reservoir quality (kriging): colour is the value from 0 to 100, hatching is the uncertainty (standard deviation). Measure where it is heavily hatched.">Qualité du réservoir interpolée (krigeage) : la couleur donne la valeur de 0 à 100, les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré.</span></span><span class="krg-lg krg-lz"><span class="i18n" data-fr="Profondeur du toit interpolée (krigeage) : plus la case est foncée, plus le toit est profond ; les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré." data-en="Interpolated reservoir-top depth (kriging): the darker the block, the deeper the top; hatching is the uncertainty (standard deviation). Measure where it is heavily hatched.">Profondeur du toit interpolée (krigeage) : plus la case est foncée, plus le toit est profond ; les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré.</span></span></div>
+    <div id="krgLegend" style="display:none;font-size:11.5px;color:var(--muted);padding:2px 14px 6px;line-height:1.4;"><span class="krg-lg krg-lu"><span class="i18n" data-fr="Incertitude : les cases hachurées sont celles où vos mesures ne disent presque rien (écart-type de krigeage). Mesurez là où c'est très hachuré." data-en="Uncertainty: hatched blocks are those where your measurements say almost nothing (kriging standard deviation). Measure where it is heavily hatched.">Incertitude : les cases hachurées sont celles où vos mesures ne disent presque rien (écart-type de krigeage). Mesurez là où c'est très hachuré.</span></span><span class="krg-lg krg-lq"><span class="i18n" data-fr="Qualité du réservoir interpolée (krigeage) : la couleur donne la valeur de 0 à 100, les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré." data-en="Interpolated reservoir quality (kriging): colour is the value from 0 to 100, hatching is the uncertainty (standard deviation). Measure where it is heavily hatched.">Qualité du réservoir interpolée (krigeage) : la couleur donne la valeur de 0 à 100, les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré.</span></span><span class="krg-lg krg-lz"><span class="i18n" data-fr="Profondeur du toit interpolée (krigeage) : plus la case est foncée, plus le toit est profond ; les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré." data-en="Interpolated reservoir-top depth (kriging): the darker the block, the deeper the top; hatching is the uncertainty (standard deviation). Measure where it is heavily hatched.">Profondeur du toit interpolée (krigeage) : plus la case est foncée, plus le toit est profond ; les hachures donnent l'incertitude (écart-type). Mesurez là où c'est très hachuré.</span></span><div id="krgScale" style="margin-top:3px;"></div><div id="krgTop" style="margin-top:3px;"></div></div>
     <div class="map-body">
       <div id="mapWrap">
         <div class="grid" id="grid"></div>
@@ -2997,12 +2997,12 @@ const GEO = (()=>{
       out.push(r); }
     return out;
   }
-  return { cov, krige, field, condSim, gauss };
+  return { cov, krige, field, condSim, gauss, chol, fwd };
 })();
 const GS_MODEL = { m:'gauss', a:3.3 };
 const GS_Q = { hydrogen:[28,10], helium:[30,10], permian:[30,10], paris:[40,14], rift:[29,10.5], aquitaine:[28,9.5], passive:[30,10.3], north_sea:[22,7.7], gulf_coast:[15.6,5.4], foreland:[32,12] };   // moyenne et écart-type de la qualité réservoir, mesurés par bassin
 const gsQStat = () => GS_Q[G.basinType] || [29,10];
-let GS_UNC_ON = false, GS_UNC_CACHE = { sig:'', v:null }, GS_KRG = '';   // GS_KRG : couche de krigeage affichée sur la carte ('' aucune, 'q' qualité, 'z' profondeur)
+let GS_UNC_ON = false, GS_UNC_CACHE = { sig:'', v:null }, GS_KRG = '', GS_MODE = '';   // GS_MODE : bouton Cartes ('' éteint, 'unc' incertitude, 'q' qualité, 'z' profondeur) ; GS_UNC_ON et GS_KRG en découlent   // GS_KRG : couche de krigeage affichée sur la carte ('' aucune, 'q' qualité, 'z' profondeur)
 // Bruit de mesure (fraction de la variance du champ) selon ce que le joueur a mesuré sur le bloc ; null : rien de mesuré sur ce bloc
 function gsInfoNoise(b){
   const has = t => b.studies.some(s=>s.type===t);
@@ -3069,6 +3069,71 @@ function gsKrig(b, kind){
   const u = S.sd[b.id]/S.sd0; if(u>0.92) return null;
   return { m:S.m[b.id], sd:S.sd[b.id], n:S.n, u, fmt:GS_SURF[kind].fmt(S.m[b.id]), unit:GS_SURF[kind].unit };
 }
+// OÙ MESURER ENSUITE (V5.28) : pour chaque bloc candidat, gain d'information d'une mesure supplémentaire = réduction de la variance de krigeage sur les blocs voisins, pondérée par l'intérêt de chacun
+// (probabilité estimée si elle est connue, sinon position structurale de la gravimétrie, sinon valeur neutre). Formule exacte du processus gaussien : ajouter une donnée de bruit v en b ramène la variance de
+// chaque cible t de cov_post(t,b)² / (var_post(b) + v). Résultat : les trois meilleurs blocs, avec le pourcentage d'incertitude pondérée qu'ils retirent. Les blocs forés ou déjà couverts en 3D sont exclus.
+let GS_NB_CACHE = {};
+function gsNextBest(kind){
+  const S = gsSurface(kind); if(!S || typeof blocks==='undefined') return [];
+  const key = (GS_SURF_CACHE[kind]||{}).sig+'|'+blocks.reduce((t,b)=>t+b.studies.length+(b.well?1:0)+(b.dryHole?1:0),0);
+  const c = GS_NB_CACHE[kind]; if(c && c.key===key) return c.v;
+  const D = GS_SURF[kind].data(), n = D.d.length, N = blocks.length, a = GS_MODEL.a, m = GS_MODEL.m; let out = [];
+  if(n){
+    const K = new Float64Array(n*n);
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++) K[i*n+j] = GEO.cov(m, Math.hypot(D.d[i].x-D.d[j].x, D.d[i].y-D.d[j].y), a) + (i===j ? Math.max(0.01,(D.d[i].sd/D.sd0)**2)+1e-6 : 0);
+    const L = GEO.chol(K, n), Y = new Array(N), V = new Float64Array(N), cv = new Float64Array(n);
+    for(let t=0;t<N;t++){ for(let i=0;i<n;i++) cv[i] = GEO.cov(m, Math.hypot(D.d[i].x-blocks[t].x, D.d[i].y-blocks[t].y), a); const y = GEO.fwd(L, n, cv); Y[t]=y; let q=0; for(let i=0;i<n;i++) q+=y[i]*y[i]; V[t] = Math.max(0, 1-q); }
+    const w = blocks.map(b=>{ if(b.well || b.dryHole) return 0.02; const e=b.estimate; return e && e.prob!==undefined ? e.prob : e && e.structPos!==undefined ? clamp(0.25+0.5*e.structPos, 0.05, 0.7) : 0.25; });
+    let tot = 0; for(let t=0;t<N;t++) tot += w[t]*V[t];
+    const NU = 0.5, R = 4.5, cand = [];
+    blocks.forEach((b,bi)=>{ if(b.well || b.dryHole || (b.estimate && b.estimate.prob!==undefined) || V[bi]<0.05) return;
+      let gain = 0; const den = V[bi]+NU;
+      for(let t=0;t<N;t++){ const h = Math.hypot(blocks[t].x-b.x, blocks[t].y-b.y); if(h>R) continue; let dot=0; for(let i=0;i<n;i++) dot+=Y[t][i]*Y[bi][i]; const cp = GEO.cov(m, h, a) - dot; gain += w[t]*cp*cp/den; }
+      cand.push({ id:b.id, x:b.x, y:b.y, pct:tot>0 ? 100*gain/tot : 0 }); });
+    cand.sort((u,v)=>v.pct-u.pct); for(const c of cand){ if(out.length>=3) break; if(out.every(o=>Math.hypot(o.x-c.x,o.y-c.y)>=3)) out.push(c); }   // trois blocs distants d'au moins 3 cases : deux mesures voisines disent presque la même chose
+  }
+  GS_NB_CACHE[kind] = { key, v:out }; return out;
+}
+function krgPick(id){ const b=blocks[id]; if(!b) return; selectedBlock=id; rerenderAllBlocks(); renderGeoPanel(b); renderStudiesPanel(b); renderGuide(); if(isMobileLayout()) renderMobileSheet(); else showMobileScreen('geo'); }
+function krgNbKind(){ return GS_KRG || (GS_UNC_ON ? 'z' : ''); }
+function krgUpdateTop(){
+  const sc=document.getElementById('krgScale');
+  if(sc){ const S = GS_KRG && !G.simple ? gsSurface(GS_KRG) : null;
+    if(!S){ sc.innerHTML=''; } else { const q=GS_KRG==='q', grad = q ? 'linear-gradient(90deg,hsl(260,65%,38%),hsl(160,65%,49%),hsl(60,65%,60%))' : 'linear-gradient(90deg,hsl(205,70%,86%),hsl(205,70%,62%),hsl(205,70%,38%))', f=GS_SURF[GS_KRG].fmt, u=GS_SURF[GS_KRG].unit;
+      sc.innerHTML = `<span style="color:var(--text);">${q?TR('Qualité du réservoir','Reservoir quality'):TR('Profondeur du toit','Reservoir-top depth')} :</span> <b>${f(S.lo)}${q?'':u}</b><span class="krg-bar" style="background:${grad}"></span><b>${f(S.hi)}${q?u:u}</b> <span>${q?TR('(faible → forte)','(low → high)'):TR('(peu profond → profond)','(shallow → deep)')}</span>`; } }
+  const el=document.getElementById('krgTop'); if(!el) return;
+  const nbk = krgNbKind(), nb = nbk && !G.simple ? gsNextBest(nbk) : [];
+  el.innerHTML = nb.length ? `<span style="color:var(--text);">${TR('À mesurer en priorité (là où une mesure retire le plus d\'incertitude utile) : ','Measure first (where one measurement removes the most useful uncertainty): ')}</span>` + nb.map(x=>`<button type="button" class="adv-reset" style="margin:0 4px 2px 0;min-height:26px;padding:1px 8px;" onclick="krgPick(${x.id})">(${x.x},${x.y}) −${Math.round(x.pct)} %</button>`).join('') : '';
+}
+
+// PRÉVU CONTRE RÉEL (V5.29) : avant chaque forage on garde ce que le jeu annonçait pour le toit du réservoir et la qualité, avec son intervalle (± erreur de la mesure, ou 1,64 écart-type du krigeage, soit 90 %).
+// Le log du forage donne ensuite la vérité : on compte les forages tombés dans l'intervalle annoncé. C'est la seule façon pour le joueur de savoir si les intervalles de l'outil sont honnêtes.
+function gsPredSnapshot(b){
+  const e=b.estimate||{}, out={};
+  if(e.depth!==undefined) out.z={ m:e.depth, h:Math.max(1,e.depthErr||0), src:'mesure' };
+  else { const k=gsKrig(b,'z'); if(k && k.n>=2) out.z={ m:k.m, h:1.64*k.sd, src:'krigeage' }; }
+  if(e.quality!==undefined) out.q={ m:e.quality, h:Math.max(1,e.qualErr||0), src:'mesure' };
+  else { const k=gsKrig(b,'q'); if(k && k.n>=2) out.q={ m:k.m, h:1.64*k.sd, src:'krigeage' }; }
+  return out;
+}
+function gsPredCheck(b){
+  const p=b.predAtDrill; if(!p || b.predCheck || G.simple) return;
+  G.predStats = G.predStats || { z:{n:0,h:0}, q:{n:0,h:0} };
+  const chk={}, one=(k,real)=>{ if(!p[k]) return; const hit=Math.abs(real-p[k].m)<=p[k].h; chk[k]={ pred:p[k].m, h:p[k].h, real, hit, src:p[k].src }; G.predStats[k].n++; if(hit) G.predStats[k].h++; };
+  one('z', b.topOfReservoir); one('q', b.trueQuality);
+  if(!chk.z && !chk.q) return;
+  b.predCheck = chk; const st=G.predStats, n=st.z.n+st.q.n, h=st.z.h+st.q.h, mk=x=>x?(x.hit?'✓':'✗'):'';
+  addLog(TR(`📐 Prévu contre réel, bloc (${b.x},${b.y}) : ${chk.z?`toit ${Math.round(chk.z.pred)} ± ${Math.round(chk.z.h)} m, réel ${Math.round(chk.z.real)} m ${mk(chk.z)}`:''}${chk.z&&chk.q?' ; ':''}${chk.q?`qualité ${Math.round(chk.q.pred)} ± ${Math.round(chk.q.h)}, réelle ${Math.round(chk.q.real)} ${mk(chk.q)}`:''}. Dans l'intervalle annoncé depuis le début : ${h} sur ${n}.`,
+            `📐 Predicted vs actual, block (${b.x},${b.y}): ${chk.z?`top ${Math.round(chk.z.pred)} ± ${Math.round(chk.z.h)} m, actual ${Math.round(chk.z.real)} m ${mk(chk.z)}`:''}${chk.z&&chk.q?'; ':''}${chk.q?`quality ${Math.round(chk.q.pred)} ± ${Math.round(chk.q.h)}, actual ${Math.round(chk.q.real)} ${mk(chk.q)}`:''}. Within the stated interval so far: ${h} of ${n}.`), 'ev');
+}
+function predCheckHtml(b){
+  const c=b.predCheck; if(!c) return '';
+  const row=(lab,x,u,dec)=>{ if(!x) return ''; const f=v=>String(Math.round(v)); return infoRow(lab, `<span style="color:${x.hit?'var(--green)':'var(--red)'};">${f(x.pred)} ± ${f(x.h)}${u} → ${f(x.real)}${u} ${x.hit?'✓':'✗'}</span>${x.src==='krigeage'?` <span style="color:var(--muted);font-size:10.5px;">(${TR('interpolé','interpolated')})</span>`:''}`); };
+  const st=G.predStats||{z:{n:0,h:0},q:{n:0,h:0}}, n=st.z.n+st.q.n, h=st.z.h+st.q.h;
+  return `<div class="ps-section">${TR('Prévu et réel','Predicted and actual')}</div>`+row(TR('Toit du réservoir','Reservoir top'), c.z, ' m')+row(TR('Qualité du réservoir','Reservoir quality'), c.q, '')+
+    `<div style="color:var(--muted);font-size:11px;margin-top:4px;">${TR(`Dans l'intervalle annoncé depuis le début de la partie : ${h} sur ${n}. L'intervalle est l'erreur annoncée de la mesure, ou 1,64 écart-type du krigeage (90 % de confiance : sur beaucoup de forages, environ 9 sur 10 doivent y tomber).`,`Within the stated interval since the start of the game: ${h} of ${n}. The interval is the stated measurement error, or 1.64 kriging standard deviations (90 % confidence: over many wells, about 9 in 10 should fall inside).`)}</div>`;
+}
+
 // Modèle 3D de lithologie le long d'une coupe : le toit de CHAQUE couche est krigé séparément à partir de tous les blocs qui portent une donnée de couches (log, sismique 2D), pas seulement ceux du profil.
 // Les épaisseurs se déduisent des toits krigés (pas de vide entre deux couches) ; la confiance de chaque couche décroît avec l'écart-type de krigeage. Nom, couleur et rôle viennent du bloc mesuré le plus proche.
 function gsLayerModel(pbs){
@@ -3599,6 +3664,7 @@ function drillBlock(blockId, method, equip, est, prog){
   if(G.budget < cost && G.mode!=='sandbox'){addLog(TR('Budget insuffisant pour ce forage.','Insufficient budget for this well.'),'bad');return;}
   G.budget -= cost;
   if(method==='frac'){ const fw = fracWater(lat); waterState().pool -= fw.fromPool; }
+  if(!G.simple && !b.predAtDrill) b.predAtDrill = gsPredSnapshot(b);   // V5.29 : ce que le jeu annonçait (avec son intervalle) avant le forage
   b.planned = false; b.estAtDrill = (b.playerEst && b.playerEst.p!==null && b.playerEst.p!==undefined) ? {p:b.playerEst.p, own:true} : (b.estimate?.prob!==undefined ? {p:b.estimate.prob, own:false} : null);
 
   const drillingMonths = method==='strati' ? Math.max(1, Math.round(depth/1200)) : Math.max(2, Math.round(depth/600*(1 + (prog ? 0.12*prog.shoes.length : 0))));
@@ -3680,10 +3746,12 @@ function resolveDrillingCore(d){
     b.well = well;
     b.el?.classList.add('has-well');
     injectWellLog(b); // le forage donne toujours le log complet, succès ou non
+    gsPredCheck(b);
     revealTrueGeology(b); // mode TP : commentaire pédagogique additionnel
     addLog(isFrac ? TR(`✓ Puits fracturé productif : bloc (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barils'}/mois au départ, déclin raide.`,`✓ Productive fracked well: block (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barrels'}/month at the start, steep decline.`) : TR(`✓ Puits productif : bloc (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barils'}/mois.`,`✓ Producing well: block (${b.x},${b.y}), ${Math.round(initProd)} ${b.isGas?'Mcf':'barrels'}/month.`),'good');
   } else {
     injectWellLog(b);
+    gsPredCheck(b);
     revealTrueGeology(b);
     if(isFrac) b.fracInfo = { ...sh, lat:d.lat||2000, ip:0, why: geoOk ? '' : sh.why };
     const prevDry = d.reentry ? b.dryHoleInfo : null;
@@ -5498,7 +5566,9 @@ function renderBlock(b){
   if(GS_KRG && !G.revealFieldsMode && !G.simple){ const S=gsSurface(GS_KRG); if(S){ const i=b.id, u=clamp(S.sd[i]/S.sd0,0,1), t=clamp((S.m[i]-S.lo)/((S.hi-S.lo)||1),0,1);
     const col = GS_KRG==='q' ? `hsl(${260-200*t},65%,${38+22*t}%)` : `hsl(205,70%,${86-48*t}%)`;
     div.insertAdjacentHTML('beforeend', `<span class="krg" style="background:${col};opacity:${S.own[i]?0.85:0.7}"></span><span class="unc" style="opacity:${(0.10+0.7*u).toFixed(2)}"></span>`);
-    if(CELL_SIZES[zoomIdx]>=28) div.insertAdjacentHTML('beforeend', `<span class="kv">${GS_SURF[GS_KRG].fmt(S.m[i])}</span>`); } }
+    if(CELL_SIZES[zoomIdx]>=28) div.insertAdjacentHTML('beforeend', `<span class="kv">${GS_SURF[GS_KRG].fmt(S.m[i])}</span>`);
+  } }
+  { const nbk = krgNbKind(); if(nbk && !G.revealFieldsMode && !G.simple && gsNextBest(nbk).some(x=>x.id===b.id)) div.insertAdjacentHTML('beforeend', '<span class="krg-top"></span>'); }
   if(selectedBlock===b.id) div.classList.add('selected');
   if(G.sectionA===b.id){ div.classList.add('section-a'); div.insertAdjacentHTML('beforeend','<span class="mk">A</span>'); }
   if(G.sectionB===b.id){ div.classList.add('section-b'); div.insertAdjacentHTML('beforeend','<span class="mk">B</span>'); }
@@ -5696,6 +5766,7 @@ function renderGeoPanel(b){
   } else {
     html += `<div class="pcard"><div class="pc-top"><span>${TR(`Résultat du forage`,`Drilling result`)}</span><span class="pc-val" style="color:${b.well?'var(--green)':'var(--red)'}">${b.well?TR('Productif','Productive'):'Sec'}</span></div>
       <div class="pc-note">${b.well ? TR('Le puits produit : voir l\'onglet Gisements pour son suivi.','The well produces: see the Fields tab to follow it.') : TR('Aucun hydrocarbure exploitable. Les diagraphies ci-dessous montrent pourquoi.','No exploitable hydrocarbons. The logs below show why.')}</div></div>`;
+    html += predCheckHtml(b);
   }
 
   // Système pétrolier : ce que vous savez
@@ -7821,7 +7892,8 @@ function drawSparkline(){
 // =====================================================================
 function updateHud(){
   if(GS_UNC_ON && typeof blocks!=='undefined' && blocks.length && !G.simple){ const before=GS_UNC_CACHE; gsUncertainty(); if(before!==GS_UNC_CACHE) blocks.forEach(renderBlock); }
-  if(GS_KRG && typeof blocks!=='undefined' && blocks.length && !G.simple){ const b4=GS_SURF_CACHE[GS_KRG]; gsSurface(GS_KRG); if(b4!==GS_SURF_CACHE[GS_KRG]) blocks.forEach(renderBlock); }
+  if(GS_KRG && typeof blocks!=='undefined' && blocks.length && !G.simple){ const b4=GS_SURF_CACHE[GS_KRG]; gsSurface(GS_KRG); if(b4!==GS_SURF_CACHE[GS_KRG]) blocks.forEach(renderBlock); krgUpdateTop(); }
+  else if(GS_UNC_ON && !G.simple){ krgUpdateTop(); }
   if(typeof renderGisementsPanel==='function') renderGisementsPanel();
   if(typeof renderEndGisementsPanel==='function') renderEndGisementsPanel();
   const m=MODES[G.mode];
@@ -8469,10 +8541,15 @@ function fitMapWidth(){
   zoomIdx = idx; rerenderAllBlocks(); document.getElementById('zoomLbl').textContent = Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';
 }
 document.getElementById('zoomFit').addEventListener('click', fitMap);
-document.getElementById('uncBtn').title = TR('Incertitude : les cases hachurées sont celles où vos mesures ne disent presque rien (krigeage, portée 3,3 blocs)','Uncertainty: hatched blocks are those where your measurements say almost nothing (kriging, range 3.3 blocks)');
-document.getElementById('krgBtn').title = TR('Krigeage : interpole la qualité du réservoir (1er clic) ou la profondeur du toit (2e clic) sur toute la carte à partir de vos mesures. La couleur donne la valeur, les hachures donnent l\'incertitude (écart-type de krigeage). 3e clic : coupe la couche.','Kriging: interpolates reservoir quality (1st click) or reservoir-top depth (2nd click) across the whole map from your measurements. Colour is the value, hatching is the uncertainty (kriging standard deviation). 3rd click: turns the layer off.');
-document.getElementById('krgBtn').addEventListener('click', ()=>{ GS_KRG = GS_KRG==='' ? 'q' : GS_KRG==='q' ? 'z' : ''; const u=document.getElementById('krgBtn'); u.dataset.mode=GS_KRG; u.classList.toggle('on', !!GS_KRG); u.setAttribute('aria-pressed', GS_KRG?'true':'false'); const lg=document.getElementById('krgLegend'); lg.style.display=GS_KRG&&!G.simple?'block':'none'; lg.querySelector('.krg-lq').style.display=GS_KRG==='q'?'inline':'none'; lg.querySelector('.krg-lz').style.display=GS_KRG==='z'?'inline':'none'; blocks.forEach(renderBlock); });
-document.getElementById('uncBtn').addEventListener('click', ()=>{ GS_UNC_ON = !GS_UNC_ON; const u=document.getElementById('uncBtn'); u.classList.toggle('on', GS_UNC_ON); u.setAttribute('aria-pressed', GS_UNC_ON?'true':'false'); blocks.forEach(renderBlock); });
+document.getElementById('krgBtn').title = TR('Cartes : un clic change la couche. Incertitude (hachures là où vos mesures ne disent presque rien), puis qualité du réservoir interpolée (krigeage), puis profondeur du toit interpolée, puis éteint. La couleur donne la valeur, les hachures donnent l\'incertitude (écart-type de krigeage), les anneaux orange disent où mesurer ensuite.','Maps: each click changes the layer. Uncertainty (hatching where your measurements say almost nothing), then interpolated reservoir quality (kriging), then interpolated reservoir-top depth, then off. Colour is the value, hatching is the uncertainty (kriging standard deviation), orange rings say where to measure next.');
+function krgSetMode(m){
+  GS_MODE = m; GS_UNC_ON = m==='unc'; GS_KRG = (m==='q' || m==='z') ? m : '';
+  const u=document.getElementById('krgBtn'); u.dataset.mode=m; u.classList.toggle('on', !!m); u.setAttribute('aria-pressed', m?'true':'false');
+  const lg=document.getElementById('krgLegend'); lg.style.display=m&&!G.simple?'block':'none';
+  [['u','unc'],['q','q'],['z','z']].forEach(([k,v])=>{ lg.querySelector('.krg-l'+k).style.display = m===v ? 'inline' : 'none'; });
+  blocks.forEach(renderBlock); krgUpdateTop();
+}
+document.getElementById('krgBtn').addEventListener('click', ()=>krgSetMode(GS_MODE==='' ? 'unc' : GS_MODE==='unc' ? 'q' : GS_MODE==='q' ? 'z' : ''));
 document.getElementById('zoomIn').addEventListener('click',()=>{ if(zoomIdx<CELL_SIZES.length-1){zoomIdx++;rerenderAllBlocks();document.getElementById('zoomLbl').textContent=Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';} });
 document.getElementById('zoomOut').addEventListener('click',()=>{ if(zoomIdx>0){zoomIdx--;rerenderAllBlocks();document.getElementById('zoomLbl').textContent=Math.round(CELL_SIZES[zoomIdx]/44*100)+'%';} });
 
@@ -9316,7 +9393,7 @@ function _doStartGame(){
     uncertaintyLevel: menuConfig.uncertainty,
     budget:         m.budget,
     month:0, speed:1, paused:false, labPick:null, labCal:{}, labProc:{}, labSecPrev:null, labOpt:{ ...LABOPT },
-    price:80, priceHistory:[80], priceAlerts:[], labPickBonusProv:{}, anaDone:{},
+    price:80, priceHistory:[80], priceAlerts:[], labPickBonusProv:{}, anaDone:{}, predStats:null,
     wells:[], drilling:[], sectionA:null, sectionB:null, sectionsHistory:[], marketEvents:[], informant:null, stormMonthsLeft:0, taxMonthsLeft:0, eventLog:[], calibLog:[],
     tool:'select', history:[], lastCF:0, lastRevenue:0, lastOpex:0, lastLoanPayment:0,
     priceTrend:0, priceTrendTarget:0, revealFieldsMode:false,
@@ -10953,7 +11030,7 @@ function _doStartGame(){
     },
     {
       title: TR('Production avancée et incertitude','Advanced production and uncertainty'),
-      body: `${TR(`L'option <b>Production avancée</b> (Senior, Grande exploration, Permien, ou case des options de partie) ajoute ce qui se passe après le forage : l'<b>eau</b> et le <b>BSW</b> (camion, puits d'injection, recyclage), la <b>qualité</b> du brut et le <b>gaz associé</b>, la <b>capacité</b> de traitement et d'export, la <b>pression</b> du réservoir et son mécanisme de drainage, puis le drainage assisté, lancé depuis l'onglet Gisements : <b>injection de CO2</b> (miscible au-dessus de la pression minimale de miscibilité, avec percée et coût au Mcf) ou <b>réinjection du gaz associé</b> (pression soutenue, mais gaz non vendu). Le guide vous propose alors l'action utile : agrandir le traitement, construire un SWD, vendre le gaz. Le bouton <b>Incertitude</b> de la carte hachure les blocs où vos mesures ne disent presque rien, et le bouton <b>Krigeage</b> remplit la carte : il interpole la qualité du réservoir, puis la profondeur du toit, entre vos blocs mesurés (couleur = valeur, hachures = incertitude), et le résumé de forage donne une fourchette de production P90 / P50 / P10. Si vous activez <b>Dimensionner le forage</b>, vous composez aussi la boue et le tubage face à la pression du bloc.`,`The <b>Advanced production</b> option (Senior, Grand exploration, Permian, or the game options checkbox) adds what happens after drilling: <b>water</b> and <b>BSW</b> (trucking, disposal well, recycling), crude <b>quality</b> and <b>associated gas</b>, processing and export <b>capacity</b>, reservoir <b>pressure</b> and its drive mechanism, then assisted drainage, launched from the Fields tab: <b>CO2 injection</b> (miscible above the minimum miscibility pressure, with breakthrough and a per-Mcf cost) or <b>associated-gas reinjection</b> (pressure supported, but the gas is not sold). The guide then suggests the useful action: expand processing, build a SWD, sell the gas. The map's <b>Uncertainty</b> button hatches the blocks where your measurements say almost nothing, and the <b>Kriging</b> button fills the map: it interpolates reservoir quality, then reservoir-top depth, between your measured blocks (colour = value, hatching = uncertainty), and the drilling summary gives a P90 / P50 / P10 production range. If you turn on <b>Size the drilling programme</b>, you also compose the mud and casing against the block's pressure.`)}<br><br><b>${TR(`À vous de jouer`,`Your turn`)}</b> : ${TR(`le guide ne remplace pas votre jugement. Trois exercices courts, avec les vrais chiffres du jeu : lire le mécanisme d'un puits, décider du camion ou du SWD, décider de la torche ou de l'unité de gaz.`,`the guide does not replace your judgment. Three short exercises with the game's real numbers: read a well's drive mechanism, decide between trucking and a SWD, decide between flaring and a gas unit.`)}<br><button class="study-btn study-btn-compact" style="margin-top:8px;" onclick="document.getElementById('tutoCloseBtn').click(); window.__qz && window.__qz.open('fluides_tuto');">💧 ${TR(`Faire les exercices`,`Do the exercises`)}</button>`,
+      body: `${TR(`L'option <b>Production avancée</b> (Senior, Grande exploration, Permien, ou case des options de partie) ajoute ce qui se passe après le forage : l'<b>eau</b> et le <b>BSW</b> (camion, puits d'injection, recyclage), la <b>qualité</b> du brut et le <b>gaz associé</b>, la <b>capacité</b> de traitement et d'export, la <b>pression</b> du réservoir et son mécanisme de drainage, puis le drainage assisté, lancé depuis l'onglet Gisements : <b>injection de CO2</b> (miscible au-dessus de la pression minimale de miscibilité, avec percée et coût au Mcf) ou <b>réinjection du gaz associé</b> (pression soutenue, mais gaz non vendu). Le guide vous propose alors l'action utile : agrandir le traitement, construire un SWD, vendre le gaz. Le bouton <b>Incertitude</b> de la carte hachure les blocs où vos mesures ne disent presque rien, et le bouton <b>Krigeage</b> remplit la carte : il interpole la qualité du réservoir, puis la profondeur du toit, entre vos blocs mesurés (couleur = valeur, hachures = incertitude ; trois anneaux orange et leurs pastilles indiquent où une mesure de plus retire le plus d'incertitude utile), et le résumé de forage donne une fourchette de production P90 / P50 / P10. Après chaque forage, la fiche du bloc compare le prévu et le réel (toit et qualité du réservoir) et compte combien de forages sont tombés dans l'intervalle annoncé. Si vous activez <b>Dimensionner le forage</b>, vous composez aussi la boue et le tubage face à la pression du bloc.`,`The <b>Advanced production</b> option (Senior, Grand exploration, Permian, or the game options checkbox) adds what happens after drilling: <b>water</b> and <b>BSW</b> (trucking, disposal well, recycling), crude <b>quality</b> and <b>associated gas</b>, processing and export <b>capacity</b>, reservoir <b>pressure</b> and its drive mechanism, then assisted drainage, launched from the Fields tab: <b>CO2 injection</b> (miscible above the minimum miscibility pressure, with breakthrough and a per-Mcf cost) or <b>associated-gas reinjection</b> (pressure supported, but the gas is not sold). The guide then suggests the useful action: expand processing, build a SWD, sell the gas. The map's <b>Uncertainty</b> button hatches the blocks where your measurements say almost nothing, and the <b>Kriging</b> button fills the map: it interpolates reservoir quality, then reservoir-top depth, between your measured blocks (colour = value, hatching = uncertainty; three orange rings and their chips show where one more measurement removes the most useful uncertainty), and the drilling summary gives a P90 / P50 / P10 production range. After each well, the block sheet compares predicted and actual (reservoir top and quality) and counts how many wells fell inside the stated interval. If you turn on <b>Size the drilling programme</b>, you also compose the mud and casing against the block's pressure.`)}<br><br><b>${TR(`À vous de jouer`,`Your turn`)}</b> : ${TR(`le guide ne remplace pas votre jugement. Trois exercices courts, avec les vrais chiffres du jeu : lire le mécanisme d'un puits, décider du camion ou du SWD, décider de la torche ou de l'unité de gaz.`,`the guide does not replace your judgment. Three short exercises with the game's real numbers: read a well's drive mechanism, decide between trucking and a SWD, decide between flaring and a gas unit.`)}<br><button class="study-btn study-btn-compact" style="margin-top:8px;" onclick="document.getElementById('tutoCloseBtn').click(); window.__qz && window.__qz.open('fluides_tuto');">💧 ${TR(`Faire les exercices`,`Do the exercises`)}</button>`,
     },
     {
       title: TR('Prêt à jouer','Ready to play'),

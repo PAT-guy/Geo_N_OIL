@@ -46,9 +46,9 @@ const { chromium } = require('playwright'); const path = require('path');
     const u=gsUncertainty(); o.uA = u[A.id]; o.uNear = u[blocks.find(b=>Math.hypot(b.x-A.x,b.y-A.y)>1.9&&Math.hypot(b.x-A.x,b.y-A.y)<2.2&&b.id!==B.id).id]; o.uFar = u[Cb.id];
     o.order = o.uA < o.uNear && o.uNear <= o.uFar + 1e-9; o.farOne = o.uFar > 0.9;
     // la couche : bouton, hachures
-    document.getElementById('uncBtn').click(); o.btn = document.getElementById('uncBtn').classList.contains('on'); o.hatched = document.querySelectorAll('#grid .block .unc').length;
+    document.getElementById('krgBtn').click(); o.btn = document.getElementById('krgBtn').classList.contains('on') && document.getElementById('krgBtn').dataset.mode==='unc'; o.hatched = document.querySelectorAll('#grid .block .unc').length;
     o.opNear = +A.el.querySelector('.unc')?.style.opacity, o.opFar = +Cb.el.querySelector('.unc')?.style.opacity;
-    document.getElementById('uncBtn').click();
+    document.getElementById('krgBtn').click(); document.getElementById('krgBtn').click(); document.getElementById('krgBtn').click();
     // fourchette P90<P50<P10 sur un bloc étudié
     selectedBlock=A.id; ensureEst(A).p = 0.4; const post = gsQualityPosterior(A); o.post = post && post.sd>0; const rg=gsProdRange(A, 1000); o.rg = rg && rg.p90<rg.p50 && rg.p50<rg.p10;
     // un puits voisin mesuré resserre l'écart-type du bloc A
@@ -75,7 +75,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(J.panel, 'le panneau de forage affiche la fourchette P90 / P10');
   ok(J.same, 'la vraie géologie (probabilité et qualité de chaque bloc) est inchangée');
   // 4. Découverte : couche et fourchette absentes
-  const D = await pg.evaluate(async()=>{ menuConfig.mode='decouverte'; document.getElementById('geoSeed').value='808'; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); return { btn: document.getElementById('uncBtn').getClientRects().length>0 }; });
+  const D = await pg.evaluate(async()=>{ menuConfig.mode='decouverte'; document.getElementById('geoSeed').value='808'; labOptLaunch(); await new Promise(r=>setTimeout(r,900)); return { btn: document.getElementById('krgBtn').getClientRects().length>0 }; });
   ok(!D.btn, 'Découverte : pas de bouton Incertitude');
   ok(errs.length===0, 'aucune erreur JS '+errs.join('|'));
   await br.close(); console.log(ko?'ECHECS: '+ko:'TOUT OK'); process.exit(ko?1:0); })();
