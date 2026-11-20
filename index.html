@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.46</title>
+<title>GeoExplorer V5.47</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -5759,6 +5759,10 @@ document.getElementById('drillRevealSkipBtn')?.addEventListener('click', ()=>{
 
 
 function debriefEntry(b, info, success){
+  // V5.47 : un puits fracturé réussit ou échoue sur la roche-mère (TOC, épaisseur, maturité, fragilité), pas sur les quatre facteurs d'un piège conventionnel : le rapport le dit.
+  if(info && info.method==='frac' && b.fracInfo && typeof b.fracInfo.toc==='number' && typeof b.fracInfo.q==='number' && !info.techFail){
+    return `<div class="debrief-entry"><b>${TR(`Bloc (`,`Block (`)}${b.x},${b.y})</b>, ${formatM(info.cost)}${success ? TR(` : réussite par fracturation. `,` : success by fracking. `) : TR(` : puits sec par fracturation. `,` : dry hole by fracking. `)}${fracRevealHtml(b, success)} ${TR(`Les facteurs d'un piège conventionnel (structure, couverture, charge) ne comptent pas pour une frac : la probabilité affichée sur la carte n'y change rien.`,`The factors of a conventional trap (structure, seal, charge) do not matter for a frac: the probability shown on the map does not apply.`)}</div>`;
+  }
   const factorEntries = Object.entries(info.factors).sort((a,z)=>a[1]-z[1]);
   const [worstName, worstVal] = factorEntries[0];
   const [bestName]  = factorEntries[factorEntries.length-1];
@@ -5841,7 +5845,12 @@ function buildDebriefReport(){
 
   // Synthèse : facteur le plus souvent limitant parmi les échecs géologiques
   // (hors échecs purement techniques), et lien étude/réussite.
-  const geoFails = badOnes.filter(w=>!w.info.techFail);
+  const geoFails = badOnes.filter(w=>!w.info.techFail && w.info.method!=='frac');
+  const fracFails = badOnes.filter(w=>!w.info.techFail && w.info.method==='frac' && w.b.fracInfo);
+  if(fracFails.length>0){
+    const why = {}; fracFails.forEach(w=>{ const k = w.b.fracInfo.why || 'toc'; why[k] = (why[k]||0)+1; }); const top = Object.entries(why).sort((a,z)=>z[1]-a[1])[0];
+    html += `<div class="debrief-title">${TR(`Synthèse de la fracturation`,`Frac summary`)}</div><div class="debrief-summary">${fracFails.length}${TR(` frac(s) sèche(s) : cause la plus fréquente, `,` dry frac(s): most frequent cause, `)}<b>${FRAC_WHY()[top[0]] || top[0]}</b> (${top[1]}). ${TR(`Une Rock-Eval avant de forer mesure le TOC et la maturité : c'est elle qui prédit une frac, pas la probabilité de piège de la carte.`,`A Rock-Eval before drilling measures TOC and maturity: it is what predicts a frac, not the trap probability on the map.`)}</div>`;
+  }
   if(geoFails.length>0){
     const counts = {};
     geoFails.forEach(w=>{
@@ -5853,7 +5862,7 @@ function buildDebriefReport(){
     html += `<div class="debrief-title">${TR(`Synthèse`,`Summary`)}</div>
       <div class="debrief-summary">${TR(`
         Sur `,`
-        Out of `)}${badOnes.length}${TR(` forage(s) sec(s), `,` dry hole(s), `)}${topFactor[1]}${TR(` sur `,` out of `)}${geoFails.length}${TR(` échec(s) géologique(s) venaient
+        Out of `)}${badOnes.filter(w=>w.info.method!=='frac').length}${TR(` forage(s) sec(s) conventionnel(s), `,` conventional dry hole(s), `)}${topFactor[1]}${TR(` sur `,` out of `)}${geoFails.length}${TR(` échec(s) géologique(s) venaient
         du même facteur limitant : `,` geological failure(s) came from the same limiting factor: `)}<b>${FACTOR_LABEL[topFactor[0]]}</b>. ${underInformedFails>0 ?
         `${underInformedFails}${TR(` de ces échecs ont été décidés avec `,` of these failures were decided with `)}${STUDY_LEVEL_NOTE[1]}${TR(` ou moins : approfondir l'étude
         avant de forer aurait pu éviter une partie de ces coûts.`,` or less: deepening the study before drilling could have avoided part of these costs.`)}` : `${TR(`Le niveau d'étude n'était pas le facteur limitant
