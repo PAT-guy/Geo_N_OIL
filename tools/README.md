@@ -385,3 +385,14 @@ Test : `structure_gravimetrie.js` (libellés, fermeture, seuil de 40 m, AUC par 
 
 ## CI plus robuste (après V5.44)
 Le CI avait échoué une fois à l'étape « Installer Playwright et Chromium » : les miroirs apt d'Ubuntu étaient injoignables (`Failed to install browsers`, code 100), sans lien avec le jeu. Le workflow met maintenant en cache `~/.cache/ms-playwright` (clé : `package-lock.json`) et tente l'installation trois fois, avec 20 secondes d'attente. Non testable en local : le premier passage du CI après la fusion en sera la vérification.
+
+## V5.45 : intervalles du krigeage de profondeur honnêtes (council géostatistique)
+Mesure : gravimétrie, un profil 2D, puis 2, 5 ou 10 sismiques d'un bloc au hasard ; 5 bassins, 9 graines, 1 539 blocs non mesurés ; vérité = profondeur réelle.
+
+Avant : l'intervalle annoncé à 90 % couvrait 86 % des cas (écart-type des résidus standardisés 1,15), de 77 % avec 2 sismiques ponctuelles à 91 % avec 10 ; Paris 77 %, Aquitaine 85 %. Cause : le plan de tendance est ajusté sur les données mais traité comme connu par le krigeage. Un profil 2D est presque une droite, donc le plan est mal contraint en travers tant que les mesures hors profil sont rares.
+
+Correctif (`gsKrigeFit`, option `lev`, `GS_Z_LEV = 1`) : on ajoute à la variance krigée la variance d'estimation de la tendance, par l'effet de levier de la régression au bloc visé, (1 + distance de Mahalanobis² au nuage de données) / n. Le seuil d'affichage d'un bloc krigé (`gsKrig`, 92 % de l'écart a priori) se lit sur la part de variance sans ce terme (`u0`), sinon 60 % des blocs auraient perdu leur valeur interpolée. Après : couverture 91 % (écart-type 0,98), 84 % avec 2 sismiques ponctuelles, 95 % avec 5, 93 % avec 10 ; Paris 83 %, Permien 95 %, Rift 94 %, Aquitaine 90 %, Passif 91 %. Reste honnêtement sous 90 % avec très peu de données et dans Paris. Seule la profondeur est concernée (la qualité et les couches krigées gardent leur variance).
+
+Mesure écartée : la gravimétrie comme dérive externe du krigeage de profondeur (profondeur = plan + coefficient × structPos, ajustée sur les données du joueur). RMSE sur blocs non mesurés : Paris 97 puis 89 m, Rift 125 puis 116, Aquitaine 137 puis 117, Passif 125 puis 125, mais Permien 143 puis 161. Gain moyen de 3 % seulement et un bassin dégradé : non retenue. La gravimétrie sert mieux à classer les hauts structuraux (V5.44) qu'à prédire la profondeur.
+
+Test : `krigeage_calibration.js` (couverture entre 86 et 96 %, écart-type entre 0,85 et 1,12, couverture avec 2 sismiques d'au moins 80 %).
