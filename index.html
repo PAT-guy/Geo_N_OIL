@@ -5760,7 +5760,7 @@ document.getElementById('drillRevealSkipBtn')?.addEventListener('click', ()=>{
 
 function debriefEntry(b, info, success){
   // V5.47 : un puits fracturé réussit ou échoue sur la roche-mère (TOC, épaisseur, maturité, fragilité), pas sur les quatre facteurs d'un piège conventionnel : le rapport le dit.
-  if(info && info.method==='frac' && b.fracInfo && !info.techFail){
+  if(info && info.method==='frac' && b.fracInfo && typeof b.fracInfo.toc==='number' && typeof b.fracInfo.q==='number' && !info.techFail){
     return `<div class="debrief-entry"><b>${TR(`Bloc (`,`Block (`)}${b.x},${b.y})</b>, ${formatM(info.cost)}${success ? TR(` : réussite par fracturation. `,` : success by fracking. `) : TR(` : puits sec par fracturation. `,` : dry hole by fracking. `)}${fracRevealHtml(b, success)} ${TR(`Les facteurs d'un piège conventionnel (structure, couverture, charge) ne comptent pas pour une frac : la probabilité affichée sur la carte n'y change rien.`,`The factors of a conventional trap (structure, seal, charge) do not matter for a frac: the probability shown on the map does not apply.`)}</div>`;
   }
   const factorEntries = Object.entries(info.factors).sort((a,z)=>a[1]-z[1]);
