@@ -3177,6 +3177,11 @@ function gsSurface(kind){
   }
   GS_SURF_CACHE[kind] = { sig, v }; return v;
 }
+// V5.46 : intervalle à 90 % dit en fréquence (« neuf fois sur dix entre A et B ») plutôt qu'en écart-type : 1,645 écart-type de part et d'autre, arrondi (10 m pour la profondeur, 1 point pour la qualité), borné si besoin.
+function gsRangeText(m, sd, opt){
+  opt = opt || {}; const step = opt.step || 10, rnd = v=>Math.round(v/step)*step, lo = Math.max(opt.min ?? -Infinity, rnd(m-1.645*sd)), hi = Math.min(opt.max ?? Infinity, rnd(m+1.645*sd)), fm = v=>String(v), u = opt.unit || '';
+  return TR(`9 fois sur 10 entre ${fm(lo)} et ${fm(hi)}${u}`, `9 times out of 10 between ${fm(lo)} and ${fm(hi)}${u}`);
+}
 // Valeur interpolée d'un bloc SANS mesure propre (null si le bloc est mesuré, ou si le krigeage n'en sait presque rien : écart-type > 92 % de l'écart a priori)
 function gsKrig(b, kind){
   const S = gsSurface(kind); if(!S || S.own[b.id]) return null;
@@ -6069,7 +6074,7 @@ function blockKnowledge(b){
     const pd = labShownDepth(b);
     out.push({n:TR('Réservoir','Reservoir'), st:'ind', t: (G.labPick==null && pd!==null) ? TR(`Horizon vers ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.`,`Horizon at about ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.`) : G.labPick==null ? TR('À identifier vous-même sur la coupe : aucun horizon n\'est désigné comme réservoir.','To be identified by yourself on the section: no horizon is designated as the reservoir.') : (pd!==null ? TR(`Votre cible H${G.labPick+1} vers ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.`,`Your target H${G.labPick+1} at about ${Math.round(pd)} m ± ${Math.round(e.depthErr)} m.`) : TR(`Votre cible H${G.labPick+1} : profondeur à préciser par la sismique 2D sur ce bloc.`,`Your target H${G.labPick+1}: depth to be refined by 2D seismic on this block.`))});
   } else { const kz = G.simple ? null : gsKrig(b,'z');
-    out.push(kz && kz.n>=2 ? {n:TR('Réservoir','Reservoir'), st:'ind', t:TR(`Interpolé (krigeage de ${kz.n} blocs mesurés) : vers ${kz.fmt} m ± ${Math.round(kz.sd)} m (écart-type). Une sismique 2D précise.`,`Interpolated (kriging of ${kz.n} measured blocks): about ${kz.fmt} m ± ${Math.round(kz.sd)} m (standard deviation). A 2D seismic refines it.`)} : {n:TR('Réservoir','Reservoir'), st:'inc', t:TR('Précisé par la sismique 2D.','Refined by 2D seismic.')}); }
+    out.push(kz && kz.n>=2 ? {n:TR('Réservoir','Reservoir'), st:'ind', t:TR(`Interpolé (krigeage de ${kz.n} blocs mesurés) : vers ${kz.fmt} m, ${gsRangeText(kz.m, kz.sd, {unit:' m'})}. Une sismique 2D précise.`,`Interpolated (kriging of ${kz.n} measured blocks): about ${kz.fmt} m, ${gsRangeText(kz.m, kz.sd, {unit:' m'})}. A 2D seismic refines it.`)} : {n:TR('Réservoir','Reservoir'), st:'inc', t:TR('Précisé par la sismique 2D.','Refined by 2D seismic.')}); }
   { const FE = gsFaultEdges(), es = FE.byBlock[b.id];
     if(es && es.length){ const top = es.slice().sort((u,v)=>v.jump-u.jump)[0], other = blocks[top.a===b.id ? top.b : top.a], raised = top.raised===b.id;
       out.push({n:TR('Faille','Fault'), st:'ind', t:TR(`${top.level==='probable'?'Faille probable':'Faille possible'} entre ce bloc et (${other.x},${other.y}) : rejet d'environ ${Math.round(top.jump/10)*10} m (écart-type ${Math.round(top.sd)} m). Ce bloc est sur le compartiment ${raised?'relevé (toit plus haut)':'abaissé (toit plus bas)'}. Un grand rejet barre la migration depuis une roche-mère profonde, mais sert de conduit si une roche-mère se trouve au-dessus du réservoir. L'étanchéité de la faille est estimée plus bas (juxtaposition et SGR).${gsStressText(top)}`,`${top.level==='probable'?'Probable fault':'Possible fault'} between this block and (${other.x},${other.y}): throw of about ${Math.round(top.jump/10)*10} m (standard deviation ${Math.round(top.sd)} m). This block is on the ${raised?'raised (shallower top)':'downthrown (deeper top)'} side. A large throw blocks migration from a deep source rock, but acts as a conduit if a source rock lies above the reservoir. The fault seal is estimated below (juxtaposition and SGR).${gsStressText(top, true)}`)}); } }
@@ -6179,10 +6184,10 @@ function renderGeoPanel(b){
   if(e?.prob!==undefined || e?.depth!==undefined || e?.saltHint){
     html += `<div class="ps-section">${TR(`Détails`,`Details`)}</div>`;
     if(e.depth) html+=infoRow(TR('Profondeur du réservoir','Reservoir depth'), `${Math.round(e.depth)} m ±${Math.round(e.depthErr)} m`);
-    else if(!G.simple){ const kz=gsKrig(b,'z'); if(kz && kz.n>=2){ html+=infoRow(TR('Profondeur du réservoir (interpolée)','Reservoir depth (interpolated)'), `${kz.fmt} m ±${Math.round(kz.sd)} m`);
+    else if(!G.simple){ const kz=gsKrig(b,'z'); if(kz && kz.n>=2){ html+=infoRow(TR('Profondeur du réservoir (interpolée)','Reservoir depth (interpolated)'), `${kz.fmt} m`) + `<div style="font-size:11px;color:var(--muted);margin:-2px 0 4px;">${gsRangeText(kz.m, kz.sd, {unit:' m'})}</div>`;
       if(e.structPos!==undefined){ const gz=depthFromGravity(b), dz=Math.abs(gz-kz.m)/Math.max(1,kz.sd); if(dz>2) html+=`<div style="font-size:11px;color:var(--amber);margin:2px 0 4px;">${TR(`La gravimétrie seule donnerait ~${Math.round(gz/10)*10} m, soit ${dz.toFixed(1).replace('.',DEC)} écarts-types d'écart : l'interpolation et la gravimétrie ne s'accordent pas, méfiez-vous de ce bloc.`,`Gravity alone would give ~${Math.round(gz/10)*10} m, ${dz.toFixed(1)} standard deviations away: the interpolation and the gravity do not agree, be wary of this block.`)}</div>`; } } }
     if(e.quality!==undefined) html+=infoRow(TR('Qualité réservoir','Reservoir quality'), `${Math.round(e.quality)}/100 ±${Math.round(e.qualErr)}`);
-    else if(!G.simple){ const kq=gsKrig(b,'q'); if(kq && kq.n>=2) html+=infoRow(TR('Qualité réservoir (interpolée)','Reservoir quality (interpolated)'), `${kq.fmt}/100 ±${Math.round(kq.sd)}`); }
+    else if(!G.simple){ const kq=gsKrig(b,'q'); if(kq && kq.n>=2) html+=infoRow(TR('Qualité réservoir (interpolée)','Reservoir quality (interpolated)'), `${kq.fmt}/100`) + `<div style="font-size:11px;color:var(--muted);margin:-2px 0 4px;">${gsRangeText(kq.m, kq.sd, {step:1, min:0, max:100, unit:'/100'})}</div>`; }
     if(e.amplitude) html+=infoRow(TR('Indicateur direct (DHI)','Direct indicator (DHI)'), e.amplitude);
     if(e.maturityClass) html+=infoRow(TR('Maturité roche-mère','Source rock maturity'), matLbl(e.maturityClass));
     if(e.isGas) html+=`<div style="color:var(--amber);font-size:12px;margin-top:6px;">${TR(`Cible probablement `,`Target probably `)}<strong>gazeuse</strong> (surmaturation)</div>`;
@@ -8109,6 +8114,15 @@ function renderSection(){
       <title>${TR(`${TR(`Bloc (`,`Block (`)}`,`Block (`)}${b.x},${b.y}${TR(`) : cliquer pour sélectionner`,`): click to select`)}</title></circle>`;
   });
   svg += selHits + selDots; // zones de frappe élargies d'abord (tactile), puis les points visibles par-dessus
+  // V5.46 : bande d'incertitude du toit du réservoir (intervalle à 90 % : 1,645 écart-type de part et d'autre). Écart-type : celui du krigeage de la couche, sinon l'erreur de pointé de la sismique (demi-largeur / √3) ; rien là où le toit est mesuré par un forage.
+  if(!G.simple && !LAB.truth){
+    const rIdx = G.labPick!=null ? G.labPick : STRAT.findIndex(l=>l.role==='reservoir'); let runs2 = [], cur2 = [];
+    dispData.forEach(bd=>{ const l = bd.layers && bd.layers[rIdx], b = bd.b; let sd = null;
+      if(l && l.krigeage && l.sd>0) sd = l.sd; else if(l && b && !labDrilled(b) && b.estimate && b.estimate.depthErr>0) sd = b.estimate.depthErr/Math.sqrt(3);
+      if(sd){ cur2.push({ x:xOf(bd.t), top:l.top, h:1.645*sd }); } else { if(cur2.length) runs2.push(cur2); cur2 = []; } }); if(cur2.length) runs2.push(cur2);
+    const bands = runs2.filter(r=>r.length>=2).map(r=>{ const up = r.map(q=>`${q.x.toFixed(1)},${yOf(q.top-q.h).toFixed(1)}`), dn = r.slice().reverse().map(q=>`${q.x.toFixed(1)},${yOf(q.top+q.h).toFixed(1)}`); return `<polygon class="sec-band" points="${up.concat(dn).join(' ')}" fill="var(--amber)" fill-opacity="0.3" stroke="var(--sec-text-strong)" stroke-opacity="0.75" stroke-width="1.1" stroke-dasharray="4 3" pointer-events="none"><title>${TR('Toit du réservoir : 9 fois sur 10 dans cette bande (intervalle à 90 %)','Reservoir top: 9 times out of 10 inside this band (90 % interval)')}</title></polygon>`; });
+    if(bands.length){ svg += `<g clip-path="url(#sectionPlotClip)">${bands.join('')}</g>`; const r0 = runs2.filter(r=>r.length>=2)[0], q0 = r0[r0.length-1]; svg += `<text x="${(q0.x-4).toFixed(1)}" y="${(yOf(q0.top-q0.h)-3).toFixed(1)}" font-size="7" font-weight="700" fill="var(--sec-text-strong)" stroke="var(--sec-paper)" stroke-width="2.5" paint-order="stroke" text-anchor="end" pointer-events="none">${TR('toit du réservoir : 9 fois sur 10','reservoir top: 9 times out of 10')}</text>`; }
+  }
   svg += `<g clip-path="url(#sectionPlotClip)">`;
 
   // Horizon visé : trait ambre sur toute sa longueur

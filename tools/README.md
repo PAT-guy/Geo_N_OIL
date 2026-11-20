@@ -396,3 +396,14 @@ Correctif (`gsKrigeFit`, option `lev`, `GS_Z_LEV = 1`) : on ajoute à la varianc
 Mesure écartée : la gravimétrie comme dérive externe du krigeage de profondeur (profondeur = plan + coefficient × structPos, ajustée sur les données du joueur). RMSE sur blocs non mesurés : Paris 97 puis 89 m, Rift 125 puis 116, Aquitaine 137 puis 117, Passif 125 puis 125, mais Permien 143 puis 161. Gain moyen de 3 % seulement et un bassin dégradé : non retenue. La gravimétrie sert mieux à classer les hauts structuraux (V5.44) qu'à prédire la profondeur.
 
 Test : `krigeage_calibration.js` (couverture entre 86 et 96 %, écart-type entre 0,85 et 1,12, couverture avec 2 sismiques d'au moins 80 %).
+
+## V5.46 : incertitude lisible (council sur la représentation)
+Suite du council sur la façon de représenter le risque géostatistique : les intervalles sont maintenant calés (V5.45), on peut les afficher en s'engageant dessus.
+
+(1) Fiche du bloc : l'écart-type brut (« ± 97 m (écart-type) ») est remplacé par une fourchette dite en fréquence, « 9 fois sur 10 entre 2 190 et 2 430 m » (`gsRangeText`, 1,645 écart-type de part et d'autre, arrondi à 10 m ; qualité arrondie au point et bornée à 0-100). Pour la profondeur et la qualité interpolées, dans le bilan et dans les détails chiffrés. Les profondeurs mesurées par sismique gardent leur demi-largeur d'erreur (borne dure, pas un écart-type).
+
+(3) Coupe (et grande coupe) : une bande en pointillés autour du toit du réservoir (ou de l'horizon visé), de largeur ± 1,645 écart-type : écart-type du krigeage de la couche, sinon erreur de pointé de la sismique (demi-largeur / √3) ; rien là où le toit est mesuré par un forage, ni en mode simple, ni en vue vérité. Info-bulle et étiquette « toit du réservoir : 9 fois sur 10 ». Avec une sismique 2D, la bande fait environ ± 200 m, ce qui est l'incertitude réelle.
+
+Non fait, volontairement : le choix 2 du council (valeur et incertitude séparées sur la carte) et la carte de probabilité de fermeture (elle demande de mesurer sa calibration avant d'être affichée).
+
+Test : `incertitude_lisible.js` (bande présente et dans le tracé, fiche, mode simple, anglais).
