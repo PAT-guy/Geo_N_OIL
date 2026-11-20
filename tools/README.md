@@ -407,3 +407,12 @@ Suite du council sur la façon de représenter le risque géostatistique : les i
 Non fait, volontairement : le choix 2 du council (valeur et incertitude séparées sur la carte) et la carte de probabilité de fermeture (elle demande de mesurer sa calibration avant d'être affichée).
 
 Test : `incertitude_lisible.js` (bande présente et dans le tracé, fiche, mode simple, anglais).
+
+## V5.47 : bilan de fin de partie pour les puits fracturés
+Retour du joueur (carte du Permien, graine 59868) : « les puits produisent plus sur les petits pourcentages ». Les 11 forages étaient des frac. Mesure sur cette carte : la probabilité de piège affichée est sans lien avec la qualité de frac (corrélation 0,01 sur les 97 blocs viables ; −0,09 en moyenne dans le Permien, de −0,21 dans le Rift à +0,05 en Aquitaine, sur 6 graines). Les meilleurs puits (6,10 à 6 % : 1 600 b/mois ; 6,8 à 5 %) tiennent à un TOC de 4 à 5 % et à la maturité, pas à la structure. Les deux secs étaient à 50 et 63 % de probabilité mais avec un TOC de 1,4 et 1,1 % (seuil : 1,5 %).
+
+Défaut trouvé : `debriefEntry` et la synthèse du bilan jugeaient aussi les frac sur les quatre facteurs du piège conventionnel. Le bilan affichait « Facteur limitant : Piège structural (39 %) » et « Étanchéité de la couverture 57 % » pour des frac, alors que le tableau des forages donnait la vraie cause (TOC sous 1,5 %), et la synthèse comptait « 1 échec sur 2 par Piège structural ». Corrigé : une frac est jugée avec `fracRevealHtml` (TOC, épaisseur, maturité, fragilité, qualité, cause) et la mention que les facteurs d'un piège ne comptent pas pour une frac ; la synthèse conventionnelle exclut les frac et une « Synthèse de la fracturation » donne la cause la plus fréquente. L'écran de révélation du forage utilisait déjà le texte de frac.
+
+Non fait : une carte du potentiel de frac (la carte n'affiche que la probabilité conventionnelle, aucune couche ne guide la frac avant une Rock-Eval).
+
+Test : `bilan_frac.js`.
