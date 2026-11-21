@@ -1,0 +1,15 @@
+// Mesure (sans verdict) : que vaut un krigeage de la qualité de frac à partir de mesures (Rock-Eval, frac forées) ? (V5.48)
+// Pour 4 bassins et 8 graines : K blocs au hasard sont mesurés (qualité = shaleTrue(b).q), on krige le reste (gaussien, portée 3,2, pépite 0,08) et on compare à la vérité, par distance au plus proche bloc mesuré.
+// Résultat (K = 12) : à moins de 1,5 bloc d'une mesure, RMSE 6,4 contre 9,3 pour la simple moyenne ; entre 1,5 et 2,5 blocs 9,7 contre 10,1 ; au-delà de 2,5 blocs le krigeage fait pire que la moyenne (10,5 à 11,6 contre 9,9 à 10,6).
+// Variogramme de la qualité de frac (lags de 1 bloc, normalisé par le palier) : 0,31 ; 0,73 ; 0,93 ; 1,0 : gaussien, portée de 3 blocs, pépite 5 à 10 %.
+const { chromium } = require('playwright'); const path = require('path');
+(async()=>{ const br=await chromium.launch(); const pg=await br.newPage(); await pg.addInitScript(()=>{try{localStorage.setItem('geoexplorer_tutorialSeen','1');localStorage.setItem('geoexplorer_played','1')}catch(e){}});
+ await pg.goto('file://'+path.resolve(__dirname,'../../index.html')); await pg.waitForTimeout(400);
+ const r=await pg.evaluate(async()=>{ const rows=[];
+  for(const bt of ['permian','aquitaine','passive','paris']) for(let s=0;s<8;s++){ const seed=String(59868+s*17); document.getElementById('geoSeed').value=seed; menuConfig.mode='junior'; menuConfig.basinType=bt; menuConfig.seed=seed; labOptLaunch(); await new Promise(r=>setTimeout(r,60)); setSpeed(0);
+   const land=blocks.filter(b=>!b.isOffshore&&!b.inSalt).map(b=>({b,f:shaleTrue(b)})).filter(o=>!['absent','coal','offshore'].includes(o.f.why)); if(land.length<30) continue; const rng=makeRng(seedToInt(seed+'|rk')); const prior=land.reduce((t,o)=>t+o.f.q,0)/land.length, sdPrior=Math.sqrt(land.reduce((t,o)=>t+(o.f.q-prior)**2,0)/land.length);
+   for(const K of [4,8,12,20]){ const idx=land.map((o,i)=>i).sort(()=>rng()-0.5).slice(0,K), meas=idx.map(i=>({x:land[i].b.x,y:land[i].b.y,v:land[i].f.q})); const mu=meas.reduce((t,p)=>t+p.v,0)/K; const sd0=Math.max(8, Math.sqrt(meas.reduce((t,p)=>t+(p.v-mu)**2,0)/K)), nug=0.08, ps=1-nug; const rest=land.filter((o,i)=>!idx.includes(i)); const kr=GEO.krige(meas.map(p=>({x:p.x,y:p.y,noise:0.05})), rest.map(o=>o.b),'gauss',3.2,ps);
+    rest.forEach((o,i)=>{ let sm=0; for(let k=0;k<K;k++) sm+=kr.W[i][k]*(meas[k].v-mu); const m=mu+sm, sd=sd0*Math.sqrt(kr.V[i]+nug); let dn=1e9; meas.forEach(p=>{ dn=Math.min(dn,Math.hypot(p.x-o.b.x,p.y-o.b.y)); }); rows.push({K, z:(o.f.q-m)/sd, e:o.f.q-m, e0:o.f.q-prior, dn, u:Math.sqrt(kr.V[i]+nug), bt}); }); } }
+  const res={}; for(const [lo,hi] of [[0,1.5],[1.5,2.5],[2.5,3.5],[3.5,99]]){ const a=rows.filter(r=>r.K===12&&r.dn>=lo&&r.dn<hi); if(a.length) res['d'+lo+'-'+hi]={ n:a.length, rmseKrigeage:+Math.sqrt(a.reduce((t,r)=>t+r.e*r.e,0)/a.length).toFixed(1), rmseMoyenne:+Math.sqrt(a.reduce((t,r)=>t+r.e0*r.e0,0)/a.length).toFixed(1), cov90:+(a.filter(r=>Math.abs(r.z)<=1.645).length/a.length).toFixed(2) }; }
+  return res; });
+ console.log(JSON.stringify(r,null,1)); await br.close(); })();

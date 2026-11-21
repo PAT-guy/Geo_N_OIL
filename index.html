@@ -16,7 +16,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>GeoExplorer V5.47</title>
+<title>GeoExplorer V5.48</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -8130,7 +8130,7 @@ function renderSection(){
       if(l && l.krigeage && l.sd>0) sd = l.sd; else if(l && b && !labDrilled(b) && b.estimate && b.estimate.depthErr>0) sd = b.estimate.depthErr/Math.sqrt(3);
       if(sd){ cur2.push({ x:xOf(bd.t), top:l.top, h:1.645*sd }); } else { if(cur2.length) runs2.push(cur2); cur2 = []; } }); if(cur2.length) runs2.push(cur2);
     const bands = runs2.filter(r=>r.length>=2).map(r=>{ const up = r.map(q=>`${q.x.toFixed(1)},${yOf(q.top-q.h).toFixed(1)}`), dn = r.slice().reverse().map(q=>`${q.x.toFixed(1)},${yOf(q.top+q.h).toFixed(1)}`); return `<polygon class="sec-band" points="${up.concat(dn).join(' ')}" fill="var(--amber)" fill-opacity="0.3" stroke="var(--sec-text-strong)" stroke-opacity="0.75" stroke-width="1.1" stroke-dasharray="4 3" pointer-events="none"><title>${TR('Toit du réservoir : 9 fois sur 10 dans cette bande (intervalle à 90 %)','Reservoir top: 9 times out of 10 inside this band (90 % interval)')}</title></polygon>`; });
-    if(bands.length){ svg += `<g clip-path="url(#sectionPlotClip)">${bands.join('')}</g>`; const r0 = runs2.filter(r=>r.length>=2)[0], q0 = r0[r0.length-1]; svg += `<text x="${(q0.x-4).toFixed(1)}" y="${(yOf(q0.top-q0.h)-3).toFixed(1)}" font-size="7" font-weight="700" fill="var(--sec-text-strong)" stroke="var(--sec-paper)" stroke-width="2.5" paint-order="stroke" text-anchor="end" pointer-events="none">${TR('toit du réservoir : 9 fois sur 10','reservoir top: 9 times out of 10')}</text>`; }
+    if(bands.length){ svg += `<g clip-path="url(#sectionPlotClip)">${bands.join('')}</g>`; }
   }
   svg += `<g clip-path="url(#sectionPlotClip)">`;
 
