@@ -416,3 +416,10 @@ Défaut trouvé : `debriefEntry` et la synthèse du bilan jugeaient aussi les fr
 Non fait : une carte du potentiel de frac (la carte n'affiche que la probabilité conventionnelle, aucune couche ne guide la frac avant une Rock-Eval).
 
 Test : `bilan_frac.js`.
+
+## V5.48 : étiquette de la bande retirée, et mesure du potentiel de frac (carte non construite)
+Demande du joueur : « retirer le bloc réservoir 9 fois sur 10 ». L'étiquette de texte « toit du réservoir : 9 fois sur 10 » de la coupe est retirée (elle recouvrait les noms de couches). La bande en pointillés reste, avec son info-bulle.
+
+Mesure pour la carte du potentiel de frac (`sim_frac_voisinage.js`, sans verdict). Le variogramme de la qualité de frac est gaussien, de portée 3 blocs, avec 5 à 10 % de pépite : le modèle emprunté à la profondeur convient. Mais la qualité décorrèle vite (corrélation du palier : 0,69 à 1 bloc, 0,27 à 2 blocs). Avec 12 mesures au hasard : à moins de 1,5 bloc d'une mesure, RMSE 6,4 contre 9,3 pour la moyenne (−31 %) ; entre 1,5 et 2,5 blocs, 9,7 contre 10,1 (−4 %) ; plus loin, le krigeage fait pire que la moyenne (10,5 à 11,6 contre 9,9 à 10,6, parce que la moyenne estimée sur peu de points est bruitée). Couverture à 90 % : 85 % avec 4 mesures, 90 % avec 20 ; Paris 82 %.
+
+Conclusion : une carte complète du potentiel de frac ne prédit rien au-delà de deux blocs d'une mesure. Ce que les données soutiennent est un voisinage autour des puits et des Rock-Eval, pas une carte de toute la concession. Non construit : décision au joueur.
