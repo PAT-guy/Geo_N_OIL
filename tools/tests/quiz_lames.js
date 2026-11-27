@@ -21,7 +21,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(Object.keys(r.kinds).length===6 && Object.values(r.kinds).every(v=>v>=r.rounds),'les six gabarits sortent '+JSON.stringify(r.kinds));
   ok(r.imgs===r.imgNeed,'une lame est jointe à chaque question ('+r.imgs+'/'+r.imgNeed+')');
   ok(r.ms<2500,'génération d\'une manche : '+Math.round(r.ms)+' ms');
-  ok(r.btn && r.card && /13 jeux/.test(r.chip),'accueil : bouton et carte, pastille « '+r.chip+' »');
+  ok(r.btn && r.card && /14 jeux/.test(r.chip),'accueil : bouton et carte, pastille « '+r.chip+' »');
   ok(r.open && /lame mince/i.test(r.title) && /Question 1\/8/.test(r.score),'le mini-jeu s\'ouvre : « '+r.title+' », '+r.score);
   ok(errs.length===0,'aucune erreur JS '+errs.join('|'));
   await br.close(); console.log(ko?'ECHECS: '+ko:'TOUT OK'); process.exit(ko?1:0); })();

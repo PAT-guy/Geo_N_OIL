@@ -30,7 +30,7 @@ const { chromium } = require('playwright'); const path = require('path');
   ok(Object.keys(r.kinds).length===8 && Object.values(r.kinds).every(v=>v>=15),'les huit gabarits sortent (fenêtre de fuite, juxtaposition, SGR, verdict, rejet critique, marche ou rampe, rôle, contrainte) '+JSON.stringify(r.kinds));
   ok(r.figs===r.figNeed && r.label===0,'diagramme d\'Allan joint aux questions de fenêtre, de juxtaposition et de verdict ('+r.figs+'/'+r.figNeed+'), sans coordonnées de bloc');
   ok(r.restored,'la partie en cours est intacte après la génération');
-  ok(r.btn && r.card && /13 jeux/.test(r.chip),'accueil : bouton et carte du mini-jeu, pastille « '+r.chip+' »');
+  ok(r.btn && r.card && /14 jeux/.test(r.chip),'accueil : bouton et carte du mini-jeu, pastille « '+r.chip+' »');
   ok(r.open && /Cette faille scelle-t-elle/.test(r.title) && /Question 1\/8/.test(r.score),'le mini-jeu s\'ouvre : « '+r.title+' », '+r.score);
   ok(!/[éèàùçê]|Résumé|Rejet|Épaisseur|faille/.test(r.en.replace(/Vsh|Crétacé|supérieur|inférieur/g,'')),'version anglaise : aucun texte français dans les questions (hors noms de couches de la géologie, français dans toutes les parties)');
   ok(errs.length===0,'aucune erreur JS '+errs.join('|'));
